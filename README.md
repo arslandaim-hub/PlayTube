@@ -1,7 +1,7 @@
 PlayTube is a fast, private, and feature-rich YouTube client for Android.
 
 
-##Key Features:
+## Key Features:
 - Background Play
 - Picture-in-Picture Support
 - Highest available video quality downloads
@@ -10,7 +10,7 @@ PlayTube is a fast, private, and feature-rich YouTube client for Android.
 - Subscription Management
 - Search History & Privacy
 - Dynamic UI, Smooth, full-screen browsing experience.
-##ScreenShots:
+## ScreenShots:
 <img src= ""
 width="150">
 <img src= ""
