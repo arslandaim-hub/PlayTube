@@ -1,0 +1,12 @@
+package com.arslandaim.playtube.domain.usecase
+
+import com.arslandaim.playtube.data.local.HistoryEntity
+import com.arslandaim.playtube.domain.repository.LibraryRepository
+import kotlinx.coroutines.flow.Flow
+import javax.inject.Inject
+
+class GetHistoryUseCase @Inject constructor(
+    private val repository: LibraryRepository
+) {
+    operator fun invoke(): Flow<List<HistoryEntity>> = repository.getHistory()
+}
