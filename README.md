@@ -15,8 +15,7 @@ PlayTube is a fast, private, and feature-rich YouTube client for Android.
   a channel.
 - Videos in subscriptions section appear only from subscribed channels.
 ## ScreenShots:
-<img src= "fastlane/metadata/android/en-US/Images/phoneScreenshots/home.png
-"
+<img src= "fastlane/metadata/android/en-US/Images/phoneScreenshots/home.png"
 width="130">
 <img src= "fastlane/metadata/android/en-US/Images/phoneScreenshots/screenshot-1.png"
 width="130">
