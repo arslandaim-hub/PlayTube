@@ -37,8 +37,6 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PictureInPicture
-import androidx.compose.material.icons.filled.SystemUpdate
-import androidx.compose.material.icons.filled.Update
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
@@ -48,7 +46,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeTopAppBar
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -83,7 +80,6 @@ fun SettingsScreen(
 ) {
     val isSearchHistoryPaused by viewModel.isSearchHistoryPaused.collectAsState()
     val isPipEnabled by viewModel.isPipEnabled.collectAsState()
-    val updateState by viewModel.updateState.collectAsState()
     var showClearDownloadsDialog by remember { mutableStateOf(false) }
     var showDeveloperDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -141,18 +137,6 @@ fun SettingsScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Update Section
-            item {
-                UpdateSection(
-                    state = updateState,
-                    onCheckUpdate = { viewModel.checkForUpdates() },
-                    onDownloadUpdate = { url ->
-                        val intent = Intent(Intent.ACTION_VIEW, url.toUri())
-                        context.startActivity(intent)
-                    }
-                )
-            }
-
             // History & Privacy Category
             item {
                 SettingsGroup(title = "History & Privacy") {
@@ -379,73 +363,6 @@ fun SettingsSwitchItem(
             checked = checked,
             onCheckedChange = onCheckedChange
         )
-    }
-}
-
-@Composable
-fun UpdateSection(
-    state: UpdateState,
-    onCheckUpdate: () -> Unit,
-    onDownloadUpdate: (String) -> Unit
-) {
-    SettingsGroup(title = "Updates") {
-        var title = "Check for updates"
-        var subtitle = "Tap to see if a new version is available"
-        var icon = Icons.Default.Update
-        var color = MaterialTheme.colorScheme.primary
-        var showProgress = false
-        var trailingIcon: ImageVector? = null
-
-        when (state) {
-            is UpdateState.Idle -> { }
-            is UpdateState.Checking -> {
-                title = "Checking for updates..."
-                subtitle = "Checking GitHub..."
-                showProgress = true
-            }
-            is UpdateState.UpdateAvailable -> {
-                title = "Update available!"
-                subtitle = "Version ${state.info.versionName} is ready to download"
-                icon = Icons.Default.SystemUpdate
-                color = Color(0xFF4CAF50) // Material Green
-                trailingIcon = Icons.AutoMirrored.Filled.OpenInNew
-            }
-            is UpdateState.UpToDate -> {
-                title = "App is up to date"
-                subtitle = "You are running the latest version"
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            }
-            is UpdateState.Error -> {
-                title = "Update check failed"
-                subtitle = state.message
-                color = MaterialTheme.colorScheme.error
-            }
-        }
-
-        SettingsItem(
-            title = title,
-            subtitle = subtitle,
-            icon = icon,
-            onClick = {
-                if (state is UpdateState.UpdateAvailable) {
-                    onDownloadUpdate(state.info.downloadUrl)
-                } else {
-                    onCheckUpdate()
-                }
-            },
-            titleColor = color,
-            trailingIcon = trailingIcon
-        )
-        
-        if (showProgress) {
-            LinearProgressIndicator(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(2.dp),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = Color.Transparent
-            )
-        }
     }
 }
 

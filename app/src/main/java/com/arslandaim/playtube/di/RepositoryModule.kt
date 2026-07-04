@@ -19,18 +19,9 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
-import com.arslandaim.playtube.data.repository.UpdateRepositoryImpl
-import com.arslandaim.playtube.domain.repository.UpdateRepository
-
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class RepositoryModule {
-
-    @Binds
-    @Singleton
-    abstract fun bindUpdateRepository(
-        updateRepositoryImpl: UpdateRepositoryImpl
-    ): UpdateRepository
 
     @Binds
     @Singleton
