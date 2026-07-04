@@ -44,7 +44,7 @@ android {
 
 // Explicitly enforce Java 17 bytecode compatibility for Kotlin compilation
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
 }
 
 dependencies {
