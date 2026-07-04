@@ -1,12 +1,14 @@
 PlayTube is a fast, private, and feature-rich YouTube client for Android.
 
 Key Features:
-- Background Play: Keep listening to music or podcasts while using other apps.
-- Picture-in-Picture: Watch videos in a floating window.
-- Downloads: Save videos or audio for offline use.
-- Subscription Management: Stay updated with your favorite creators without an account.
-- Search History & Privacy: Control your data with options to pause history.
-- Dynamic UI: Smooth, full-screen browsing experience.
-- Open Source: Built for the community, with no tracking or non-free SDKs.
+- Background Play
+- Picture-in-Picture Support
+- Highest available video quality downloads
+- Built-in video volume/brightness gestures
+- Push up & down landscape/portrait modes
+- Subscription Management
+- Search History & Privacy
+- Dynamic UI, Smooth, full-screen browsing experience.
 
-Enjoy a premium video experience for free.
+Enjoy a premium video experience  with no ads or tracking. 
+App is designed to be simple and easy to use for better video playback experience, enjoy!

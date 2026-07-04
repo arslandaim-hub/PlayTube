@@ -1,1 +1,1 @@
-Fast, private, and feature-rich YouTube client with background play, downloads, and auto-updates.
+Feature-rich YouTube client, fast and secure with Material 3 design
