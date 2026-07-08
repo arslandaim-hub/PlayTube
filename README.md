@@ -17,10 +17,14 @@
 
 <p align="center">
 
+<a href="https://github.com/arslandaim-hub/PlayTube/releases/latest">
+  <img src="https://img.shields.io/badge/GET%20IT%20ON-GitHub-000000?style=for-the-badge&logo=github&logoColor=white" alt="Get it on GitHub">
+</a>
+<br><br>
 <a href="https://f-droid.org/packages/com.arslandaim.playtube/">
   <img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" width="220" alt="Get it on F-Droid">
 </a>
-<br><br/>
+<br><br>
 <a href="https://github.com/arslandaim-hub/PlayTube/releases/latest">
   <img src="https://img.shields.io/github/downloads/arslandaim-hub/PlayTube/total?style=for-the-badge&logo=github&label=GitHub%20Downloads" alt="GitHub Downloads">
 </a>
@@ -31,7 +35,7 @@
 - Background Play
 - Picture-in-Picture Support
 - Highest available video quality downloads
-- Built-in video volume/brightness gestures
+- Built-in video volume/brightness and Seek forward/backward gestures
 - Push up & down landscape/portrait modes
 - Subscription Management
 - Search History & Privacy
@@ -45,14 +49,14 @@
 
 <img src="fastlane/metadata/android/en-US/Images/phoneScreenshots/home.png" 
   width="130">
-<img src="fastlane/metadata/android/en-US/Images/phoneScreenshots/screenshot-1.png"
+<img src="fastlane/metadata/android/en-US/Images/phoneScreenshots/screenshot-1.png" 
   width="130">
 <img src="fastlane/metadata/android/en-US/Images/phoneScreenshots/screenshot-5.png" 
   width="130">
 <img src="fastlane/metadata/android/en-US/Images/phoneScreenshots/blacktheme.png" 
   width="130">
 
-Enjoy a premium video experience with no ads, tracking or whatsoever.
+Enjoy a premium experience with no ads, tracking or whatsoever. Expect some bugs.
 
 There is also support for downloading whole playlists, but for that your network connection has to be stable for smooth downloading.
 
