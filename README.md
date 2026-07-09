@@ -103,13 +103,13 @@
 
 ## Screenshots
 
-<img src="fastlane/metadata/android/en-US/Images/phoneScreenshots/home.png" 
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/home.png" 
   width="130">
-<img src="fastlane/metadata/android/en-US/Images/phoneScreenshots/screenshot-1.png" 
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot-1.png" 
   width="130">
-<img src="fastlane/metadata/android/en-US/Images/phoneScreenshots/screenshot-5.png" 
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot-5.png" 
   width="130">
-<img src="fastlane/metadata/android/en-US/Images/phoneScreenshots/blacktheme.png" 
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/blacktheme.png" 
   width="130">
 
 Enjoy a premium experience with no ads, tracking or whatsoever. Expect some bugs.
