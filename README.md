@@ -29,7 +29,7 @@
 <a href="https://github.com/arslandaim-hub/PlayTube/releases/latest">
   <img src="https://img.shields.io/github/downloads/arslandaim-hub/PlayTube/total?style=for-the-badge&logo=github&label=GitHub%20Downloads" alt="GitHub Downloads">
 </a>
-
+-->
 </p>
 
 ## Key Features
