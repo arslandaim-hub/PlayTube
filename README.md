@@ -25,6 +25,7 @@
   <img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" width="220" alt="Get it on F-Droid">
 </a>
 <br><br>
+<!--
 <a href="https://github.com/arslandaim-hub/PlayTube/releases/latest">
   <img src="https://img.shields.io/github/downloads/arslandaim-hub/PlayTube/total?style=for-the-badge&logo=github&label=GitHub%20Downloads" alt="GitHub Downloads">
 </a>
