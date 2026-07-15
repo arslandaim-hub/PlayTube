@@ -13,11 +13,14 @@ interface SubscriptionDao {
     @Query("SELECT * FROM subscriptions")
     fun getAllSubscriptions(): Flow<List<SubscriptionEntity>>
 
-    @Query("SELECT EXISTS(SELECT 1 FROM subscriptions WHERE channelId = :channelId)")
+    @Query("SELECT EXISTS(SELECT 1 FROM subscriptions WHERE channelId = :channelId OR channelId LIKE '%' || :channelId || '%')")
     fun isSubscribed(channelId: String): Flow<Boolean>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSubscription(subscription: SubscriptionEntity)
+
+    @Query("DELETE FROM subscriptions WHERE channelId = :channelId OR channelId LIKE '%' || :channelId || '%'")
+    suspend fun deleteSubscriptionByIdFuzzy(channelId: String)
 
     @Delete
     suspend fun deleteSubscription(subscription: SubscriptionEntity)

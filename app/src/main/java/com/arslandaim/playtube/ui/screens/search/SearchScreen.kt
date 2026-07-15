@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.arslandaim.playtube.ui.components.VideoMetadata
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.ui.screens.library.LibraryViewModel
 import com.arslandaim.playtube.utils.VideoUtils
@@ -47,6 +48,7 @@ fun SearchScreen(
     libraryViewModel: LibraryViewModel,
     onBarsVisibilityChange: (Boolean) -> Unit,
     onVideoClick: (VideoItem) -> Unit,
+    onChannelClick: (String) -> Unit,
     onBack: () -> Unit
 ) {
     val searchQuery by viewModel.searchQuery.collectAsState()
@@ -99,7 +101,8 @@ fun SearchScreen(
                     VideoList(
                         videos = state.videos,
                         downloadedIds = downloadedIds,
-                        onVideoClick = onVideoClick
+                        onVideoClick = onVideoClick,
+                        onChannelClick = onChannelClick
                     )
                 }
                 is SearchUiState.Error -> {
@@ -284,6 +287,7 @@ fun VideoList(
     downloadedIds: Set<String> = emptySet(),
     favoriteIds: Set<String> = emptySet(),
     onVideoClick: (VideoItem) -> Unit,
+    onChannelClick: ((String) -> Unit)? = null,
     onFavoriteClick: ((VideoItem) -> Unit)? = null,
     onDownloadClick: ((VideoItem) -> Unit)? = null
 ) {
@@ -303,6 +307,7 @@ fun VideoList(
                 isFavorite = favoriteIds.contains(video.id),
                 onFavoriteClick = if (onFavoriteClick != null) { { onFavoriteClick(video) } } else null,
                 onDownloadClick = if (onDownloadClick != null) { { onDownloadClick(video) } } else null,
+                onChannelClick = if (onChannelClick != null && video.uploaderUrl != null) { { onChannelClick(video.uploaderUrl) } } else null,
                 onClick = { onVideoClick(video) }
             )
         }
@@ -316,6 +321,7 @@ fun VideoItemRow(
     isFavorite: Boolean = false,
     onFavoriteClick: (() -> Unit)? = null,
     onDownloadClick: (() -> Unit)? = null,
+    onChannelClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
@@ -378,18 +384,34 @@ fun VideoItemRow(
                 .padding(12.dp),
             verticalAlignment = Alignment.Top
         ) {
-            // Channel Avatar Placeholder
+            // Channel Avatar
             Surface(
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier
+                    .size(36.dp)
+                    .clickable(
+                        enabled = onChannelClick != null,
+                        onClick = { onChannelClick?.invoke() }
+                    ),
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.surfaceVariant
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = video.uploaderName.take(1).uppercase(),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                AsyncImage(
+                    model = video.uploaderThumbnailUrl,
+                    contentDescription = "Channel Avatar",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    error = null, // Fallback to background with first letter
+                    fallback = null
+                )
+                
+                if (video.uploaderThumbnailUrl == null) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = video.uploaderName.take(1).uppercase(),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
             
@@ -478,42 +500,15 @@ fun VideoItemRow(
                     }
                 }
                 
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = video.uploaderName,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    
-                    Text(
-                        text = " • ",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    
-                    Text(
-                        text = "${VideoUtils.formatNumber(video.viewCount)} views",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1
-                    )
-
-                    if (!video.uploadDate.isNullOrBlank()) {
-                        Text(
-                            text = " • ${video.uploadDate}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1
-                        )
-                    }
-                }
+                // Reusable Metadata Component
+                VideoMetadata(
+                    uploaderName = video.uploaderName,
+                    viewCount = video.viewCount,
+                    uploadDate = video.uploadDate,
+                    onChannelClick = if (onChannelClick != null) { { onChannelClick() } } else null
+                )
             }
         }
     }

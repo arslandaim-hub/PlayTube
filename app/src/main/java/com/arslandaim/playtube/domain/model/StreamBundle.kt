@@ -12,6 +12,7 @@ data class StreamBundle(
     val uploaderName: String,
     val uploaderUrl: String?,
     val uploaderThumbnailUrl: String?,
+    val uploaderSubscriberCount: Long? = null,
     val description: String?,
     val viewCount: Long,
     val uploadDate: String?,

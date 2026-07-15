@@ -36,6 +36,7 @@ interface LibraryRepository {
     fun isSubscribed(channelId: String): Flow<Boolean>
     suspend fun subscribe(subscription: SubscriptionEntity)
     suspend fun unsubscribe(subscription: SubscriptionEntity)
+    suspend fun unsubscribeByIdFuzzy(channelId: String)
 
     // Search History
     fun getSearchHistory(): Flow<List<SearchHistoryEntity>>

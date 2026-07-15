@@ -46,6 +46,7 @@ fun ChannelScreen(
     onPlaylistClick: (String) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val isSubscribed by viewModel.isSubscribed.collectAsState()
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     val tabs = listOf("Videos", "Playlists")
 
@@ -94,7 +95,7 @@ fun ChannelScreen(
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 AsyncImage(
@@ -105,18 +106,60 @@ fun ChannelScreen(
                                         .clip(CircleShape),
                                     filterQuality = FilterQuality.Medium
                                 )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = details.name,
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                details.subscriberCount?.let { count ->
-                                    Text(
-                                        text = "${VideoUtils.formatNumber(count)} subscribers",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = details.name,
+                                            style = MaterialTheme.typography.titleLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        
+                                        val subCountText = if (details.subscriberCount != null && details.subscriberCount < 0) {
+                                            "Subscribers hidden"
+                                        } else if (details.subscriberCount != null) {
+                                            "${VideoUtils.formatNumber(details.subscriberCount)} subscribers"
+                                        } else null
+                                        
+                                        if (subCountText != null) {
+                                            Text(
+                                                text = subCountText,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                    
+                                    // Subscribe Button (Only show once the state is known to prevent flicker)
+                                    if (isSubscribed != null) {
+                                        Button(
+                                            onClick = { viewModel.toggleSubscription() },
+                                            colors = if (isSubscribed == true) {
+                                                ButtonDefaults.buttonColors(
+                                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            } else {
+                                                ButtonDefaults.buttonColors(
+                                                    containerColor = MaterialTheme.colorScheme.onSurface,
+                                                    contentColor = MaterialTheme.colorScheme.surface
+                                                )
+                                            },
+                                            shape = CircleShape,
+                                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
+                                        ) {
+                                            Text(
+                                                text = if (isSubscribed == true) "Subscribed" else "Subscribe",
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
                                 }
                                 
                                 details.description?.let { desc ->
@@ -126,7 +169,7 @@ fun ChannelScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(top = 4.dp)
+                                        modifier = Modifier.padding(top = 12.dp)
                                     )
                                 }
                             }

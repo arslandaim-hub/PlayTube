@@ -19,6 +19,7 @@ import com.arslandaim.playtube.domain.usecase.GetFavoritesUseCase
 import com.arslandaim.playtube.domain.usecase.GetHistoryUseCase
 import com.arslandaim.playtube.domain.usecase.GetSubscriptionsUseCase
 import com.arslandaim.playtube.domain.usecase.ResumeDownloadUseCase
+import com.arslandaim.playtube.domain.usecase.SyncSubscriptionMetadataUseCase
 import com.arslandaim.playtube.domain.usecase.ToggleFavoriteUseCase
 import com.arslandaim.playtube.domain.usecase.ToggleSubscriptionUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -36,7 +37,8 @@ class LibraryViewModel @Inject constructor(
     private val cancelDownloadUseCase: CancelDownloadUseCase,
     private val resumeDownloadUseCase: ResumeDownloadUseCase,
     private val toggleFavoriteUseCase: ToggleFavoriteUseCase,
-    private val toggleSubscriptionUseCase: ToggleSubscriptionUseCase
+    private val toggleSubscriptionUseCase: ToggleSubscriptionUseCase,
+    private val syncSubscriptionMetadataUseCase: SyncSubscriptionMetadataUseCase
 ) : ViewModel() {
 
     val downloads: StateFlow<List<DownloadEntity>> = getDownloadsUseCase()
@@ -69,6 +71,16 @@ class LibraryViewModel @Inject constructor(
         if (query.isBlank()) subs
         else subs.filter { it.name.contains(query, ignoreCase = true) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    init {
+        syncSubscriptions()
+    }
+
+    private fun syncSubscriptions() {
+        viewModelScope.launch {
+            syncSubscriptionMetadataUseCase()
+        }
+    }
 
     fun onSubscriptionSearchQueryChange(query: String) {
         _subscriptionSearchQuery.value = query

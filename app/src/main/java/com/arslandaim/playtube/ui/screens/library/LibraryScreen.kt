@@ -441,11 +441,14 @@ fun SubscriptionItemRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 
-                sub.subscriberCount?.let { count ->
+                if (sub.subscriberCount != null && sub.subscriberCount > 0) {
                     Text(
-                        text = "${com.arslandaim.playtube.utils.VideoUtils.formatNumber(count)} subscribers",
+                        text = "${com.arslandaim.playtube.utils.VideoUtils.formatNumber(sub.subscriberCount)} subscribers",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp)
                     )
                 }
             }

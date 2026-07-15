@@ -69,4 +69,23 @@ object VideoUtils {
         if (date == null) return ""
         return date
     }
+
+    fun extractChannelId(url: String?): String? {
+        if (url == null) return null
+        val trimmed = url.trim()
+        
+        // If it's already just a UC... ID
+        if (trimmed.startsWith("UC") && trimmed.length == 24) {
+            return trimmed
+        }
+        
+        // Match standard UC... IDs in the URL
+        if (trimmed.contains("/channel/UC")) {
+            val id = "UC" + trimmed.substringAfter("/channel/UC").substringBefore("/")
+            if (id.length == 24) return id
+        }
+        
+        // Handles and custom URLs don't contain the channel ID directly
+        return null
+    }
 }

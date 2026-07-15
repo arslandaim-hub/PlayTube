@@ -24,8 +24,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.arslandaim.playtube.domain.model.VideoItem
+import com.arslandaim.playtube.ui.components.DownloadSelectionSheet
 import com.arslandaim.playtube.ui.components.VideoListSkeleton
-import com.arslandaim.playtube.ui.components.DownloadSelectionDialog
 import com.arslandaim.playtube.ui.screens.search.VideoList
 
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -37,7 +37,8 @@ fun HomeScreen(
     viewModel: HomeViewModel,
     libraryViewModel: com.arslandaim.playtube.ui.screens.library.LibraryViewModel,
     onBarsVisibilityChange: (Boolean) -> Unit,
-    onVideoClick: (VideoItem) -> Unit
+    onVideoClick: (VideoItem) -> Unit,
+    onChannelClick: (String) -> Unit
 ) {
     val state by viewModel.uiState.collectAsState()
     val downloadedIds by libraryViewModel.downloadedVideoIds.collectAsState()
@@ -164,46 +165,7 @@ fun HomeScreen(
             isRefreshing = isRefreshing,
             onRefresh = { viewModel.refresh() },
             state = pullToRefreshState,
-            modifier = Modifier.fillMaxSize(),
-            indicator = {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp),
-                    contentAlignment = Alignment.TopCenter
-                ) {
-                    if (pullToRefreshState.distanceFraction > 0.1f && !isRefreshing) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.inverseSurface,
-                            contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-                            shape = CircleShape,
-                            shadowElevation = 6.dp
-                        ) {
-                            Text(
-                                text = if (pullToRefreshState.distanceFraction >= 1f) "Release to Refresh" else "Pull down to refresh",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
-                            )
-                        }
-                    } else if (isRefreshing) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.inverseSurface,
-                            shape = CircleShape,
-                            shadowElevation = 4.dp,
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(24.dp),
-                                    strokeWidth = 3.dp,
-                                    color = MaterialTheme.colorScheme.inverseOnSurface
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+            modifier = Modifier.fillMaxSize()
         ) {
             HorizontalPager(
                 state = pagerState,
@@ -286,6 +248,7 @@ fun HomeScreen(
                                 downloadedIds = downloadedIds,
                                 favoriteIds = favoriteIds,
                                 onVideoClick = onVideoClick,
+                                onChannelClick = onChannelClick,
                                 onFavoriteClick = { viewModel.toggleFavorite(it) },
                                 onDownloadClick = { viewModel.prepareDownload(it) }
                             )
@@ -310,7 +273,7 @@ fun HomeScreen(
                 )
             }
             is DownloadDialogState.ShowDialog -> {
-                DownloadSelectionDialog(
+                DownloadSelectionSheet(
                     videoStreams = state.bundle.videoStreams,
                     audioStreams = state.bundle.audioStreams,
                     onDismiss = { viewModel.dismissDownloadDialog() },

@@ -204,9 +204,10 @@ class PlayerViewModel @Inject constructor(
                     _uiState.value = PlayerUiState.Success(bundle.title, bundle.uploaderName, bundle)
                     
                     // Watch subscription status
-                    bundle.uploaderUrl?.let { url ->
+                    val uploaderId = VideoUtils.extractChannelId(bundle.uploaderUrl) ?: bundle.uploaderUrl
+                    uploaderId?.let { id ->
                         launch {
-                            isSubscribedUseCase(url).collectLatest {
+                            isSubscribedUseCase(id).collectLatest {
                                 _isSubscribed.value = it
                             }
                         }
@@ -264,13 +265,14 @@ class PlayerViewModel @Inject constructor(
 
     fun toggleSubscription() {
         val bundle = currentBundle ?: return
-        val uploaderUrl = bundle.uploaderUrl ?: return
+        val uploaderId = VideoUtils.extractChannelId(bundle.uploaderUrl) ?: bundle.uploaderUrl ?: return
         viewModelScope.launch {
             toggleSubscriptionUseCase(
                 SubscriptionEntity(
-                    channelId = uploaderUrl,
+                    channelId = uploaderId,
                     name = bundle.uploaderName,
-                    thumbnailUrl = bundle.uploaderThumbnailUrl
+                    thumbnailUrl = bundle.uploaderThumbnailUrl,
+                    subscriberCount = bundle.uploaderSubscriberCount
                 )
             )
         }

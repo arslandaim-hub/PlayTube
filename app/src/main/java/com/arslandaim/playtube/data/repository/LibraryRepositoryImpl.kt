@@ -70,6 +70,10 @@ class LibraryRepositoryImpl @Inject constructor(
         subscriptionDao.deleteSubscription(subscription)
     }
 
+    override suspend fun unsubscribeByIdFuzzy(channelId: String) {
+        subscriptionDao.deleteSubscriptionByIdFuzzy(channelId)
+    }
+
     override fun getSearchHistory(): Flow<List<SearchHistoryEntity>> = searchHistoryDao.getAllSearchHistory()
 
     override suspend fun addSearchQuery(query: String) {

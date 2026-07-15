@@ -16,7 +16,8 @@ class ToggleSubscriptionUseCase @Inject constructor(
     suspend operator fun invoke(subscription: SubscriptionEntity) {
         val isSubscribed = repository.isSubscribed(subscription.channelId).first()
         if (isSubscribed) {
-            repository.unsubscribe(subscription)
+            // Use fuzzy delete to ensure both ID and legacy URL records are removed
+            repository.unsubscribeByIdFuzzy(subscription.channelId)
         } else {
             repository.subscribe(subscription)
         }

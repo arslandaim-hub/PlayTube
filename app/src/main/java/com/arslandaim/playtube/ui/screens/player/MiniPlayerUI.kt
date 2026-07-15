@@ -124,11 +124,14 @@ private fun MiniPlayerProgress(player: Player) {
     
     LaunchedEffect(player) {
         while (true) {
-            val duration = player.duration
-            if (duration > 0) {
-                progress = player.currentPosition.toFloat() / duration
+            if (player.isPlaying) {
+                val duration = player.duration
+                if (duration > 0) {
+                    progress = player.currentPosition.toFloat() / duration
+                }
             }
-            kotlinx.coroutines.delay(1000)
+            // Increase delay when not playing or use a more reactive approach if possible
+            kotlinx.coroutines.delay(if (player.isPlaying) 500 else 2000)
         }
     }
     

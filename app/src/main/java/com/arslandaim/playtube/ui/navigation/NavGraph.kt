@@ -102,6 +102,9 @@ fun NavGraph(
                 onBarsVisibilityChange = onBarsVisibilityChange,
                 onVideoClick = { video ->
                     playerViewModel.loadVideo(video)
+                },
+                onChannelClick = { channelUrl ->
+                    navController.navigate(Screen.Channel.createRoute(channelUrl))
                 }
             )
         }
@@ -195,6 +198,9 @@ fun NavGraph(
                 onBarsVisibilityChange = onBarsVisibilityChange,
                 onVideoClick = { video ->
                     playerViewModel.loadVideo(video)
+                },
+                onChannelClick = { channelUrl ->
+                    navController.navigate(Screen.Channel.createRoute(channelUrl))
                 },
                 onBack = { navController.popBackStack() }
             )

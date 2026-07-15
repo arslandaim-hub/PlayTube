@@ -42,6 +42,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
+import com.arslandaim.playtube.ui.components.DownloadSelectionSheet
+import com.arslandaim.playtube.ui.components.QualitySelectionSheet
 import com.arslandaim.playtube.domain.model.StreamItem
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.ui.screens.search.VideoItemRow
@@ -127,7 +129,7 @@ fun PlayerScreen(
     if (showDownloadDialog) {
         val state = uiState as? PlayerUiState.Success
         state?.let {
-            DownloadQualityDialog(
+            DownloadSelectionSheet(
                 videoStreams = it.bundle.videoStreams,
                 audioStreams = it.bundle.audioStreams,
                 onDismiss = { showDownloadDialog = false },
@@ -142,7 +144,7 @@ fun PlayerScreen(
     if (showQualityDialog) {
         val state = uiState as? PlayerUiState.Success
         state?.let {
-            QualitySelectionDialog(
+            QualitySelectionSheet(
                 videoStreams = it.bundle.videoStreams,
                 currentQuality = currentQuality,
                 onDismiss = { showQualityDialog = false },
@@ -424,8 +426,18 @@ fun PlayerScreen(
                                             Text(
                                                 text = state.uploader,
                                                 style = MaterialTheme.typography.titleMedium,
-                                                fontWeight = FontWeight.Medium
+                                                fontWeight = FontWeight.Medium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
+                                            if (state.bundle.uploaderSubscriberCount != null && state.bundle.uploaderSubscriberCount > 0) {
+                                                Text(
+                                                    text = "${VideoUtils.formatNumber(state.bundle.uploaderSubscriberCount)} subscribers",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1
+                                                )
+                                            }
                                         }
                                         Button(
                                             onClick = { viewModel.toggleSubscription() },
@@ -463,28 +475,32 @@ fun PlayerScreen(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        ActionChip(
-                                            icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                            label = if (isFavorite) "Liked" else "Like",
-                                            onClick = { viewModel.toggleFavorite() },
-                                            tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                        )
-                                        ActionChip(
-                                            icon = if (isDownloaded) Icons.Default.CheckCircle else Icons.Default.Download,
-                                            label = if (isDownloaded) "Downloaded" else "Download",
-                                            onClick = { if (!isDownloaded) showDownloadDialog = true },
-                                            tint = if (isDownloaded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                        )
-                                        ActionChip(
-                                            icon = Icons.Default.Settings,
-                                            label = "Settings",
-                                            onClick = { showSettingsSheet = true }
-                                        )
-                                        ActionChip(
-                                            icon = Icons.Default.Description,
-                                            label = "Description",
-                                            onClick = { showDescriptionSheet = true }
-                                        )
+                ActionChip(
+                    icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    label = if (isFavorite) "Liked" else "Like",
+                    onClick = { viewModel.toggleFavorite() },
+                    tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    contentDescription = if (isFavorite) "Remove from Liked" else "Add to Liked"
+                )
+                ActionChip(
+                    icon = if (isDownloaded) Icons.Default.CheckCircle else Icons.Default.Download,
+                    label = if (isDownloaded) "Downloaded" else "Download",
+                    onClick = { if (!isDownloaded) showDownloadDialog = true },
+                    tint = if (isDownloaded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    contentDescription = if (isDownloaded) "Video Downloaded" else "Download Video"
+                )
+                ActionChip(
+                    icon = Icons.Default.Settings,
+                    label = "Settings",
+                    onClick = { showSettingsSheet = true },
+                    contentDescription = "Playback Settings"
+                )
+                ActionChip(
+                    icon = Icons.Default.Description,
+                    label = "Description",
+                    onClick = { showDescriptionSheet = true },
+                    contentDescription = "Video Description"
+                )
                                     }
                                 }
                             }
@@ -508,6 +524,7 @@ fun PlayerScreen(
                                     VideoItemRow(
                                         video = relatedVideo,
                                         isDownloaded = downloadedIds.contains(relatedVideo.id),
+                                        onChannelClick = { onChannelClick(relatedVideo.uploaderUrl ?: "") },
                                         onClick = { onVideoClick(relatedVideo) }
                                     )
                                 }
@@ -548,7 +565,8 @@ fun ActionChip(
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    tint: Color = MaterialTheme.colorScheme.onSurface
+    tint: Color = MaterialTheme.colorScheme.onSurface,
+    contentDescription: String? = null
 ) {
     Surface(
         onClick = onClick,
@@ -561,7 +579,12 @@ fun ActionChip(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp), tint = tint)
+            Icon(
+                imageVector = icon, 
+                contentDescription = contentDescription, 
+                modifier = Modifier.size(16.dp), 
+                tint = tint
+            )
             Spacer(modifier = Modifier.width(6.dp))
             Text(text = label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
         }

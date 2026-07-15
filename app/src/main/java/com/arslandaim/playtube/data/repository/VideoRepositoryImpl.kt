@@ -15,6 +15,7 @@ import com.arslandaim.playtube.domain.repository.VideoRepository
 import com.arslandaim.playtube.utils.VideoUtils
 import android.util.LruCache
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.channel.ChannelInfo
@@ -94,9 +95,10 @@ class VideoRepositoryImpl @Inject constructor() : VideoRepository {
                 uploaderName = streamInfo.uploaderName ?: "Unknown",
                 uploaderUrl = streamInfo.uploaderUrl,
                 uploaderThumbnailUrl = streamInfo.uploaderAvatars.find { it.width in 80..180 }?.url ?: streamInfo.uploaderAvatars.firstOrNull()?.url,
+                uploaderSubscriberCount = streamInfo.uploaderSubscriberCount,
                 description = streamInfo.description?.content,
                 viewCount = streamInfo.viewCount,
-                uploadDate = streamInfo.uploadDate?.toString(),
+                uploadDate = streamInfo.textualUploadDate ?: streamInfo.uploadDate?.offsetDateTime()?.toLocalDate()?.toString(),
                 thumbnailUrl = streamInfo.thumbnails?.maxByOrNull { it.width }?.url ?: streamInfo.thumbnails?.firstOrNull()?.url,
                 relatedVideos = streamInfo.relatedItems
                     ?.filterIsInstance<StreamInfoItem>()
@@ -108,9 +110,11 @@ class VideoRepositoryImpl @Inject constructor() : VideoRepository {
                             thumbnailUrl = VideoUtils.getBestThumbnailUrl(videoId),
                             uploaderName = item.uploaderName ?: "Unknown Channel",
                             uploaderUrl = item.uploaderUrl ?: "",
+                            uploaderThumbnailUrl = item.uploaderAvatars?.firstOrNull()?.url,
                             viewCount = item.viewCount,
+                            subscriberCount = null,
                             duration = item.duration,
-                            uploadDate = item.uploadDate?.toString() ?: ""
+                            uploadDate = item.textualUploadDate ?: item.uploadDate?.toString() ?: ""
                         )
                     } ?: emptyList(),
                 bestAudioStreamUrl = bestAudioStream?.url
@@ -123,59 +127,74 @@ class VideoRepositoryImpl @Inject constructor() : VideoRepository {
     override suspend fun getChannelDetails(channelUrl: String): ChannelDetails {
         return withContext(Dispatchers.IO) {
             val service = ServiceList.YouTube
-            val channelInfo = ChannelInfo.getInfo(service, channelUrl)
+            
+            // Fix: If it's a raw Channel ID (UC...), wrap it in a proper URL for the extractor
+            val finalUrl = if (channelUrl.startsWith("UC") && !channelUrl.contains("/")) {
+                "https://www.youtube.com/channel/$channelUrl"
+            } else {
+                channelUrl
+            }
+            
+            val channelInfo = ChannelInfo.getInfo(service, finalUrl)
 
-            // Explicitly fetch the "Videos" tab
-            val videos = try {
-                val videosTabLinkHandler = channelInfo.tabs.find {
-                    it.url.endsWith("/videos") || it.url.contains("flow=grid")
-                } ?: service.channelTabLHFactory.fromUrl(channelInfo.url + "/videos")
+            // Parallelize fetching of "Videos" and "Playlists" tabs
+            val channelAvatarUrl = channelInfo.avatars?.find { it.width in 150..300 }?.url ?: channelInfo.avatars?.firstOrNull()?.url
+            
+            val videosDeferred = async {
+                try {
+                    val videosTabLinkHandler = channelInfo.tabs.find {
+                        it.url.endsWith("/videos") || it.url.contains("flow=grid")
+                    } ?: service.channelTabLHFactory.fromUrl(channelInfo.url + "/videos")
 
-                val extractor = service.getChannelTabExtractor(videosTabLinkHandler)
-                extractor.fetchPage()
-                extractor.initialPage.items
-                    .filterIsInstance<StreamInfoItem>()
-                    .map { item ->
-                        val videoId = VideoUtils.extractVideoId(item.url)
-                        VideoItem(
-                            id = videoId,
-                            title = item.name ?: "Unknown Title",
-                            thumbnailUrl = VideoUtils.getBestThumbnailUrl(videoId),
-                            uploaderName = item.uploaderName ?: "Unknown Channel",
-                            uploaderUrl = item.uploaderUrl ?: "",
-                            viewCount = item.viewCount,
-                            duration = item.duration,
-                            uploadDate = item.uploadDate?.toString() ?: ""
-                        )
-                    }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                emptyList()
+                    val extractor = service.getChannelTabExtractor(videosTabLinkHandler)
+                    extractor.fetchPage()
+                    extractor.initialPage.items
+                        .filterIsInstance<StreamInfoItem>()
+                        .map { item ->
+                            val videoId = VideoUtils.extractVideoId(item.url)
+                            VideoItem(
+                                id = videoId,
+                                title = item.name ?: "Unknown Title",
+                                thumbnailUrl = VideoUtils.getBestThumbnailUrl(videoId),
+                                uploaderName = item.uploaderName ?: "Unknown Channel",
+                                uploaderUrl = item.uploaderUrl ?: "",
+                                uploaderThumbnailUrl = channelAvatarUrl ?: item.uploaderAvatars?.firstOrNull()?.url,
+                                viewCount = item.viewCount,
+                                subscriberCount = null,
+                                duration = item.duration,
+                                uploadDate = item.textualUploadDate ?: item.uploadDate?.toString() ?: ""
+                            )
+                        }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    emptyList()
+                }
             }
 
-            // Explicitly fetch the "Playlists" tab
-            val playlists = try {
-                val playlistsTabLinkHandler = channelInfo.tabs.find {
-                    it.url.endsWith("/playlists")
-                } ?: service.channelTabLHFactory.fromUrl(channelInfo.url + "/playlists")
+            val playlistsDeferred = async {
+                try {
+                    val playlistsTabLinkHandler = channelInfo.tabs.find {
+                        it.url.endsWith("/playlists")
+                    } ?: service.channelTabLHFactory.fromUrl(channelInfo.url + "/playlists")
 
-                val extractor = service.getChannelTabExtractor(playlistsTabLinkHandler)
-                extractor.fetchPage()
-                extractor.initialPage.items
-                    .filterIsInstance<PlaylistInfoItem>()
-                    .map { item ->
-                        PlaylistItem(
-                            id = VideoUtils.extractPlaylistId(item.url),
-                            title = item.name ?: "Unknown Playlist",
-                            thumbnailUrl = item.thumbnails?.find { it.width in 400..800 }?.url ?: item.thumbnails?.firstOrNull()?.url ?: "",
-                            uploaderName = item.uploaderName ?: "Unknown Channel",
-                            uploaderUrl = item.uploaderUrl ?: "",
-                            streamCount = item.streamCount
-                        )
-                    }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                emptyList()
+                    val extractor = service.getChannelTabExtractor(playlistsTabLinkHandler)
+                    extractor.fetchPage()
+                    extractor.initialPage.items
+                        .filterIsInstance<PlaylistInfoItem>()
+                        .map { item ->
+                            PlaylistItem(
+                                id = VideoUtils.extractPlaylistId(item.url),
+                                title = item.name ?: "Unknown Playlist",
+                                thumbnailUrl = item.thumbnails?.find { it.width in 400..800 }?.url ?: item.thumbnails?.firstOrNull()?.url ?: "",
+                                uploaderName = item.uploaderName ?: "Unknown Channel",
+                                uploaderUrl = item.uploaderUrl ?: "",
+                                streamCount = item.streamCount
+                            )
+                        }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    emptyList()
+                }
             }
 
             ChannelDetails(
@@ -185,8 +204,8 @@ class VideoRepositoryImpl @Inject constructor() : VideoRepository {
                 bannerUrl = channelInfo.banners?.find { it.width in 800..1500 }?.url ?: channelInfo.banners?.firstOrNull()?.url,
                 avatarUrl = channelInfo.avatars?.find { it.width in 150..300 }?.url ?: channelInfo.avatars?.firstOrNull()?.url,
                 subscriberCount = channelInfo.subscriberCount,
-                videos = videos,
-                playlists = playlists
+                videos = videosDeferred.await(),
+                playlists = playlistsDeferred.await()
             )
         }
     }
@@ -212,9 +231,11 @@ class VideoRepositoryImpl @Inject constructor() : VideoRepository {
                             thumbnailUrl = VideoUtils.getBestThumbnailUrl(videoId),
                             uploaderName = item.uploaderName ?: "Unknown Channel",
                             uploaderUrl = item.uploaderUrl ?: "",
+                            uploaderThumbnailUrl = item.uploaderAvatars?.firstOrNull()?.url,
                             viewCount = item.viewCount,
+                            subscriberCount = null,
                             duration = item.duration,
-                            uploadDate = item.uploadDate?.toString() ?: ""
+                            uploadDate = item.textualUploadDate ?: item.uploadDate?.toString() ?: ""
                         )
                     }
             )

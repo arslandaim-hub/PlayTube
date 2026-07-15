@@ -48,8 +48,10 @@ class SearchRepositoryImpl @Inject constructor() : SearchRepository {
                             thumbnailUrl = VideoUtils.getBestThumbnailUrl(videoId),
                             uploaderName = item.uploaderName ?: "Unknown Channel",
                             uploaderUrl = item.uploaderUrl ?: "",
+                            uploaderThumbnailUrl = item.uploaderAvatars?.firstOrNull()?.url,
                             viewCount = item.viewCount,
-                            uploadDate = item.uploadDate?.toString() ?: "",
+                            subscriberCount = null,
+                            uploadDate = item.textualUploadDate ?: item.uploadDate?.toString() ?: "",
                             duration = item.duration
                         )
                     }
