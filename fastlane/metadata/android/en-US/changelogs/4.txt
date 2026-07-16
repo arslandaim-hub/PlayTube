@@ -1,0 +1,7 @@
+What's New (v1.2.0)
+
+- Channel avatars are now displayed instead of letter placeholders.
+- Improved video cards with channel name, views, and upload date.
+- Tap a channel avatar to open its channel page instantly.
+- Channels tab now shows subscriber counts for all subscribed channels.
+- Bug fixes and performance improvements.
