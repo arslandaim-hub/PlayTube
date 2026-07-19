@@ -19,8 +19,10 @@
 ---
 
 ## ✨ Key Features
-* Android 7+
+* Fluid Glass UI
+* Background Play Support
 * Picture-in-Picture Support
+* Subtitles Support
 * High quality video downloads up to 4K
 * Built-in video volume/brightness and Seek forward/backward gestures
 * Push up & down landscape/portrait modes
@@ -59,9 +61,10 @@
 
 <div align="center">
   <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/home.png" width="180" style="margin: 5px;">
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot-1.png" width="180" style="margin: 5px;">
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot-5.png" width="180" style="margin: 5px;">
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/blacktheme.png" width="180" style="margin: 5px;">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/library.png" width="180" style="margin: 5px;">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/subscriptions.png" width="180" style="margin: 5px;">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/settings.png" width="180" style="margin: 5px;">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/search.png" width="180" style="margin: 5px;">
 </div>
 
 <br>
@@ -75,9 +78,32 @@
 
 <br>
 
+
+---
+
+## Support PlayTube
+
+If you enjoy using **PlayTube** and would like to support its continued development, consider becoming a patron.
+
+Your support helps fixing bugs and long-term maintenance.
+
+<div align="center">
+
+<a href="https://patreon.com/ArslanDaim77">
+  <img src="https://img.shields.io/badge/Become%20a%20Patron-Patreon-FF424D?style=for-the-badge&logo=patreon&logoColor=white" alt="Become a Patron">
+</a>
+
+</div>
+
+<p align="center">
+</p>
+
+
 ---
 
 ## 📌 Important Notes
 
 * **Subscriptions:** Subscriptions tab in home screen shows videos only when you subscribe to a channel. Videos in subscriptions tab appear only from subscribed channels.
 * **Recommendations:** The home page suggests videos based on your search history. If search history is paused, the app will not suggest search related videos in home screen.
+
+
