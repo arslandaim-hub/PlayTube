@@ -12,6 +12,8 @@ import com.arslandaim.playtube.data.local.FavoriteEntity
 import com.arslandaim.playtube.data.local.HistoryEntity
 import com.arslandaim.playtube.data.local.SubscriptionEntity
 import com.arslandaim.playtube.data.local.DownloadStatus
+import com.arslandaim.playtube.data.local.PlaylistFavoriteEntity
+import com.arslandaim.playtube.data.local.PlaylistFavoriteDao
 import com.arslandaim.playtube.domain.usecase.CancelDownloadUseCase
 import com.arslandaim.playtube.domain.usecase.DeleteDownloadUseCase
 import com.arslandaim.playtube.domain.usecase.GetDownloadsUseCase
@@ -38,7 +40,8 @@ class LibraryViewModel @Inject constructor(
     private val resumeDownloadUseCase: ResumeDownloadUseCase,
     private val toggleFavoriteUseCase: ToggleFavoriteUseCase,
     private val toggleSubscriptionUseCase: ToggleSubscriptionUseCase,
-    private val syncSubscriptionMetadataUseCase: SyncSubscriptionMetadataUseCase
+    private val syncSubscriptionMetadataUseCase: SyncSubscriptionMetadataUseCase,
+    private val playlistFavoriteDao: PlaylistFavoriteDao
 ) : ViewModel() {
 
     val downloads: StateFlow<List<DownloadEntity>> = getDownloadsUseCase()
@@ -59,6 +62,9 @@ class LibraryViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val subscriptions: StateFlow<List<SubscriptionEntity>> = getSubscriptionsUseCase()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val playlists: StateFlow<List<PlaylistFavoriteEntity>> = playlistFavoriteDao.getAllPlaylistFavorites()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _subscriptionSearchQuery = MutableStateFlow("")

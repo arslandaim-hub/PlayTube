@@ -137,6 +137,12 @@ fun NavGraph(
                 onVideoClick = { video ->
                     playerViewModel.loadVideo(video)
                 },
+                onChannelClick = { channelUrl ->
+                    navController.navigate(Screen.Channel.createRoute(channelUrl))
+                },
+                onPlaylistClick = { playlistId ->
+                    navController.navigate(Screen.Playlist.createRoute(playlistId))
+                },
                 onSeeAllHistory = { navController.navigate(Screen.History.route) },
                 onSeeAllSubscriptions = { navController.navigate(Screen.SubscriptionsList.route) }
             )
@@ -158,6 +164,11 @@ fun NavGraph(
                 onBack = { navController.popBackStack() },
                 onVideoClick = { video ->
                     playerViewModel.loadVideo(video)
+                },
+                onDiscoverVideos = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Home.route) { inclusive = true }
+                    }
                 }
             )
         }

@@ -38,6 +38,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.launch
@@ -53,6 +54,7 @@ import android.app.PictureInPictureParams
 import android.util.Rational
 import androidx.core.util.Consumer
 import android.content.res.Configuration
+import android.view.WindowManager
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -71,7 +73,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
-import coil3.compose.AsyncImage
+import androidx.compose.ui.res.stringResource
+import com.arslandaim.playtube.R
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.ui.screens.player.MiniPlayerManager
 import com.arslandaim.playtube.ui.screens.player.PlayerOverlay
@@ -84,24 +87,33 @@ import kotlin.math.roundToInt
 class MainActivity : ComponentActivity() {
     @Inject lateinit var connectivityObserver: ConnectivityObserver
     @Inject lateinit var miniPlayerManager: MiniPlayerManager
-    @Inject lateinit var preferencesManager: com.arslandaim.playtube.data.local.PreferencesManager
     
+    private val mainViewModel: MainViewModel by viewModels()
     private val playerViewModel: com.arslandaim.playtube.ui.screens.player.PlayerViewModel by viewModels()
 
     private var isPlayerScreen = false
     private var isPipEnabledBySetting = true
+    private var isBackgroundPlayEnabledBySetting = false
     private var wasInPip = false
+    private var isEnteringPip = false
     private val isInPipModeState = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Observe PiP setting
+        // Observe Settings from MainViewModel
         lifecycleScope.launch {
             repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
-                preferencesManager.isPipEnabled.collect {
-                    isPipEnabledBySetting = it
+                launch {
+                    mainViewModel.isPipEnabled.collect {
+                        isPipEnabledBySetting = it
+                    }
+                }
+                launch {
+                    mainViewModel.isBackgroundPlayEnabled.collect {
+                        isBackgroundPlayEnabledBySetting = it
+                    }
                 }
             }
         }
@@ -152,12 +164,37 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // Handle Screen Wake Lock (Keep screen on while playing)
+                DisposableEffect(playerViewModel.player) {
+                    val listener = object : androidx.media3.common.Player.Listener {
+                        override fun onIsPlayingChanged(isPlaying: Boolean) {
+                            if (isPlaying) {
+                                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                            } else {
+                                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                            }
+                        }
+                    }
+                    
+                    playerViewModel.player.addListener(listener)
+                    
+                    // Set initial state
+                    if (playerViewModel.player.isPlaying) {
+                        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
+
+                    onDispose {
+                        playerViewModel.player.removeListener(listener)
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
+                }
+
                 Scaffold(
                     topBar = {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            color = MaterialTheme.colorScheme.surface,
-                            tonalElevation = 3.dp
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                            tonalElevation = 0.dp
                         ) {
                             Column(modifier = Modifier.fillMaxWidth().statusBarsPadding()) {
                                 OfflineStatusBar(status = connectivityStatus)
@@ -184,7 +221,7 @@ class MainActivity : ComponentActivity() {
                                                             tint = Color.Red,
                                                             modifier = Modifier.size(28.dp)
                                                         )
-                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Spacer(modifier = Modifier.width(6.dp))
                                                         Text(
                                                             text = buildAnnotatedString {
                                                                 withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
@@ -192,7 +229,9 @@ class MainActivity : ComponentActivity() {
                                                                 }
                                                                 append("Tube")
                                                             },
-                                                            style = MaterialTheme.typography.titleLarge,
+                                                            style = MaterialTheme.typography.titleLarge.copy(
+                                                                letterSpacing = (-0.5).sp
+                                                            ),
                                                             fontWeight = FontWeight.ExtraBold
                                                         )
                                                     }
@@ -201,28 +240,29 @@ class MainActivity : ComponentActivity() {
                                                     IconButton(onClick = { navController.navigate(Screen.Search.route) }) {
                                                         Icon(
                                                             imageVector = Icons.Default.Search,
-                                                            contentDescription = "Search",
+                                                            contentDescription = stringResource(R.string.search),
                                                             tint = MaterialTheme.colorScheme.onSurface,
-                                                            modifier = Modifier.size(26.dp)
+                                                            modifier = Modifier.size(24.dp)
                                                         )
                                                     }
                                                     IconButton(onClick = { navController.navigate(Screen.Settings.route) }) {
                                                         Icon(
                                                             imageVector = Icons.Default.Settings,
-                                                            contentDescription = "Settings",
+                                                            contentDescription = stringResource(R.string.settings),
                                                             tint = MaterialTheme.colorScheme.onSurface,
-                                                            modifier = Modifier.size(26.dp)
+                                                            modifier = Modifier.size(24.dp)
                                                         )
                                                     }
                                                 },
                                                 colors = TopAppBarDefaults.topAppBarColors(
-                                                    containerColor = MaterialTheme.colorScheme.surface,
+                                                    containerColor = Color.Transparent,
                                                     titleContentColor = MaterialTheme.colorScheme.onSurface
                                                 )
                                             )
                                         }
                                     }
                                 }
+                                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                             }
                         }
                     }
@@ -242,26 +282,32 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        // Floating Bottom Bar Overlay
+                        // Modern Floating Glass Bottom Bar
                         if (showBars || barsVisibilityProgress > 0f) {
-                            Surface(
+                            Box(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
-                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 16.dp)
+                                    .navigationBarsPadding()
                                     .graphicsLayer {
-                                        translationY = 80.dp.toPx() * (1f - barsVisibilityProgress)
+                                        translationY = 100.dp.toPx() * (1f - barsVisibilityProgress)
                                         alpha = barsVisibilityProgress
-                                    },
-                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                                tonalElevation = 3.dp
-                            ) {
-                                Column(modifier = Modifier.fillMaxWidth().navigationBarsPadding()) {
-                                    Box(modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(64.dp)
-                                    ) {
-                                        PlayTubeBottomBar(navController = navController)
                                     }
+                            ) {
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(64.dp),
+                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                    shape = RoundedCornerShape(20.dp),
+                                    tonalElevation = 8.dp,
+                                    shadowElevation = 12.dp,
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        width = 0.5.dp,
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                    )
+                                ) {
+                                    PlayTubeBottomBar(navController = navController)
                                 }
                             }
                         }
@@ -295,12 +341,19 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        // If not in PiP mode, pause the player.
-        // This stops audio from playing in the background when minimized.
-        // We also check if we are NOT in the process of entering PiP
-        if (!isInPictureInPictureMode) {
+        // Determine if we should pause.
+        // We pause IF:
+        // 1. We are NOT in PiP mode
+        // 2. We are NOT rotating (changing configs)
+        // 3. Background Play is DISABLED
+        // 4. We are NOT currently entering PiP
+        val shouldPause = !isInPictureInPictureMode && !isChangingConfigurations && 
+                         !isBackgroundPlayEnabledBySetting && !isEnteringPip
+        
+        if (shouldPause) {
             playerViewModel.player.pause()
         }
+        isEnteringPip = false // Reset after handling pause
     }
 
     override fun onStop() {
@@ -340,6 +393,7 @@ class MainActivity : ComponentActivity() {
         android.util.Log.d("PiP", "onUserLeaveHint: isPipEnabledBySetting=$isPipEnabledBySetting, isPlaying=${playerViewModel.player.isPlaying}")
         
         if (isPipEnabledBySetting && playerViewModel.player.isPlaying) {
+            isEnteringPip = true
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                 val params = PictureInPictureParams.Builder()
                     .setAspectRatio(Rational(16, 9))
@@ -364,7 +418,9 @@ fun PlayTubeBottomBar(navController: androidx.navigation.NavHostController) {
         Screen.Library to Icons.Default.LibraryMusic
     )
     NavigationBar(
-        modifier = Modifier.height(64.dp)
+        modifier = Modifier.height(64.dp),
+        containerColor = Color.Transparent,
+        tonalElevation = 0.dp
     ) {
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentDestination = navBackStackEntry?.destination
@@ -406,7 +462,7 @@ fun OfflineStatusBar(status: ConnectivityObserver.Status) {
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "No Internet Connection",
+                text = stringResource(R.string.no_internet),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onErrorContainer,
                 fontWeight = FontWeight.Bold

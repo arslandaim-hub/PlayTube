@@ -5,9 +5,10 @@
 */
 package com.arslandaim.playtube.domain.repository
 
+import com.arslandaim.playtube.domain.model.SearchSort
 import com.arslandaim.playtube.domain.model.VideoItem
 
 interface SearchRepository {
-    suspend fun search(query: String): List<VideoItem>
+    suspend fun search(query: String, sort: SearchSort = SearchSort.RELEVANCE): List<VideoItem>
     suspend fun getSearchSuggestions(query: String): List<String>
 }

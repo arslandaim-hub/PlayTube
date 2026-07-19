@@ -12,42 +12,43 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toSize
 
 fun Modifier.shimmerEffect(): Modifier = composed {
+    var size by remember { mutableStateOf(androidx.compose.ui.geometry.Size.Zero) }
     val transition = rememberInfiniteTransition(label = "shimmer")
-    val translateAnim = transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1000f,
+    val startOffsetX by transition.animateFloat(
+        initialValue = -2 * size.width,
+        targetValue = 2 * size.width,
         animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = 1200,
-                easing = FastOutSlowInEasing
-            ),
-            repeatMode = RepeatMode.Restart
+            animation = tween(1200)
         ),
         label = "shimmerTranslate"
     )
 
     val shimmerColors = listOf(
-        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f),
         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f),
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
     )
 
-    val brush = Brush.linearGradient(
-        colors = shimmerColors,
-        start = Offset.Zero,
-        end = Offset(x = translateAnim.value, y = translateAnim.value)
-    )
-
-    background(brush)
+    background(
+        brush = Brush.linearGradient(
+            colors = shimmerColors,
+            start = Offset(startOffsetX, 0f),
+            end = Offset(startOffsetX + size.width, size.height)
+        )
+    ).onGloballyPositioned {
+        size = it.size.toSize()
+    }
 }
 
 @Composable

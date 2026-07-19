@@ -22,13 +22,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.arslandaim.playtube.R
 import com.arslandaim.playtube.domain.model.VideoItem
-import com.arslandaim.playtube.ui.screens.search.VideoItemRow
+import com.arslandaim.playtube.ui.components.VideoItemRow
 
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaylistScreen(
     playlistId: String,
@@ -40,15 +41,46 @@ fun PlaylistScreen(
     val uiState by viewModel.uiState.collectAsState()
     val isFavorite by viewModel.isFavorite.collectAsState()
     val downloadedIds by viewModel.downloadedVideoIds.collectAsState()
+
+    PlaylistContent(
+        playlistId = playlistId,
+        uiState = uiState,
+        isFavorite = isFavorite,
+        downloadedIds = downloadedIds,
+        snackbarMessage = viewModel.snackbarMessage,
+        onLoadPlaylist = viewModel::loadPlaylist,
+        onDownloadPlaylist = viewModel::downloadPlaylist,
+        onToggleFavorite = viewModel::toggleFavorite,
+        onBarsVisibilityChange = onBarsVisibilityChange,
+        onBack = onBack,
+        onVideoClick = onVideoClick
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlaylistContent(
+    playlistId: String,
+    uiState: PlaylistUiState,
+    isFavorite: Boolean,
+    downloadedIds: Set<String>,
+    snackbarMessage: kotlinx.coroutines.flow.SharedFlow<String>,
+    onLoadPlaylist: (String) -> Unit,
+    onDownloadPlaylist: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onBarsVisibilityChange: (Boolean) -> Unit,
+    onBack: () -> Unit,
+    onVideoClick: (VideoItem) -> Unit
+) {
     val snackbarHostState = remember { SnackbarHostState() }
     val scrollVisibilityConnection = rememberScrollVisibilityConnection(onBarsVisibilityChange)
 
     LaunchedEffect(playlistId) {
-        viewModel.loadPlaylist(playlistId)
+        onLoadPlaylist(playlistId)
     }
 
     LaunchedEffect(Unit) {
-        viewModel.snackbarMessage.collect { message ->
+        snackbarMessage.collect { message ->
             snackbarHostState.showSnackbar(message)
         }
     }
@@ -64,24 +96,33 @@ fun PlaylistScreen(
         modifier = Modifier.nestedScroll(scrollVisibilityConnection),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text("Playlist") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                windowInsets = WindowInsets(0, 0, 0, 0)
-            )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), // Glass Effect
+                tonalElevation = 0.dp
+            ) {
+                TopAppBar(
+                    title = { Text(stringResource(R.string.playlist)) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = androidx.compose.ui.graphics.Color.Transparent
+                    ),
+                    windowInsets = WindowInsets(0, 0, 0, 0)
+                )
+            }
         }
     ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
-            when (val state = uiState) {
+            when (uiState) {
                 is PlaylistUiState.Loading -> {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
                 is PlaylistUiState.Success -> {
-                    val details = state.details
+                    val details = uiState.details
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         item {
                             Column(
@@ -98,7 +139,7 @@ fun PlaylistScreen(
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "By ${details.uploaderName}",
+                                    text = stringResource(R.string.by_author, details.uploaderName),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -110,7 +151,7 @@ fun PlaylistScreen(
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     Button(
-                                        onClick = { if (!isPlaylistDownloaded) viewModel.downloadPlaylist() },
+                                        onClick = { if (!isPlaylistDownloaded) onDownloadPlaylist() },
                                         modifier = Modifier.weight(1f),
                                         shape = CircleShape,
                                         contentPadding = PaddingValues(horizontal = 16.dp),
@@ -127,11 +168,11 @@ fun PlaylistScreen(
                                             modifier = Modifier.size(18.dp)
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text(if (isPlaylistDownloaded) "Downloaded" else "Download All")
+                                        Text(if (isPlaylistDownloaded) stringResource(R.string.downloaded) else stringResource(R.string.download_all))
                                     }
                                     
                                     OutlinedButton(
-                                        onClick = { viewModel.toggleFavorite() },
+                                        onClick = onToggleFavorite,
                                         modifier = Modifier.weight(1f),
                                         shape = CircleShape,
                                         contentPadding = PaddingValues(horizontal = 16.dp),
@@ -147,7 +188,7 @@ fun PlaylistScreen(
                                             modifier = Modifier.size(18.dp)
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text(if (isFavorite) "Liked" else "Favorite")
+                                        Text(if (isFavorite) stringResource(R.string.liked) else stringResource(R.string.like))
                                     }
                                 }
                                 
@@ -173,9 +214,9 @@ fun PlaylistScreen(
                         modifier = Modifier.align(Alignment.Center),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(text = "Error: ${state.message}", color = MaterialTheme.colorScheme.error)
-                        Button(onClick = { viewModel.loadPlaylist(playlistId) }, modifier = Modifier.padding(top = 16.dp)) {
-                            Text("Retry")
+                        Text(text = stringResource(R.string.error_prefix, uiState.message), color = MaterialTheme.colorScheme.error)
+                        Button(onClick = { onLoadPlaylist(playlistId) }, modifier = Modifier.padding(top = 16.dp)) {
+                            Text(stringResource(R.string.retry))
                         }
                     }
                 }

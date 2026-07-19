@@ -35,30 +35,78 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import androidx.compose.ui.res.stringResource
+import com.arslandaim.playtube.R
 import com.arslandaim.playtube.data.local.DownloadEntity
 import com.arslandaim.playtube.data.local.FavoriteEntity
 import com.arslandaim.playtube.data.local.HistoryEntity
 import com.arslandaim.playtube.data.local.SubscriptionEntity
 import com.arslandaim.playtube.domain.model.VideoItem
+import com.arslandaim.playtube.ui.components.EmptyState
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.PlaylistPlay
 
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LibraryScreen(
     viewModel: LibraryViewModel,
     onBarsVisibilityChange: (Boolean) -> Unit,
     onVideoClick: (VideoItem) -> Unit,
+    onChannelClick: (String) -> Unit,
+    onPlaylistClick: (String) -> Unit,
     onSeeAllHistory: () -> Unit,
     onSeeAllSubscriptions: () -> Unit
 ) {
     val downloads by viewModel.downloads.collectAsState()
     val favorites by viewModel.favorites.collectAsState()
     val history by viewModel.history.collectAsState()
-    
+    val subscriptions by viewModel.subscriptions.collectAsState()
+    val playlists by viewModel.playlists.collectAsState()
+
+    LibraryContent(
+        downloads = downloads,
+        favorites = favorites,
+        history = history,
+        subscriptions = subscriptions,
+        playlists = playlists,
+        onDeleteDownload = viewModel::deleteDownload,
+        onCancelDownload = viewModel::cancelDownload,
+        onResumeDownload = viewModel::resumeDownload,
+        onRemoveFavorite = viewModel::removeFavorite,
+        onBarsVisibilityChange = onBarsVisibilityChange,
+        onVideoClick = onVideoClick,
+        onChannelClick = onChannelClick,
+        onPlaylistClick = onPlaylistClick,
+        onSeeAllHistory = onSeeAllHistory,
+        onSeeAllSubscriptions = onSeeAllSubscriptions
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun LibraryContent(
+    downloads: List<com.arslandaim.playtube.data.local.DownloadEntity>,
+    favorites: List<com.arslandaim.playtube.data.local.FavoriteEntity>,
+    history: List<com.arslandaim.playtube.data.local.HistoryEntity>,
+    subscriptions: List<com.arslandaim.playtube.data.local.SubscriptionEntity>,
+    playlists: List<com.arslandaim.playtube.data.local.PlaylistFavoriteEntity>,
+    onDeleteDownload: (String) -> Unit,
+    onCancelDownload: (String) -> Unit,
+    onResumeDownload: (String) -> Unit,
+    onRemoveFavorite: (com.arslandaim.playtube.data.local.FavoriteEntity) -> Unit,
+    onBarsVisibilityChange: (Boolean) -> Unit,
+    onVideoClick: (VideoItem) -> Unit,
+    onSeeAllHistory: () -> Unit,
+    onSeeAllSubscriptions: () -> Unit,
+    onChannelClick: (String) -> Unit,
+    onPlaylistClick: (String) -> Unit
+) {
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Downloads", "Favorites")
+    val tabs = listOf(stringResource(R.string.downloads), stringResource(R.string.favorites))
     
     var videoIdToDelete by remember { mutableStateOf<String?>(null) }
     var expandedPlaylistId by remember { mutableStateOf<String?>(null) }
@@ -67,21 +115,21 @@ fun LibraryScreen(
     if (videoIdToDelete != null) {
         AlertDialog(
             onDismissRequest = { videoIdToDelete = null },
-            title = { Text("Delete Download?") },
-            text = { Text("Are you sure you want to delete this downloaded video?") },
+            title = { Text(stringResource(R.string.delete_download_title)) },
+            text = { Text(stringResource(R.string.delete_download_desc)) },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        videoIdToDelete?.let { viewModel.deleteDownload(it) }
+                        videoIdToDelete?.let { onDeleteDownload(it) }
                         videoIdToDelete = null
                     }
                 ) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { videoIdToDelete = null }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -93,7 +141,7 @@ fun LibraryScreen(
     ) {
         item {
             Text(
-                text = "Library", 
+                text = stringResource(R.string.library), 
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(16.dp)
@@ -103,13 +151,13 @@ fun LibraryScreen(
         // History Section
         item {
             SectionHeader(
-                title = "History",
+                title = stringResource(R.string.history),
                 onSeeAllClick = onSeeAllHistory,
                 showSeeAll = history.isNotEmpty()
             )
             
             if (history.isEmpty()) {
-                EmptySectionPlaceholder("No watch history yet")
+                EmptySectionPlaceholder(stringResource(R.string.no_history))
             } else {
                 Row(
                     modifier = Modifier
@@ -126,14 +174,79 @@ fun LibraryScreen(
             Spacer(modifier = Modifier.height(24.dp))
         }
 
+        // Playlists Section
+        item {
+            SectionHeader(
+                title = stringResource(R.string.playlists),
+                showSeeAll = false
+            )
+            
+            if (playlists.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.no_playlists),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    playlists.take(10).forEach { playlist ->
+                        PlaylistCard(playlist = playlist, onClick = { onPlaylistClick(playlist.playlistId) })
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+
+        // Subscriptions Section
+        item {
+            SectionHeader(
+                title = stringResource(R.string.subscriptions),
+                onSeeAllClick = onSeeAllSubscriptions,
+                showSeeAll = subscriptions.isNotEmpty()
+            )
+            
+            if (subscriptions.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.no_subscriptions),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    subscriptions.take(15).forEach { sub ->
+                        SubscriptionCircle(sub = sub, onClick = { onChannelClick(sub.channelId) })
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+
         // Sticky Tabs for Downloads and Favorites
         stickyHeader {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 1.dp
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), // Glass Effect
+                tonalElevation = 0.dp
             ) {
-                PrimaryTabRow(selectedTabIndex = selectedTabIndex) {
+                PrimaryTabRow(
+                    selectedTabIndex = selectedTabIndex,
+                    containerColor = Color.Transparent, // Let Surface handle background
+                    divider = {}
+                ) {
                     tabs.forEachIndexed { index, title ->
                         Tab(
                             selected = selectedTabIndex == index,
@@ -142,7 +255,7 @@ fun LibraryScreen(
                                 Text(
                                     text = title,
                                     fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = if (selectedTabIndex == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         )
@@ -154,7 +267,14 @@ fun LibraryScreen(
         if (selectedTabIndex == 0) {
             // Downloads Tab
             if (downloads.isEmpty()) {
-                item { EmptySectionPlaceholder("No downloads yet") }
+                item {
+                    EmptyState(
+                        icon = Icons.Default.Download,
+                        title = stringResource(R.string.no_downloads),
+                        description = stringResource(R.string.no_downloads_desc),
+                        modifier = Modifier.padding(top = 48.dp)
+                    )
+                }
             } else {
                 // Group downloads by playlistId
                 val groupedDownloads = downloads.groupBy { it.playlistId }
@@ -188,8 +308,8 @@ fun LibraryScreen(
                                 download = download,
                                 onClick = { onVideoClick(download.toVideoItem()) },
                                 onDeleteClick = { videoIdToDelete = download.videoId },
-                                onCancelClick = { viewModel.cancelDownload(download.videoId) },
-                                onRetryClick = { viewModel.resumeDownload(download.videoId) },
+                                onCancelClick = { onCancelDownload(download.videoId) },
+                                onRetryClick = { onResumeDownload(download.videoId) },
                                 modifier = Modifier.padding(start = 24.dp)
                             )
                         }
@@ -202,21 +322,28 @@ fun LibraryScreen(
                         download = download,
                         onClick = { onVideoClick(download.toVideoItem()) },
                         onDeleteClick = { videoIdToDelete = download.videoId },
-                        onCancelClick = { viewModel.cancelDownload(download.videoId) },
-                        onRetryClick = { viewModel.resumeDownload(download.videoId) }
+                        onCancelClick = { onCancelDownload(download.videoId) },
+                        onRetryClick = { onResumeDownload(download.videoId) }
                     )
                 }
             }
         } else {
             // Favorites Tab
             if (favorites.isEmpty()) {
-                item { EmptySectionPlaceholder("No favorites yet") }
+                item {
+                    EmptyState(
+                        icon = Icons.Default.Favorite,
+                        title = stringResource(R.string.no_favorites),
+                        description = stringResource(R.string.no_favorites_desc),
+                        modifier = Modifier.padding(top = 48.dp)
+                    )
+                }
             } else {
                 items(favorites) { favorite ->
                     FavoriteItemRow(
                         favorite = favorite,
                         onClick = { onVideoClick(favorite.toVideoItem()) },
-                        onRemoveClick = { viewModel.removeFavorite(favorite) }
+                        onRemoveClick = { onRemoveFavorite(favorite) }
                     )
                 }
             }
@@ -316,7 +443,7 @@ fun SectionHeader(
         )
         if (showSeeAll) {
             TextButton(onClick = onSeeAllClick) {
-                Text("See all")
+                Text(stringResource(R.string.see_all))
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(16.dp))
             }
         }
@@ -363,6 +490,65 @@ fun HistoryCard(
         )
         Text(
             text = item.uploaderName,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+fun PlaylistCard(
+    playlist: com.arslandaim.playtube.data.local.PlaylistFavoriteEntity,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .width(160.dp)
+            .clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(8.dp))
+        ) {
+            AsyncImage(
+                model = playlist.thumbnailUrl,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                filterQuality = FilterQuality.High
+            )
+            // Playlist Overlay
+            Surface(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.35f)
+                    .align(Alignment.CenterEnd),
+                color = Color.Black.copy(alpha = 0.6f)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.PlaylistPlay,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = playlist.title,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = playlist.uploaderName,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
@@ -460,7 +646,7 @@ fun SubscriptionItemRow(
                 )
             ) {
                 Text(
-                    text = "Subscribed",
+                    text = stringResource(R.string.subscribed),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -651,8 +837,16 @@ fun DownloadItemRow(
                 Spacer(modifier = Modifier.height(8.dp))
                 if (download.status == com.arslandaim.playtube.data.local.DownloadStatus.DOWNLOADING && download.totalSize > 0) {
                     val progress = download.downloadedSize.toFloat() / download.totalSize.toFloat()
+                    val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
+                        targetValue = progress,
+                        animationSpec = androidx.compose.animation.core.spring(
+                            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                            stiffness = androidx.compose.animation.core.Spring.StiffnessVeryLow
+                        ),
+                        label = "DownloadProgress"
+                    )
                     LinearProgressIndicator(
-                        progress = { progress },
+                        progress = { animatedProgress },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 } else {

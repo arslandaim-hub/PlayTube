@@ -7,6 +7,7 @@ package com.arslandaim.playtube.ui.screens.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.arslandaim.playtube.domain.model.SearchSort
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.data.local.PreferencesManager
 import com.arslandaim.playtube.data.local.SearchHistoryEntity
@@ -37,14 +38,17 @@ class SearchViewModel @Inject constructor(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
+    private val _searchSort = MutableStateFlow(SearchSort.RELEVANCE)
+    val searchSort: StateFlow<SearchSort> = _searchSort.asStateFlow()
+
     private var searchJob: kotlinx.coroutines.Job? = null
 
     @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
     val suggestions: StateFlow<List<String>> = _searchQuery
         .debounce(300.milliseconds)
         .filter { it.isNotBlank() }
-        .mapLatest { query ->
-            searchRepository.getSearchSuggestions(query)
+        .combine(preferencesManager.isSearchHistoryPaused) { query, paused ->
+            if (paused) emptyList() else searchRepository.getSearchSuggestions(query)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -61,6 +65,14 @@ class SearchViewModel @Inject constructor(
         }
     }
 
+    fun onSortChange(sort: SearchSort) {
+        if (_searchSort.value == sort) return
+        _searchSort.value = sort
+        if (_searchQuery.value.isNotBlank()) {
+            search(_searchQuery.value)
+        }
+    }
+
     fun search(query: String) {
         if (query.isBlank()) return
         _searchQuery.value = query
@@ -74,7 +86,7 @@ class SearchViewModel @Inject constructor(
                 libraryRepository.addSearchQuery(query)
             }
 
-            searchVideosUseCase(query)
+            searchVideosUseCase(query, _searchSort.value)
                 .onSuccess { videos ->
                     _uiState.value = SearchUiState.Success(videos)
                 }

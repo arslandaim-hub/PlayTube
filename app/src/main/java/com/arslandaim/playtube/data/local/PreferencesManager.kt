@@ -33,6 +33,14 @@ class PreferencesManager @Inject constructor(@ApplicationContext context: Contex
         preferences[PIP_ENABLED] ?: false
     }
 
+    val isBackgroundPlayEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[BACKGROUND_PLAY_ENABLED] ?: false
+    }
+
+    val isSubtitlesEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[SUBTITLES_ENABLED] ?: false
+    }
+
     suspend fun setHistoryEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[HISTORY_ENABLED] = enabled
@@ -51,9 +59,23 @@ class PreferencesManager @Inject constructor(@ApplicationContext context: Contex
         }
     }
 
+    suspend fun setBackgroundPlayEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[BACKGROUND_PLAY_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setSubtitlesEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[SUBTITLES_ENABLED] = enabled
+        }
+    }
+
     companion object {
         val HISTORY_ENABLED = booleanPreferencesKey("history_enabled")
         val SEARCH_HISTORY_PAUSED = booleanPreferencesKey("search_history_paused")
         val PIP_ENABLED = booleanPreferencesKey("pip_enabled")
+        val BACKGROUND_PLAY_ENABLED = booleanPreferencesKey("background_play_enabled")
+        val SUBTITLES_ENABLED = booleanPreferencesKey("subtitles_enabled")
     }
 }

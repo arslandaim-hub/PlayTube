@@ -26,11 +26,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.arslandaim.playtube.ui.screens.library.LibraryViewModel
 import com.arslandaim.playtube.ui.screens.library.SubscriptionItemRow
+import com.arslandaim.playtube.ui.components.EmptyState
+import androidx.compose.material.icons.filled.People
+import androidx.compose.ui.res.stringResource
+import com.arslandaim.playtube.R
 
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubscriptionsScreen(
     viewModel: LibraryViewModel,
@@ -41,7 +44,31 @@ fun SubscriptionsScreen(
 ) {
     val subscriptions by viewModel.filteredSubscriptions.collectAsState()
     val searchQuery by viewModel.subscriptionSearchQuery.collectAsState()
-    
+
+    SubscriptionsContent(
+        subscriptions = subscriptions,
+        searchQuery = searchQuery,
+        showTopAppBar = showTopAppBar,
+        onSearchQueryChange = viewModel::onSubscriptionSearchQueryChange,
+        onToggleSubscription = viewModel::toggleSubscription,
+        onBarsVisibilityChange = onBarsVisibilityChange,
+        onBackClick = onBackClick,
+        onChannelClick = onChannelClick
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SubscriptionsContent(
+    subscriptions: List<com.arslandaim.playtube.data.local.SubscriptionEntity>,
+    searchQuery: String,
+    showTopAppBar: Boolean,
+    onSearchQueryChange: (String) -> Unit,
+    onToggleSubscription: (com.arslandaim.playtube.data.local.SubscriptionEntity) -> Unit,
+    onBarsVisibilityChange: (Boolean) -> Unit,
+    onBackClick: () -> Unit,
+    onChannelClick: (String) -> Unit
+) {
     var isSearchActive by remember { mutableStateOf(false) }
     var channelToUnsubscribe by remember { mutableStateOf<com.arslandaim.playtube.data.local.SubscriptionEntity?>(null) }
     val focusManager = LocalFocusManager.current
@@ -67,7 +94,7 @@ fun SubscriptionsScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        channelToUnsubscribe?.let { viewModel.toggleSubscription(it) }
+                        channelToUnsubscribe?.let { onToggleSubscription(it) }
                         channelToUnsubscribe = null
                     }
                 ) {
@@ -91,7 +118,7 @@ fun SubscriptionsScreen(
                         if (isSearchActive) {
                             TextField(
                                 value = searchQuery,
-                                onValueChange = { viewModel.onSubscriptionSearchQueryChange(it) },
+                                onValueChange = onSearchQueryChange,
                                 modifier = Modifier.fillMaxWidth(),
                                 placeholder = { Text("Search subscriptions") },
                                 singleLine = true,
@@ -112,7 +139,7 @@ fun SubscriptionsScreen(
                         IconButton(onClick = {
                             if (isSearchActive) {
                                 isSearchActive = false
-                                viewModel.onSubscriptionSearchQueryChange("")
+                                onSearchQueryChange("")
                                 focusManager.clearFocus()
                             } else {
                                 onBackClick()
@@ -127,7 +154,7 @@ fun SubscriptionsScreen(
                                 Icon(Icons.Default.Search, contentDescription = "Search")
                             }
                         } else if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.onSubscriptionSearchQueryChange("") }) {
+                            IconButton(onClick = { onSearchQueryChange("") }) {
                                 Icon(Icons.Default.Close, contentDescription = "Clear")
                             }
                         }
@@ -143,18 +170,11 @@ fun SubscriptionsScreen(
                 .fillMaxSize()
         ) {
             if (subscriptions.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = if (searchQuery.isEmpty()) "No subscriptions found" else "No matching channels",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
+                EmptyState(
+                    icon = Icons.Default.People,
+                    title = if (searchQuery.isEmpty()) stringResource(R.string.no_subscriptions) else "No matching channels",
+                    description = if (searchQuery.isEmpty()) stringResource(R.string.no_subscriptions_desc) else "Try a different search term"
+                )
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),

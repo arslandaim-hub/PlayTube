@@ -13,6 +13,9 @@ interface DownloadDao {
     @Query("SELECT * FROM downloads")
     fun getAllDownloads(): Flow<List<DownloadEntity>>
 
+    @Query("SELECT * FROM downloads")
+    suspend fun getAllDownloadsList(): List<DownloadEntity>
+
     @Query("SELECT * FROM downloads WHERE videoId = :videoId")
     suspend fun getDownloadById(videoId: String): DownloadEntity?
 

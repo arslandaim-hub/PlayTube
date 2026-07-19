@@ -7,13 +7,15 @@ package com.arslandaim.playtube.ui.screens.player
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MergingMediaSource
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.arslandaim.playtube.data.local.DownloadStatus
 import com.arslandaim.playtube.data.local.FavoriteEntity
 import com.arslandaim.playtube.data.local.HistoryEntity
@@ -21,6 +23,7 @@ import com.arslandaim.playtube.data.local.PreferencesManager
 import com.arslandaim.playtube.data.local.SubscriptionEntity
 import com.arslandaim.playtube.domain.model.StreamBundle
 import com.arslandaim.playtube.domain.model.StreamItem
+import com.arslandaim.playtube.domain.model.SubtitleItem
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.domain.repository.DownloadRepository
 import com.arslandaim.playtube.domain.usecase.AddToHistoryUseCase
@@ -68,6 +71,9 @@ class PlayerViewModel @Inject constructor(
     private val _isSubscribed = MutableStateFlow(false)
     val isSubscribed: StateFlow<Boolean> = _isSubscribed.asStateFlow()
 
+    private val _isCcEnabled = MutableStateFlow(false)
+    val isCcEnabled: StateFlow<Boolean> = _isCcEnabled.asStateFlow()
+
     private val _currentQuality = MutableStateFlow<String?>(null)
     val currentQuality: StateFlow<String?> = _currentQuality.asStateFlow()
 
@@ -103,10 +109,30 @@ class PlayerViewModel @Inject constructor(
         override fun onPlaybackStateChanged(playbackState: Int) {
             _isBuffering.value = playbackState == Player.STATE_BUFFERING
         }
+
+        override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+            val isCcActive = tracks.groups.any { (it.type == C.TRACK_TYPE_TEXT) && it.isSelected }
+            
+            // If the user wants CC enabled but it's not active (common on first load or track change), try to enable it
+            if (_isCcEnabled.value && !isCcActive) {
+                val hasTextTracks = tracks.groups.any { (it.type == C.TRACK_TYPE_TEXT) && it.isSupported }
+                if (hasTextTracks) {
+                    updateCcState(true)
+                }
+            }
+        }
     }
 
     init {
         player.addListener(playerListener)
+        
+        // Load persistent CC preference
+        viewModelScope.launch {
+            preferencesManager.isSubtitlesEnabled.collectLatest { enabled ->
+                _isCcEnabled.value = enabled
+                updateCcState(enabled)
+            }
+        }
     }
 
     fun loadVideo(video: VideoItem) {
@@ -319,29 +345,97 @@ class PlayerViewModel @Inject constructor(
 
     @androidx.annotation.OptIn(UnstableApi::class)
     private fun setMediaSource(stream: StreamItem, startPosition: Long = 0) {
-        val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory)
-            .createMediaSource(MediaItem.fromUri(stream.url))
-            
-        val finalSource = if (stream.isAdaptive) {
+        // 1. Map available subtitles to native SubtitleConfigurations
+        val subtitleConfigs = currentBundle?.subtitles?.filter { it.url.isNotBlank() }?.map { subtitle ->
+            val mimeType = when (subtitle.format.lowercase()) {
+                "vtt" -> MimeTypes.TEXT_VTT
+                "ttml" -> MimeTypes.APPLICATION_TTML
+                "srt" -> MimeTypes.APPLICATION_SUBRIP
+                else -> MimeTypes.TEXT_VTT
+            }
+            MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(subtitle.url))
+                .setMimeType(mimeType)
+                .setLanguage(subtitle.languageTag)
+                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                .build()
+        } ?: emptyList()
+
+        // 2. Build the primary MediaItem
+        val mediaItem = MediaItem.Builder()
+            .setUri(stream.url)
+            .setMediaId(currentVideoId ?: "")
+            .setSubtitleConfigurations(subtitleConfigs)
+            .build()
+
+        // 3. Set the media source using DefaultMediaSourceFactory logic.
+        // For adaptive, we still need to merge with audio, but we MUST use the factory 
+        // to ensure SubtitleConfigurations are processed.
+        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
+        
+        if (stream.isAdaptive) {
             val audioUrl = currentBundle?.bestAudioStreamUrl
             if (audioUrl != null) {
-                val audioSource = ProgressiveMediaSource.Factory(dataSourceFactory)
-                    .createMediaSource(MediaItem.fromUri(audioUrl))
-                MergingMediaSource(videoSource, audioSource)
+                // The correct way: Use the factory to create the video source (it handles subtitles)
+                val videoSource = mediaSourceFactory.createMediaSource(mediaItem)
+                // Audio is a separate simple source
+                val audioSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(audioUrl))
+                
+                player.setMediaSource(MergingMediaSource(videoSource, audioSource))
             } else {
-                videoSource
+                player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
             }
         } else {
-            videoSource
+            player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
         }
         
-        player.setMediaSource(finalSource)
+        // 4. Track parameters and preparation
+        updateCcState(_isCcEnabled.value)
+
         player.prepare()
         if (startPosition > 0) {
             player.seekTo(startPosition)
         }
         player.playWhenReady = true
         _currentQuality.value = stream.quality
+    }
+
+    fun toggleSubtitles() {
+        val newState = !_isCcEnabled.value
+        _isCcEnabled.value = newState
+        updateCcState(newState)
+        
+        // Persist preference
+        viewModelScope.launch {
+            preferencesManager.setSubtitlesEnabled(newState)
+        }
+    }
+
+    fun updateCcState(enabled: Boolean) {
+        val parametersBuilder = player.trackSelectionParameters.buildUpon()
+        
+        if (enabled) {
+            parametersBuilder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            
+            // Force selection of the first available text track if none is selected
+            val currentTracks = player.currentTracks
+            val hasActiveTextTrack = currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected }
+            
+            if (!hasActiveTextTrack) {
+                for (group in currentTracks.groups) {
+                    if (group.type == C.TRACK_TYPE_TEXT && group.isSupported) {
+                        parametersBuilder.addOverride(
+                            TrackSelectionOverride(group.mediaTrackGroup, 0)
+                        )
+                        break
+                    }
+                }
+            }
+        } else {
+            parametersBuilder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            parametersBuilder.clearOverridesOfType(C.TRACK_TYPE_TEXT)
+        }
+        
+        player.trackSelectionParameters = parametersBuilder.build()
     }
 
     fun setQuality(stream: StreamItem) {

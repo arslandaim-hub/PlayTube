@@ -26,16 +26,17 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.arslandaim.playtube.R
 import coil3.compose.AsyncImage
 import com.arslandaim.playtube.domain.model.PlaylistItem
 import com.arslandaim.playtube.domain.model.VideoItem
-import com.arslandaim.playtube.ui.screens.search.VideoItemRow
+import com.arslandaim.playtube.ui.components.VideoItemRow
 import com.arslandaim.playtube.utils.VideoUtils
 
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ChannelScreen(
     channelUrl: String,
@@ -47,23 +48,50 @@ fun ChannelScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isSubscribed by viewModel.isSubscribed.collectAsState()
+
+    ChannelContent(
+        channelUrl = channelUrl,
+        uiState = uiState,
+        isSubscribed = isSubscribed,
+        onLoadChannel = viewModel::loadChannel,
+        onToggleSubscription = viewModel::toggleSubscription,
+        onBarsVisibilityChange = onBarsVisibilityChange,
+        onBack = onBack,
+        onVideoClick = onVideoClick,
+        onPlaylistClick = onPlaylistClick
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+private fun ChannelContent(
+    channelUrl: String,
+    uiState: ChannelUiState,
+    isSubscribed: Boolean?,
+    onLoadChannel: (String) -> Unit,
+    onToggleSubscription: () -> Unit,
+    onBarsVisibilityChange: (Boolean) -> Unit,
+    onBack: () -> Unit,
+    onVideoClick: (VideoItem) -> Unit,
+    onPlaylistClick: (String) -> Unit
+) {
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Videos", "Playlists")
+    val tabs = listOf(stringResource(R.string.videos), stringResource(R.string.playlists))
 
     LaunchedEffect(channelUrl) {
-        viewModel.loadChannel(channelUrl)
+        onLoadChannel(channelUrl)
     }
 
     val scrollVisibilityConnection = rememberScrollVisibilityConnection(onBarsVisibilityChange)
 
     Scaffold(modifier = Modifier.nestedScroll(scrollVisibilityConnection)) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
-            when (val state = uiState) {
+            when (uiState) {
                 is ChannelUiState.Loading -> {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
                 is ChannelUiState.Success -> {
-                    val details = state.details
+                    val details = uiState.details
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         item {
                             // Banner with Back Button Overlay
@@ -122,9 +150,9 @@ fun ChannelScreen(
                                         )
                                         
                                         val subCountText = if (details.subscriberCount != null && details.subscriberCount < 0) {
-                                            "Subscribers hidden"
+                                            stringResource(R.string.subscribers_hidden)
                                         } else if (details.subscriberCount != null) {
-                                            "${VideoUtils.formatNumber(details.subscriberCount)} subscribers"
+                                            stringResource(R.string.subscribers_count, VideoUtils.formatNumber(details.subscriberCount))
                                         } else null
                                         
                                         if (subCountText != null) {
@@ -139,7 +167,7 @@ fun ChannelScreen(
                                     // Subscribe Button (Only show once the state is known to prevent flicker)
                                     if (isSubscribed != null) {
                                         Button(
-                                            onClick = { viewModel.toggleSubscription() },
+                                            onClick = onToggleSubscription,
                                             colors = if (isSubscribed == true) {
                                                 ButtonDefaults.buttonColors(
                                                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -155,7 +183,7 @@ fun ChannelScreen(
                                             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
                                         ) {
                                             Text(
-                                                text = if (isSubscribed == true) "Subscribed" else "Subscribe",
+                                                text = if (isSubscribed == true) stringResource(R.string.subscribed) else stringResource(R.string.subscribe),
                                                 fontWeight = FontWeight.SemiBold
                                             )
                                         }
@@ -179,10 +207,14 @@ fun ChannelScreen(
                         stickyHeader {
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
-                                color = MaterialTheme.colorScheme.surface,
-                                tonalElevation = 1.dp
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), // Glass Effect
+                                tonalElevation = 0.dp
                             ) {
-                                PrimaryTabRow(selectedTabIndex = selectedTabIndex) {
+                                PrimaryTabRow(
+                                    selectedTabIndex = selectedTabIndex,
+                                    containerColor = Color.Transparent, // Let Surface handle background
+                                    divider = {}
+                                ) {
                                     tabs.forEachIndexed { index, title ->
                                         Tab(
                                             selected = selectedTabIndex == index,
@@ -190,7 +222,8 @@ fun ChannelScreen(
                                             text = { 
                                                 Text(
                                                     text = title,
-                                                    fontWeight = FontWeight.Bold
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (selectedTabIndex == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             }
                                         )
@@ -229,8 +262,8 @@ fun ChannelScreen(
                         modifier = Modifier.align(Alignment.Center),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(text = "Error: ${state.message}", color = MaterialTheme.colorScheme.error)
-                        Button(onClick = { viewModel.loadChannel(channelUrl) }, modifier = Modifier.padding(top = 16.dp)) {
+                        Text(text = "Error: ${uiState.message}", color = MaterialTheme.colorScheme.error)
+                        Button(onClick = { onLoadChannel(channelUrl) }, modifier = Modifier.padding(top = 16.dp)) {
                             Text("Retry")
                         }
                     }

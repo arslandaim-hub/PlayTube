@@ -53,26 +53,34 @@ fun MiniPlayerUI(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp)
-            .height(64.dp)
-            .clickable(onClick = onMaximize),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(12.dp),
-        tonalElevation = 4.dp,
-        shadowElevation = 8.dp
+            .padding(horizontal = 8.dp, vertical = 8.dp)
+            .height(68.dp)
+            .clickable(
+                onClick = onMaximize,
+                indication = null,
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+            ),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+        shape = RoundedCornerShape(16.dp),
+        tonalElevation = 0.dp, // Reduced for transparency purity
+        shadowElevation = 8.dp,
+        border = androidx.compose.foundation.BorderStroke(
+            width = 0.5.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+        )
     ) {
         Column {
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 8.dp),
+                    .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 AsyncImage(
                     model = video.thumbnailUrl,
                     contentDescription = null,
                     modifier = Modifier
-                        .height(48.dp)
+                        .height(44.dp)
                         .aspectRatio(16f / 9f)
                         .clip(RoundedCornerShape(8.dp)),
                     contentScale = ContentScale.Crop,
@@ -84,7 +92,7 @@ fun MiniPlayerUI(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = video.title,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -98,17 +106,30 @@ fun MiniPlayerUI(
                     )
                 }
                 
-                IconButton(onClick = {
-                    if (isPlaying) player.pause() else player.play()
-                }) {
+                IconButton(
+                    onClick = {
+                        if (isPlaying) player.pause() else player.play()
+                    },
+                    modifier = Modifier.size(32.dp)
+                ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play"
+                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        modifier = Modifier.size(24.dp)
                     )
                 }
                 
-                IconButton(onClick = onClose) {
-                    Icon(Icons.Default.Close, contentDescription = "Close")
+                Spacer(modifier = Modifier.width(4.dp))
+                
+                IconButton(
+                    onClick = onClose,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close",
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
             

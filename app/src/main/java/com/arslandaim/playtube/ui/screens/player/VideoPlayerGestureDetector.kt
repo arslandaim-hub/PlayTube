@@ -31,6 +31,8 @@ fun VideoPlayerGestureDetector(
     onVerticalSwipeRight: (Float) -> Unit = {},
     content: @Composable () -> Unit
 ) {
+    val doubleTapTimeout = 300L
+    
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -55,14 +57,12 @@ fun VideoPlayerGestureDetector(
                                     down.consume()
                                     if (isLeftSide) onDoubleTapLeft() else onDoubleTapRight()
                                     
-                                    tapJob = launch {
-                                        delay(300)
-                                        tapCount = 0
-                                    }
+                                    // After a double tap, we reset to avoid triple-tap confusion
+                                    tapCount = 0
                                 } else {
                                     // First tap, wait to see if it's a double tap
                                     tapJob = launch {
-                                        delay(300)
+                                        delay(doubleTapTimeout)
                                         if (tapCount == 1) {
                                             onSingleTap()
                                         }

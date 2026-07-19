@@ -16,13 +16,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ClosedCaption
+import androidx.compose.material.icons.filled.ClosedCaptionDisabled
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.BrightnessLow
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.CheckCircle
@@ -34,27 +38,37 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.CaptionStyleCompat
+import androidx.media3.ui.SubtitleView
 import coil3.compose.AsyncImage
+import androidx.compose.ui.res.stringResource
+import com.arslandaim.playtube.R
 import com.arslandaim.playtube.ui.components.DownloadSelectionSheet
+import com.arslandaim.playtube.ui.components.PlaybackSpeedSelectionSheet
 import com.arslandaim.playtube.ui.components.QualitySelectionSheet
 import com.arslandaim.playtube.domain.model.StreamItem
 import com.arslandaim.playtube.domain.model.VideoItem
-import com.arslandaim.playtube.ui.screens.search.VideoItemRow
+import com.arslandaim.playtube.ui.components.VideoItemRow
 import com.arslandaim.playtube.utils.VideoUtils
 import kotlinx.coroutines.delay
 import android.media.AudioManager
 import android.provider.Settings
+import android.content.res.Configuration
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.media3.ui.AspectRatioFrameLayout
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(
     videoId: String,
@@ -68,20 +82,88 @@ fun PlayerScreen(
     val uiState by viewModel.uiState.collectAsState()
     val isFavorite by viewModel.isFavorite.collectAsState()
     val isSubscribed by viewModel.isSubscribed.collectAsState()
+    val playbackSpeed by viewModel.playbackSpeed.collectAsState()
     val currentQuality by viewModel.currentQuality.collectAsState()
     val isBuffering by viewModel.isBuffering.collectAsState()
     val downloadedIds by viewModel.downloadedVideoIds.collectAsState()
     val seekAmount by viewModel.seekAmount.collectAsState()
     val showSeekFeedback by viewModel.showSeekFeedback.collectAsState()
     val isSeekForward by viewModel.isSeekForward.collectAsState()
+    val isCcEnabled by viewModel.isCcEnabled.collectAsState()
+    val isMinimized by viewModel.miniPlayerManager.isMinimized.collectAsState()
+    
+    PlayerContent(
+        videoId = videoId,
+        initialTitle = initialTitle,
+        initialThumbnail = initialThumbnail,
+        uiState = uiState,
+        isFavorite = isFavorite,
+        isSubscribed = isSubscribed,
+        playbackSpeed = playbackSpeed,
+        currentQuality = currentQuality,
+        isBuffering = isBuffering,
+        downloadedIds = downloadedIds,
+        seekAmount = seekAmount,
+        showSeekFeedback = showSeekFeedback,
+        isSeekForward = isSeekForward,
+        isCcEnabled = isCcEnabled,
+        player = viewModel.player,
+        snackbarMessage = viewModel.snackbarMessage,
+        onToggleFavorite = viewModel::toggleFavorite,
+        onToggleSubscription = viewModel::toggleSubscription,
+        onSetQuality = viewModel::setQuality,
+        onSetPlaybackSpeed = viewModel::setPlaybackSpeed,
+        onToggleSubtitles = viewModel::toggleSubtitles,
+        onDownload = viewModel::download,
+        onSeekForward = viewModel::seekForward,
+        onSeekBackward = viewModel::seekBackward,
+        onBack = onBack,
+        onVideoClick = onVideoClick,
+        onChannelClick = onChannelClick
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlayerContent(
+    videoId: String,
+    initialTitle: String?,
+    initialThumbnail: String?,
+    uiState: PlayerUiState,
+    isFavorite: Boolean,
+    isSubscribed: Boolean,
+    playbackSpeed: Float,
+    currentQuality: String?,
+    isBuffering: Boolean,
+    downloadedIds: Set<String>,
+    seekAmount: Int,
+    showSeekFeedback: Boolean,
+    isSeekForward: Boolean,
+    isCcEnabled: Boolean,
+    player: Player,
+    snackbarMessage: kotlinx.coroutines.flow.SharedFlow<String>,
+    onToggleFavorite: () -> Unit,
+    onToggleSubscription: () -> Unit,
+    onSetQuality: (com.arslandaim.playtube.domain.model.StreamItem) -> Unit,
+    onSetPlaybackSpeed: (Float) -> Unit,
+    onToggleSubtitles: () -> Unit,
+    onDownload: (String?, String?, String?, Boolean) -> Unit,
+    onSeekForward: () -> Unit,
+    onSeekBackward: () -> Unit,
+    onBack: () -> Unit,
+    onVideoClick: (VideoItem) -> Unit,
+    onChannelClick: (String) -> Unit
+) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     var showDownloadDialog by remember { mutableStateOf(false) }
     var showQualityDialog by remember { mutableStateOf(false) }
+    var showSpeedSheet by remember { mutableStateOf(false) }
     var showSettingsSheet by remember { mutableStateOf(false) }
     var showDescriptionSheet by remember { mutableStateOf(false) }
 
     val isDownloaded = downloadedIds.contains(videoId)
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     // Gesture states
     val audioManager = remember { context.getSystemService(android.content.Context.AUDIO_SERVICE) as AudioManager }
@@ -102,29 +184,20 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(videoId) {
-        // No auto-load here anymore, handled by loadVideo(VideoItem) in ViewModel
-    }
-
     LaunchedEffect(Unit) {
-        viewModel.snackbarMessage.collect { message ->
+        snackbarMessage.collect { message ->
             snackbarHostState.showSnackbar(message)
         }
     }
 
     DisposableEffect(Unit) {
         onDispose {
-            // If the video is NOT minimized, it means the user hit back to close it.
-            // I only keep the player running if mini-player mode is active.
-            if (!viewModel.miniPlayerManager.isMinimized.value) {
-                viewModel.stopPlayback()
-            }
-
             // Reset orientation on dispose
             val activity = context as? Activity
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
+
 
     if (showDownloadDialog) {
         val state = uiState as? PlayerUiState.Success
@@ -134,7 +207,7 @@ fun PlayerScreen(
                 audioStreams = it.bundle.audioStreams,
                 onDismiss = { showDownloadDialog = false },
                 onDownload = { stream ->
-                    viewModel.download(stream.url, stream.quality, stream.format, stream.isAdaptive)
+                    onDownload(stream.url, stream.quality, stream.format, stream.isAdaptive)
                     showDownloadDialog = false
                 }
             )
@@ -149,11 +222,22 @@ fun PlayerScreen(
                 currentQuality = currentQuality,
                 onDismiss = { showQualityDialog = false },
                 onQualitySelected = { stream ->
-                    viewModel.setQuality(stream)
+                    onSetQuality(stream)
                     showQualityDialog = false
                 }
             )
         }
+    }
+
+    if (showSpeedSheet) {
+        PlaybackSpeedSelectionSheet(
+            currentSpeed = playbackSpeed,
+            onDismiss = { showSpeedSheet = false },
+            onSpeedSelected = { speed ->
+                onSetPlaybackSpeed(speed)
+                showSpeedSheet = false
+            }
+        )
     }
 
     if (showDescriptionSheet) {
@@ -170,13 +254,13 @@ fun PlayerScreen(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "Description",
+                        text = stringResource(R.string.description),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = it.bundle.description ?: "No description available",
+                        text = it.bundle.description ?: stringResource(R.string.no_description),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.height(32.dp))
@@ -191,12 +275,21 @@ fun PlayerScreen(
         ) {
             Column(modifier = Modifier.padding(bottom = 32.dp)) {
                 ListItem(
-                    headlineContent = { Text("Quality") },
-                    supportingContent = { Text(currentQuality ?: "Auto") },
+                    headlineContent = { Text(stringResource(R.string.quality)) },
+                    supportingContent = { Text(currentQuality ?: stringResource(R.string.auto)) },
                     leadingContent = { Icon(Icons.Default.Settings, null) },
                     modifier = Modifier.clickable {
                         showSettingsSheet = false
                         showQualityDialog = true
+                    }
+                )
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.playback_speed)) },
+                    supportingContent = { Text(if (playbackSpeed == 1f) stringResource(R.string.normal_speed) else "${playbackSpeed}x") },
+                    leadingContent = { Icon(Icons.Default.Speed, null) },
+                    modifier = Modifier.clickable {
+                        showSettingsSheet = false
+                        showSpeedSheet = true
                     }
                 )
             }
@@ -229,10 +322,10 @@ fun PlayerScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(16f / 9f)
+                        .then(if (isLandscape) Modifier.fillMaxHeight() else Modifier.aspectRatio(16f / 9f))
                         .background(Color.Black)
                 ) {
-                    when (val state = uiState) {
+                    when (uiState) {
                         is PlayerUiState.Loading, is PlayerUiState.Error -> {
                             // Show placeholder during loading or error
                             AsyncImage(
@@ -242,7 +335,7 @@ fun PlayerScreen(
                                 contentScale = ContentScale.Crop,
                                 filterQuality = FilterQuality.Medium
                             )
-                            if (state is PlayerUiState.Loading) {
+                            if (uiState is PlayerUiState.Loading) {
                                 CircularProgressIndicator(
                                     modifier = Modifier
                                         .align(Alignment.Center)
@@ -253,8 +346,8 @@ fun PlayerScreen(
                         }
                         is PlayerUiState.Success -> {
                             VideoPlayerGestureDetector(
-                                onDoubleTapLeft = { viewModel.seekBackward() },
-                                onDoubleTapRight = { viewModel.seekForward() },
+                                onDoubleTapLeft = onSeekBackward,
+                                onDoubleTapRight = onSeekForward,
                                 onSingleTap = { /* PlayerView handles its own controls usually */ },
                                 onSwipeDown = onBack,
                                 onSwipeUp = {
@@ -289,24 +382,19 @@ fun PlayerScreen(
                                 onDragEnd = { isDragging = false },
                                 onDragCancel = { isDragging = false }
                             ) {
-                                AndroidView(
-                                    factory = {
-                                        PlayerView(context).apply {
-                                            player = viewModel.player
-                                            useController = true
-                                            @androidx.media3.common.util.UnstableApi
-                                            setShowPreviousButton(false)
-                                            @androidx.media3.common.util.UnstableApi
-                                            setShowNextButton(false)
-                                            @androidx.media3.common.util.UnstableApi
-                                            setShowFastForwardButton(false)
-                                            @androidx.media3.common.util.UnstableApi
-                                            setShowRewindButton(false)
-                                        }
-                                    },
+                                VideoPlayerView(
+                                    player = player,
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }
+
+                            // Top Player Controls (Settings & CC)
+                            TopPlayerControls(
+                                isCcEnabled = isCcEnabled,
+                                hasSubtitles = uiState.bundle.subtitles.isNotEmpty(),
+                                onToggleSubtitles = onToggleSubtitles,
+                                onShowSettings = { showSettingsSheet = true }
+                            )
 
                             SeekGestureOverlay(
                                 visible = showSeekFeedback,
@@ -357,12 +445,12 @@ fun PlayerScreen(
                 LazyColumn(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    when (val state = uiState) {
+                    when (uiState) {
                         is PlayerUiState.Loading -> {
                             item {
                                 Column(modifier = Modifier.padding(16.dp)) {
                                     Text(
-                                        text = initialTitle ?: "Loading...",
+                                        text = initialTitle ?: stringResource(R.string.loading),
                                         style = MaterialTheme.typography.titleLarge,
                                         fontWeight = FontWeight.Bold,
                                         maxLines = 2,
@@ -377,149 +465,142 @@ fun PlayerScreen(
                             item {
                                 Column(modifier = Modifier.padding(16.dp)) {
                                     Text(
-                                        text = state.title,
+                                        text = uiState.title,
                                         style = MaterialTheme.typography.titleLarge,
                                         fontWeight = FontWeight.Bold,
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     
-                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Spacer(modifier = Modifier.height(6.dp))
                                     
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
-                                            text = VideoUtils.formatViewCount(state.bundle.viewCount),
+                                            text = "${VideoUtils.formatViewCount(uiState.bundle.viewCount)} • ${VideoUtils.formatUploadDate(uiState.bundle.uploadDate)}",
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                                         )
+                                        Spacer(modifier = Modifier.weight(1f))
                                         Text(
-                                            text = " • ",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Text(
-                                            text = VideoUtils.formatUploadDate(state.bundle.uploadDate),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            text = stringResource(R.string.more),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.clickable { showDescriptionSheet = true }
                                         )
                                     }
                                     
-                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Spacer(modifier = Modifier.height(16.dp))
 
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable { state.bundle.uploaderUrl?.let { onChannelClick(it) } },
-                                        verticalAlignment = Alignment.CenterVertically
+                                    // Unified Channel & Action Bar
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                        shape = RoundedCornerShape(16.dp),
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        AsyncImage(
-                                            model = state.bundle.uploaderThumbnailUrl,
-                                            contentDescription = null,
-                                            modifier = Modifier
-                                                .size(40.dp)
-                                                .clip(CircleShape),
-                                            contentScale = ContentScale.Crop,
-                                            filterQuality = FilterQuality.Medium
-                                        )
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = state.uploader,
-                                                style = MaterialTheme.typography.titleMedium,
-                                                fontWeight = FontWeight.Medium,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            if (state.bundle.uploaderSubscriberCount != null && state.bundle.uploaderSubscriberCount > 0) {
-                                                Text(
-                                                    text = "${VideoUtils.formatNumber(state.bundle.uploaderSubscriberCount)} subscribers",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    maxLines = 1
+                                        Column(modifier = Modifier.padding(12.dp)) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable { uiState.bundle.uploaderUrl?.let { onChannelClick(it) } },
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                AsyncImage(
+                                                    model = uiState.bundle.uploaderThumbnailUrl,
+                                                    contentDescription = null,
+                                                    modifier = Modifier
+                                                        .size(40.dp)
+                                                        .clip(CircleShape),
+                                                    contentScale = ContentScale.Crop,
+                                                    filterQuality = FilterQuality.Medium
+                                                )
+                                                Spacer(modifier = Modifier.width(12.dp))
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = uiState.uploader,
+                                                        style = MaterialTheme.typography.titleMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    if (uiState.bundle.uploaderSubscriberCount != null && uiState.bundle.uploaderSubscriberCount > 0) {
+                                                        Text(
+                                                            text = "${VideoUtils.formatNumber(uiState.bundle.uploaderSubscriberCount)} subscribers",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            maxLines = 1
+                                                        )
+                                                    }
+                                                }
+                                                Button(
+                                                    onClick = onToggleSubscription,
+                                                    colors = if (isSubscribed) {
+                                                        ButtonDefaults.buttonColors(
+                                                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    } else {
+                                                        ButtonDefaults.buttonColors(
+                                                            containerColor = MaterialTheme.colorScheme.onSurface,
+                                                            contentColor = MaterialTheme.colorScheme.surface
+                                                        )
+                                                    },
+                                                    shape = CircleShape,
+                                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                                                ) {
+                                                    Text(
+                                                        text = if (isSubscribed) stringResource(R.string.subscribed) else stringResource(R.string.subscribe),
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+                                            
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceAround,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                PlayerActionItem(
+                                                    icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                                    label = if (isFavorite) stringResource(R.string.liked) else stringResource(R.string.like),
+                                                    onClick = onToggleFavorite,
+                                                    active = isFavorite
+                                                )
+                                                PlayerActionItem(
+                                                    icon = if (isDownloaded) Icons.Default.CheckCircle else Icons.Default.Download,
+                                                    label = if (isDownloaded) stringResource(R.string.downloaded) else stringResource(R.string.download),
+                                                    onClick = { if (!isDownloaded) showDownloadDialog = true },
+                                                    active = isDownloaded
+                                                )
+                                                PlayerActionItem(
+                                                    icon = Icons.Default.Description,
+                                                    label = stringResource(R.string.info),
+                                                    onClick = { showDescriptionSheet = true }
                                                 )
                                             }
                                         }
-                                        Button(
-                                            onClick = { viewModel.toggleSubscription() },
-                                            colors = if (isSubscribed) {
-                                                ButtonDefaults.buttonColors(
-                                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            } else {
-                                                ButtonDefaults.buttonColors(
-                                                    containerColor = MaterialTheme.colorScheme.onSurface,
-                                                    contentColor = MaterialTheme.colorScheme.surface
-                                                )
-                                            },
-                                            shape = CircleShape,
-                                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                                        ) {
-                                            Text(text = if (isSubscribed) "Subscribed" else "Subscribe")
-                                        }
-                                    }
-                                }
-                            }
-
-                            @OptIn(ExperimentalFoundationApi::class)
-                            stickyHeader {
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    color = Color.Transparent // Changed to transparent to show the background glow
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                                            .horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                ActionChip(
-                    icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    label = if (isFavorite) "Liked" else "Like",
-                    onClick = { viewModel.toggleFavorite() },
-                    tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    contentDescription = if (isFavorite) "Remove from Liked" else "Add to Liked"
-                )
-                ActionChip(
-                    icon = if (isDownloaded) Icons.Default.CheckCircle else Icons.Default.Download,
-                    label = if (isDownloaded) "Downloaded" else "Download",
-                    onClick = { if (!isDownloaded) showDownloadDialog = true },
-                    tint = if (isDownloaded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    contentDescription = if (isDownloaded) "Video Downloaded" else "Download Video"
-                )
-                ActionChip(
-                    icon = Icons.Default.Settings,
-                    label = "Settings",
-                    onClick = { showSettingsSheet = true },
-                    contentDescription = "Playback Settings"
-                )
-                ActionChip(
-                    icon = Icons.Default.Description,
-                    label = "Description",
-                    onClick = { showDescriptionSheet = true },
-                    contentDescription = "Video Description"
-                )
                                     }
                                 }
                             }
 
                             item {
                                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    
+                                    Spacer(modifier = Modifier.height(8.dp))
                                     Text(
-                                        text = "Related Videos",
+                                        text = stringResource(R.string.related_videos),
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold
                                     )
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(12.dp))
                                 }
                             }
 
-                            items(state.bundle.relatedVideos) { relatedVideo ->
+
+                            items(uiState.bundle.relatedVideos) { relatedVideo ->
                                 Box(modifier = Modifier.padding(horizontal = 16.dp)) {
                                     VideoItemRow(
                                         video = relatedVideo,
@@ -536,17 +617,13 @@ fun PlayerScreen(
                                 Box(modifier = Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         Text(
-                                            text = state.message,
+                                            text = stringResource(R.string.error_prefix, uiState.message),
                                             style = MaterialTheme.typography.bodyLarge,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                         Spacer(modifier = Modifier.height(16.dp))
-                                        Button(onClick = { 
-                                            // Ideally we should have the original VideoItem here,
-                                            // but for retry we can just use what we have in Success if it was partial
-                                            // or better yet, the caller should handle retry.
-                                        }) {
-                                            Text("Retry")
+                                        Button(onClick = { /* Handle Retry */ }) {
+                                            Text(stringResource(R.string.retry))
                                         }
                                     }
                                 }
@@ -560,35 +637,128 @@ fun PlayerScreen(
 }
 
 @Composable
-fun ActionChip(
+private fun TopPlayerControls(
+    isCcEnabled: Boolean,
+    hasSubtitles: Boolean,
+    onToggleSubtitles: () -> Unit,
+    onShowSettings: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (hasSubtitles) {
+            IconButton(
+                onClick = onToggleSubtitles,
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = Color.Transparent,
+                    contentColor = Color.White
+                )
+            ) {
+                Icon(
+                    imageVector = if (isCcEnabled) Icons.Default.ClosedCaption else Icons.Default.ClosedCaptionDisabled,
+                    contentDescription = stringResource(R.string.toggle_subtitles),
+                    tint = if (isCcEnabled) MaterialTheme.colorScheme.primary else Color.White
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+
+        IconButton(
+            onClick = onShowSettings,
+            colors = IconButtonDefaults.iconButtonColors(
+                containerColor = Color.Transparent,
+                contentColor = Color.White
+            )
+        ) {
+            Icon(
+                imageVector = Icons.Default.Settings,
+                contentDescription = stringResource(R.string.settings)
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlayerActionItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    tint: Color = MaterialTheme.colorScheme.onSurface,
-    contentDescription: String? = null
+    active: Boolean = false
 ) {
-    Surface(
-        onClick = onClick,
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        modifier = modifier.height(32.dp)
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(8.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                imageVector = icon, 
-                contentDescription = contentDescription, 
-                modifier = Modifier.size(16.dp), 
-                tint = tint
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(text = label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = if (active) FontWeight.Bold else FontWeight.Medium
+        )
     }
+}
+
+
+@androidx.annotation.OptIn(UnstableApi::class)
+@Composable
+private fun VideoPlayerView(
+    player: Player,
+    modifier: Modifier = Modifier
+) {
+    AndroidView(
+        factory = { context ->
+            PlayerView(context).apply {
+                this.player = player
+                this.keepScreenOn = true // Keep screen awake during playback
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                useController = true
+                setShowSubtitleButton(false)
+                setShowPreviousButton(false)
+                setShowNextButton(false)
+                setShowFastForwardButton(false)
+                setShowRewindButton(false)
+                
+                // Professional Subtitle Styling
+                subtitleView?.apply {
+                    setApplyEmbeddedStyles(false)
+                    setStyle(
+                        CaptionStyleCompat(
+                            Color.White.toArgb(),
+                            Color.Transparent.toArgb(),
+                            Color.Transparent.toArgb(),
+                            CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                            Color.Black.toArgb(),
+                            null
+                        )
+                    )
+                    setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * 0.8f)
+                    setBottomPaddingFraction(0.1f)
+                }
+
+                // Hide settings and speed buttons via ID (Safe approach for different Media3 layouts)
+                findViewById<android.view.View>(androidx.media3.ui.R.id.exo_settings)?.visibility = android.view.View.GONE
+                findViewById<android.view.View>(androidx.media3.ui.R.id.exo_playback_speed)?.visibility = android.view.View.GONE
+            }
+        },
+        update = {
+            // State Updates - Does NOT recreate the view
+        },
+        modifier = modifier
+    )
 }
 
 @Composable

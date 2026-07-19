@@ -18,5 +18,6 @@ data class StreamBundle(
     val uploadDate: String?,
     val thumbnailUrl: String?,
     val relatedVideos: List<VideoItem> = emptyList(),
-    val bestAudioStreamUrl: String? = null
+    val bestAudioStreamUrl: String? = null,
+    val subtitles: List<SubtitleItem> = emptyList()
 )

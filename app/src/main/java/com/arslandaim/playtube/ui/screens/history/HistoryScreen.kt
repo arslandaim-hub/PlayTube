@@ -20,21 +20,50 @@ import androidx.compose.ui.unit.dp
 import com.arslandaim.playtube.ui.screens.library.HistoryItemRow
 import com.arslandaim.playtube.ui.screens.settings.SettingsViewModel
 import com.arslandaim.playtube.domain.model.VideoItem
+import com.arslandaim.playtube.ui.components.EmptyState
+import androidx.compose.material.icons.filled.History
+import androidx.compose.ui.res.stringResource
+import com.arslandaim.playtube.R
 
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
     settingsViewModel: SettingsViewModel,
     historyViewModel: com.arslandaim.playtube.ui.screens.library.LibraryViewModel,
     onBarsVisibilityChange: (Boolean) -> Unit,
     onBack: () -> Unit,
-    onVideoClick: (VideoItem) -> Unit
+    onVideoClick: (VideoItem) -> Unit,
+    onDiscoverVideos: () -> Unit
 ) {
     val history by historyViewModel.history.collectAsState()
     val isHistoryEnabled by settingsViewModel.isHistoryEnabled.collectAsState()
+
+    HistoryContent(
+        history = history,
+        isHistoryEnabled = isHistoryEnabled,
+        onSetHistoryEnabled = settingsViewModel::setHistoryEnabled,
+        onClearHistory = settingsViewModel::clearHistory,
+        onBarsVisibilityChange = onBarsVisibilityChange,
+        onBack = onBack,
+        onVideoClick = onVideoClick,
+        onDiscoverVideos = onDiscoverVideos
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HistoryContent(
+    history: List<com.arslandaim.playtube.data.local.HistoryEntity>,
+    isHistoryEnabled: Boolean,
+    onSetHistoryEnabled: (Boolean) -> Unit,
+    onClearHistory: () -> Unit,
+    onBarsVisibilityChange: (Boolean) -> Unit,
+    onBack: () -> Unit,
+    onVideoClick: (VideoItem) -> Unit,
+    onDiscoverVideos: () -> Unit
+) {
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var showClearHistoryDialog by remember { mutableStateOf(false) }
@@ -72,7 +101,7 @@ fun HistoryScreen(
                 Switch(
                     checked = !isHistoryEnabled,
                     onCheckedChange = { paused ->
-                        settingsViewModel.setHistoryEnabled(!paused)
+                        onSetHistoryEnabled(!paused)
                     }
                 )
             }
@@ -80,9 +109,13 @@ fun HistoryScreen(
             HorizontalDivider()
 
             if (history.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No watch history")
-                }
+                EmptyState(
+                    icon = Icons.Default.History,
+                    title = stringResource(R.string.no_history),
+                    description = stringResource(R.string.no_history_desc),
+                    actionText = stringResource(R.string.discover_videos),
+                    onActionClick = onDiscoverVideos
+                )
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
                     items(history) { item ->
@@ -104,7 +137,7 @@ fun HistoryScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        settingsViewModel.clearHistory()
+                        onClearHistory()
                         showClearHistoryDialog = false
                         scope.launch {
                             snackbarHostState.showSnackbar("History cleared")

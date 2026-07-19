@@ -14,6 +14,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
@@ -33,8 +37,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import androidx.compose.ui.res.stringResource
+import com.arslandaim.playtube.R
 import com.arslandaim.playtube.ui.components.VideoMetadata
+import com.arslandaim.playtube.ui.components.VideoList
+import com.arslandaim.playtube.ui.components.EmptyState
 import com.arslandaim.playtube.domain.model.VideoItem
+import com.arslandaim.playtube.domain.model.SearchSort
 import com.arslandaim.playtube.ui.screens.library.LibraryViewModel
 import com.arslandaim.playtube.utils.VideoUtils
 import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
@@ -52,13 +61,51 @@ fun SearchScreen(
     onBack: () -> Unit
 ) {
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val searchSort by viewModel.searchSort.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val suggestions by viewModel.suggestions.collectAsState()
     val searchHistory by viewModel.searchHistory.collectAsState()
+    val downloadedIds by libraryViewModel.downloadedVideoIds.collectAsState()
+
+    SearchContent(
+        searchQuery = searchQuery,
+        searchSort = searchSort,
+        uiState = uiState,
+        suggestions = suggestions,
+        searchHistory = searchHistory,
+        downloadedIds = downloadedIds,
+        onQueryChange = viewModel::onQueryChange,
+        onSortChange = viewModel::onSortChange,
+        onSearch = viewModel::search,
+        onDeleteHistory = { viewModel.deleteSearchQuery(it.query) },
+        onClearHistory = viewModel::clearSearchHistory,
+        onBarsVisibilityChange = onBarsVisibilityChange,
+        onVideoClick = onVideoClick,
+        onChannelClick = onChannelClick,
+        onBack = onBack
+    )
+}
+
+@Composable
+private fun SearchContent(
+    searchQuery: String,
+    searchSort: SearchSort,
+    uiState: SearchUiState,
+    suggestions: List<String>,
+    searchHistory: List<com.arslandaim.playtube.data.local.SearchHistoryEntity>,
+    downloadedIds: Set<String>,
+    onQueryChange: (String) -> Unit,
+    onSortChange: (SearchSort) -> Unit,
+    onSearch: (String) -> Unit,
+    onDeleteHistory: (com.arslandaim.playtube.data.local.SearchHistoryEntity) -> Unit,
+    onClearHistory: () -> Unit,
+    onBarsVisibilityChange: (Boolean) -> Unit,
+    onVideoClick: (VideoItem) -> Unit,
+    onChannelClick: (String) -> Unit,
+    onBack: () -> Unit
+) {
     val focusManager = LocalFocusManager.current
     var isSearchFocused by remember { mutableStateOf(false) }
-
-    val downloadedIds by libraryViewModel.downloadedVideoIds.collectAsState()
     val scrollVisibilityConnection = rememberScrollVisibilityConnection(onBarsVisibilityChange)
 
     val surfaceColor = MaterialTheme.colorScheme.surface
@@ -70,15 +117,19 @@ fun SearchScreen(
             Column(modifier = Modifier.background(surfaceColor)) {
                 SearchBar(
                     query = searchQuery,
-                    onQueryChange = { viewModel.onQueryChange(it) },
+                    onQueryChange = { onQueryChange(it) },
                     onSearch = { query ->
-                        viewModel.search(query)
-                        focusManager.clearFocus()
+                        if (query.isNotBlank()) {
+                            isSearchFocused = false // Hide suggestions immediately
+                            onSearch(query)
+                            focusManager.clearFocus()
+                        }
                     },
                     onFocusChange = { isSearchFocused = it },
                     onBack = {
                         if (isSearchFocused || searchQuery.isNotEmpty()) {
-                            viewModel.onQueryChange("")
+                            onQueryChange("")
+                            isSearchFocused = false
                             focusManager.clearFocus()
                         } else {
                             onBack()
@@ -86,11 +137,47 @@ fun SearchScreen(
                     },
                     containerColor = searchBarColor
                 )
+                
+                // Sort Chips Row
+                AnimatedVisibility(visible = uiState is SearchUiState.Success && !isSearchFocused) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        SearchSort.entries.forEach { sort ->
+                            FilterChip(
+                                selected = searchSort == sort,
+                                onClick = { onSortChange(sort) },
+                                label = { 
+                                    Text(
+                                        when(sort) {
+                                            SearchSort.RELEVANCE -> stringResource(R.string.sort_relevance)
+                                            SearchSort.UPLOAD_DATE -> stringResource(R.string.sort_newest)
+                                            SearchSort.VIEW_COUNT -> stringResource(R.string.sort_most_viewed)
+                                            SearchSort.RATING -> stringResource(R.string.sort_top_rated)
+                                        }
+                                    ) 
+                                },
+                                shape = CircleShape,
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                ),
+                                border = null
+                            )
+                        }
+                    }
+                }
             }
         }
     ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
-            when (val state = uiState) {
+            when (uiState) {
                 is SearchUiState.Initial -> {
                     InitialSearchState()
                 }
@@ -99,20 +186,21 @@ fun SearchScreen(
                 }
                 is SearchUiState.Success -> {
                     VideoList(
-                        videos = state.videos,
+                        videos = uiState.videos,
                         downloadedIds = downloadedIds,
                         onVideoClick = onVideoClick,
                         onChannelClick = onChannelClick
                     )
                 }
                 is SearchUiState.Error -> {
-                    Text(
-                        text = state.message,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.align(Alignment.Center)
+                    EmptyState(
+                        icon = Icons.Default.ErrorOutline,
+                        title = "Something went wrong",
+                        description = uiState.message,
+                        actionText = stringResource(R.string.retry),
+                        onActionClick = { onSearch(searchQuery) }
                     )
                 }
-                else -> {}
             }
 
             // Overlay suggestions when search is focused
@@ -126,12 +214,12 @@ fun SearchScreen(
                         history = searchHistory,
                         suggestions = suggestions,
                         onSuggestionClick = { suggestion ->
-                            viewModel.onQueryChange(suggestion)
-                            viewModel.search(suggestion)
+                            onQueryChange(suggestion)
+                            onSearch(suggestion)
                             focusManager.clearFocus()
                         },
-                        onDeleteHistory = { viewModel.deleteSearchQuery(it) },
-                        onClearHistory = { viewModel.clearSearchHistory() }
+                        onDeleteHistory = { onDeleteHistory(it) },
+                        onClearHistory = onClearHistory
                     )
                 }
             }
@@ -163,16 +251,16 @@ fun SearchBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .onFocusChanged { onFocusChange(it.isFocused) },
-            placeholder = { Text("Search PlayTube") },
+            placeholder = { Text(stringResource(R.string.search_placeholder)) },
             leadingIcon = {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                 }
             },
             trailingIcon = {
                 if (query.isNotEmpty()) {
                     IconButton(onClick = { onQueryChange("") }) {
-                        Icon(Icons.Default.Clear, contentDescription = "Clear")
+                        Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.clear))
                     }
                 }
             },
@@ -197,7 +285,7 @@ fun SuggestionsAndHistoryList(
     history: List<com.arslandaim.playtube.data.local.SearchHistoryEntity>,
     suggestions: List<String>,
     onSuggestionClick: (String) -> Unit,
-    onDeleteHistory: (String) -> Unit,
+    onDeleteHistory: (com.arslandaim.playtube.data.local.SearchHistoryEntity) -> Unit,
     onClearHistory: () -> Unit
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -208,9 +296,9 @@ fun SuggestionsAndHistoryList(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Recent searches", style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.recent_searches), style = MaterialTheme.typography.titleSmall)
                     TextButton(onClick = onClearHistory) {
-                        Text("Clear all")
+                        Text(stringResource(R.string.clear_all))
                     }
                 }
             }
@@ -218,7 +306,7 @@ fun SuggestionsAndHistoryList(
                 SearchItem(
                     text = item.query,
                     icon = Icons.Default.History,
-                    onDelete = { onDeleteHistory(item.query) },
+                    onDelete = { onDeleteHistory(item) },
                     onClick = { onSuggestionClick(item.query) }
                 )
             }
@@ -263,264 +351,9 @@ fun SearchItem(
 
 @Composable
 fun InitialSearchState() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector = Icons.Default.Search,
-                contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Discover something new",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
-fun VideoList(
-    videos: List<VideoItem>,
-    downloadedIds: Set<String> = emptySet(),
-    favoriteIds: Set<String> = emptySet(),
-    onVideoClick: (VideoItem) -> Unit,
-    onChannelClick: ((String) -> Unit)? = null,
-    onFavoriteClick: ((VideoItem) -> Unit)? = null,
-    onDownloadClick: ((VideoItem) -> Unit)? = null
-) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 100.dp), // Increased padding for floating bottom bar
-        verticalArrangement = Arrangement.spacedBy(0.dp)
-    ) {
-        items(
-            items = videos,
-            key = { video -> video.id },
-            contentType = { "video" }
-        ) { video ->
-            VideoItemRow(
-                video = video,
-                isDownloaded = downloadedIds.contains(video.id),
-                isFavorite = favoriteIds.contains(video.id),
-                onFavoriteClick = if (onFavoriteClick != null) { { onFavoriteClick(video) } } else null,
-                onDownloadClick = if (onDownloadClick != null) { { onDownloadClick(video) } } else null,
-                onChannelClick = if (onChannelClick != null && video.uploaderUrl != null) { { onChannelClick(video.uploaderUrl) } } else null,
-                onClick = { onVideoClick(video) }
-            )
-        }
-    }
-}
-
-@Composable
-fun VideoItemRow(
-    video: VideoItem,
-    isDownloaded: Boolean = false,
-    isFavorite: Boolean = false,
-    onFavoriteClick: (() -> Unit)? = null,
-    onDownloadClick: (() -> Unit)? = null,
-    onChannelClick: (() -> Unit)? = null,
-    onClick: () -> Unit
-) {
-    var showMenu by remember { mutableStateOf(false) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(bottom = 12.dp)
-    ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            AsyncImage(
-                model = video.thumbnailUrl,
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f),
-                contentScale = ContentScale.Crop,
-                filterQuality = FilterQuality.Medium
-            )
-            
-            // Duration Badge
-            if (video.duration > 0) {
-                Surface(
-                    color = Color.Black.copy(alpha = 0.8f),
-                    shape = RoundedCornerShape(4.dp),
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(8.dp)
-                ) {
-                    Text(
-                        text = formatDuration(video.duration),
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                    )
-                }
-            }
-
-            // Downloaded Tag
-            if (isDownloaded) {
-                Surface(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
-                    shape = RoundedCornerShape(bottomStart = 8.dp),
-                    modifier = Modifier.align(Alignment.TopEnd)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = "Downloaded",
-                        modifier = Modifier.padding(6.dp).size(16.dp),
-                        tint = Color.White
-                    )
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            // Channel Avatar
-            Surface(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clickable(
-                        enabled = onChannelClick != null,
-                        onClick = { onChannelClick?.invoke() }
-                    ),
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceVariant
-            ) {
-                AsyncImage(
-                    model = video.uploaderThumbnailUrl,
-                    contentDescription = "Channel Avatar",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    error = null, // Fallback to background with first letter
-                    fallback = null
-                )
-                
-                if (video.uploaderThumbnailUrl == null) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = video.uploaderName.take(1).uppercase(),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-            
-            Spacer(modifier = Modifier.width(12.dp))
-            
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Text(
-                        text = video.title,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            lineHeight = 20.sp
-                        ),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    
-                    if (onFavoriteClick != null || onDownloadClick != null) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (isFavorite) {
-                                Icon(
-                                    imageVector = Icons.Default.Favorite,
-                                    contentDescription = null,
-                                    tint = Color.Red,
-                                    modifier = Modifier.size(20.dp).padding(end = 4.dp)
-                                )
-                            }
-                            
-                            Box {
-                                IconButton(
-                                    onClick = { showMenu = true },
-                                    modifier = Modifier.size(24.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.MoreVert,
-                                        contentDescription = "More",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                
-                                DropdownMenu(
-                                    expanded = showMenu,
-                                    onDismissRequest = { showMenu = false }
-                                ) {
-                                    if (onDownloadClick != null) {
-                                        DropdownMenuItem(
-                                            text = { Text(if (isDownloaded) "Downloaded" else "Download") },
-                                            leadingIcon = { 
-                                                Icon(
-                                                    imageVector = if (isDownloaded) Icons.Default.CheckCircle else Icons.Default.Download, 
-                                                    contentDescription = null,
-                                                    tint = if (isDownloaded) MaterialTheme.colorScheme.primary else LocalContentColor.current
-                                                ) 
-                                            },
-                                            onClick = {
-                                                showMenu = false
-                                                if (!isDownloaded) onDownloadClick()
-                                            },
-                                            enabled = !isDownloaded
-                                        )
-                                    }
-                                    if (onFavoriteClick != null) {
-                                        DropdownMenuItem(
-                                            text = { Text(if (isFavorite) "Remove from Favorites" else "Add to Favorites") },
-                                            leadingIcon = { 
-                                                Icon(
-                                                    imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, 
-                                                    contentDescription = null,
-                                                    tint = if (isFavorite) Color.Red else LocalContentColor.current
-                                                ) 
-                                            },
-                                            onClick = {
-                                                showMenu = false
-                                                onFavoriteClick()
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(4.dp))
-                
-                // Reusable Metadata Component
-                VideoMetadata(
-                    uploaderName = video.uploaderName,
-                    viewCount = video.viewCount,
-                    uploadDate = video.uploadDate,
-                    onChannelClick = if (onChannelClick != null) { { onChannelClick() } } else null
-                )
-            }
-        }
-    }
-}
-
-private fun formatDuration(seconds: Long): String {
-    val h = seconds / 3600
-    val m = (seconds % 3600) / 60
-    val s = seconds % 60
-    return if (h > 0) {
-        String.format(Locale.getDefault(), "%d:%02d:%02d", h, m, s)
-    } else {
-        String.format(Locale.getDefault(), "%d:%02d", m, s)
-    }
+    EmptyState(
+        icon = Icons.Default.Search,
+        title = stringResource(R.string.discover_new),
+        description = "Search for your favorite videos and channels"
+    )
 }

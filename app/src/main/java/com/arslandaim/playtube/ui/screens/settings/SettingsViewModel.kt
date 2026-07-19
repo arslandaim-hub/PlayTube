@@ -37,6 +37,9 @@ class SettingsViewModel @Inject constructor(
     val isPipEnabled: StateFlow<Boolean> = preferencesManager.isPipEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    val isBackgroundPlayEnabled: StateFlow<Boolean> = preferencesManager.isBackgroundPlayEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     fun setHistoryEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesManager.setHistoryEnabled(enabled)
@@ -52,6 +55,12 @@ class SettingsViewModel @Inject constructor(
     fun setPipEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesManager.setPipEnabled(enabled)
+        }
+    }
+
+    fun setBackgroundPlayEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesManager.setBackgroundPlayEnabled(enabled)
         }
     }
 

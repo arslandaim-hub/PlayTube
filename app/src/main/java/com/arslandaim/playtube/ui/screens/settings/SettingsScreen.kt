@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PictureInPicture
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
@@ -68,10 +69,11 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.arslandaim.playtube.R
 import androidx.core.net.toUri
 import com.arslandaim.playtube.BuildConfig
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
@@ -80,6 +82,34 @@ fun SettingsScreen(
 ) {
     val isSearchHistoryPaused by viewModel.isSearchHistoryPaused.collectAsState()
     val isPipEnabled by viewModel.isPipEnabled.collectAsState()
+    val isBackgroundPlayEnabled by viewModel.isBackgroundPlayEnabled.collectAsState()
+
+    SettingsContent(
+        isSearchHistoryPaused = isSearchHistoryPaused,
+        isPipEnabled = isPipEnabled,
+        isBackgroundPlayEnabled = isBackgroundPlayEnabled,
+        onSetSearchHistoryPaused = viewModel::setSearchHistoryPaused,
+        onSetPipEnabled = viewModel::setPipEnabled,
+        onSetBackgroundPlayEnabled = viewModel::setBackgroundPlayEnabled,
+        onClearAllDownloads = viewModel::clearAllDownloads,
+        onViewHistory = onViewHistory,
+        onBack = onBack
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsContent(
+    isSearchHistoryPaused: Boolean,
+    isPipEnabled: Boolean,
+    isBackgroundPlayEnabled: Boolean,
+    onSetSearchHistoryPaused: (Boolean) -> Unit,
+    onSetPipEnabled: (Boolean) -> Unit,
+    onSetBackgroundPlayEnabled: (Boolean) -> Unit,
+    onClearAllDownloads: () -> Unit,
+    onViewHistory: () -> Unit,
+    onBack: () -> Unit
+) {
     var showClearDownloadsDialog by remember { mutableStateOf(false) }
     var showDeveloperDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -109,7 +139,7 @@ fun SettingsScreen(
             message = "Are you sure you want to delete all downloaded videos? This action cannot be undone.",
             onDismiss = { showClearDownloadsDialog = false },
             onConfirm = {
-                viewModel.clearAllDownloads()
+                onClearAllDownloads()
                 showClearDownloadsDialog = false
             }
         )
@@ -153,7 +183,7 @@ fun SettingsScreen(
                         subtitle = "Suggestions will also be paused",
                         icon = Icons.Default.Pause,
                         checked = isSearchHistoryPaused,
-                        onCheckedChange = { viewModel.setSearchHistoryPaused(it) }
+                        onCheckedChange = onSetSearchHistoryPaused
                     )
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                     if (isPipSupported) {
@@ -162,9 +192,17 @@ fun SettingsScreen(
                             subtitle = "Keep watching in a small window",
                             icon = Icons.Default.PictureInPicture,
                             checked = isPipEnabled,
-                            onCheckedChange = { viewModel.setPipEnabled(it) }
+                            onCheckedChange = onSetPipEnabled
                         )
                     }
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    SettingsSwitchItem(
+                        title = stringResource(R.string.background_play),
+                        subtitle = stringResource(R.string.background_play_desc),
+                        icon = Icons.Default.PlayArrow,
+                        checked = isBackgroundPlayEnabled,
+                        onCheckedChange = onSetBackgroundPlayEnabled
+                    )
                 }
             }
 

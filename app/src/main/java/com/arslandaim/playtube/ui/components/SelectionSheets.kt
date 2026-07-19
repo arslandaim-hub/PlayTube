@@ -62,6 +62,45 @@ fun QualitySelectionSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+fun PlaybackSpeedSelectionSheet(
+    currentSpeed: Float,
+    onDismiss: () -> Unit,
+    onSpeedSelected: (Float) -> Unit
+) {
+    val speeds = listOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+    
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(modifier = Modifier.padding(bottom = 32.dp)) {
+            Text(
+                text = "Playback Speed",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+            
+            LazyColumn {
+                items(speeds) { speed ->
+                    ListItem(
+                        headlineContent = { Text(text = if (speed == 1.0f) "Normal" else "${speed}x") },
+                        leadingContent = { 
+                            RadioButton(
+                                selected = speed == currentSpeed,
+                                onClick = null 
+                            ) 
+                        },
+                        modifier = Modifier.clickable { onSpeedSelected(speed) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 fun DownloadSelectionSheet(
     videoStreams: List<StreamItem>,
     audioStreams: List<StreamItem>,

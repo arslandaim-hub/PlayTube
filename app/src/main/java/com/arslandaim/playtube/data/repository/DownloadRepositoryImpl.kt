@@ -144,6 +144,17 @@ class DownloadRepositoryImpl @Inject constructor(
 
     override suspend fun clearAllDownloads() {
         workManager.cancelAllWork()
+        val allDownloads = downloadDao.getAllDownloadsList()
+        allDownloads.forEach { entity ->
+            try {
+                val file = File(entity.filePath)
+                if (file.exists()) {
+                    file.delete()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("DownloadRepository", "Failed to delete file: ${entity.filePath}", e)
+            }
+        }
         downloadDao.clearAll()
     }
 }

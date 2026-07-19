@@ -181,19 +181,7 @@ class DownloadWorker @AssistedInject constructor(
             Result.success()
         } catch (e: Exception) {
             android.util.Log.e("DownloadWorker", "Work failed for $videoId: ${e.message}", e)
-            if (videoFile.exists() && audioUrl != null) {
-                android.util.Log.d("DownloadWorker", "Deleting failed video temp file: ${videoFile.name}")
-                videoFile.delete()
-            }
-            audioFile?.let { if (it.exists()) {
-                android.util.Log.d("DownloadWorker", "Deleting failed audio temp file: ${it.name}")
-                it.delete()
-            } }
-            if (finalFile.exists()) {
-                android.util.Log.d("DownloadWorker", "Deleting potentially corrupted final file: ${finalFile.name}")
-                finalFile.delete()
-            }
-            
+
             // Only update to FAILED if it wasn't explicitly PAUSED by the user/system
             val currentDownload = downloadDao.getDownloadById(videoId)
             if (currentDownload?.status != DownloadStatus.PAUSED) {
@@ -201,6 +189,18 @@ class DownloadWorker @AssistedInject constructor(
             }
 
             Result.failure()
+        } finally {
+            if (videoFile.exists() && audioUrl != null) {
+                android.util.Log.d("DownloadWorker", "Cleaning up video temp file: ${videoFile.name}")
+                videoFile.delete()
+            }
+            audioFile?.let { if (it.exists()) {
+                android.util.Log.d("DownloadWorker", "Cleaning up audio temp file: ${it.name}")
+                it.delete()
+            } }
+            
+            // Note: finalFile is not deleted here as it's the intended output if successful.
+            // If failed, we could delete it, but doDownload logic above manages its creation.
         }
     }
 
@@ -219,11 +219,11 @@ class DownloadWorker @AssistedInject constructor(
         
         val totalSize = getRemoteFileSize(url)
         
-        // If range download is possible (size > 0), use parallel chunks
-        if (totalSize > 1024 * 1024) { // > 1MB
+        // Use parallel chunks for ANY file larger than 1MB to avoid single-connection throttling
+        if (totalSize > 1024 * 1024) { 
             val result = downloadParallel(url, file, totalSize, videoId, title, previousDownloaded, isPart, combinedTotalSize)
             if (result > 0) return result
-            android.util.Log.w("DownloadWorker", "Parallel download failed or not supported, falling back to single stream")
+            android.util.Log.w("DownloadWorker", "Parallel download failed, falling back to single stream")
         }
 
         // Fallback to single stream download
@@ -240,10 +240,22 @@ class DownloadWorker @AssistedInject constructor(
         isPart: Boolean,
         combinedTotalSize: Long
     ): Long = withContext(Dispatchers.IO) {
-        val numChunks = 4
+        // Dynamically scale chunks based on file size: 
+        // Small parts (like Audio, 2-10MB) get 2 chunks to bypass single-conn throttle.
+        // Large parts (Video) get up to 8.
+        val numChunks = when {
+            totalSize < 2 * 1024 * 1024 -> 1 
+            totalSize < 10 * 1024 * 1024 -> 2 
+            totalSize < 50 * 1024 * 1024 -> 4
+            else -> 8 
+        }
+        
+        if (numChunks == 1) return@withContext -1 
+        
         val chunkSize = totalSize / numChunks
         val downloadedBytes = AtomicLong(0L)
         var lastUpdateTime = 0L
+        var lastProgressUpdate = 0
 
         try {
             RandomAccessFile(file, "rw").use { raf ->
@@ -257,15 +269,17 @@ class DownloadWorker @AssistedInject constructor(
                 async {
                     downloadChunk(url, file, start, end, videoId, title, isPart, previousDownloaded, combinedTotalSize, downloadedBytes) {
                         val currentTime = System.currentTimeMillis()
-                        if (currentTime - lastUpdateTime > 500) {
+                        val currentTotalDownloaded = previousDownloaded + downloadedBytes.get()
+                        val effectiveTotalSize = if (combinedTotalSize > 0) combinedTotalSize else (previousDownloaded + totalSize)
+                        val progress = if (effectiveTotalSize > 0) ((currentTotalDownloaded * 100) / effectiveTotalSize).toInt() else 0
+
+                        if (progress > lastProgressUpdate || currentTime - lastUpdateTime > 1000) {
                             lastUpdateTime = currentTime
-                            val currentTotalDownloaded = previousDownloaded + downloadedBytes.get()
-                            val effectiveTotalSize = if (combinedTotalSize > 0) combinedTotalSize else (previousDownloaded + totalSize)
-                            val displayProgress = if (effectiveTotalSize > 0) ((currentTotalDownloaded * 100) / effectiveTotalSize).toInt() else 0
+                            lastProgressUpdate = progress
                             
                             setForeground(createForegroundInfo(
-                                if (isPart) "Downloading $title (part)" else "Downloading $title",
-                                displayProgress
+                                if (isPart) "Downloading $title" else "Downloading $title",
+                                progress
                             ))
                             downloadDao.updateProgress(videoId, DownloadStatus.DOWNLOADING, currentTotalDownloaded, effectiveTotalSize)
                         }
@@ -274,6 +288,10 @@ class DownloadWorker @AssistedInject constructor(
             }
 
             jobs.awaitAll()
+            
+            // Explicitly flush to disk to avoid "tail stall" while OS clears cache
+            RandomAccessFile(file, "rw").use { it.channel.force(true) }
+
             downloadedBytes.get()
         } catch (e: Exception) {
             android.util.Log.e("DownloadWorker", "Parallel download failed: ${e.message}")
@@ -305,27 +323,33 @@ class DownloadWorker @AssistedInject constructor(
 
                 file.outputStream().use { output ->
                     body.byteStream().use { input ->
-                        val buffer = ByteArray(65536)
+                        val buffer = ByteArray(128 * 1024) // 128KB buffer for better throughput
                         var bytesRead: Int
+                        var lastProgressUpdate = 0
+                        
                         while (input.read(buffer).also { bytesRead = it } != -1) {
                             if (isStopped) throw CancellationException("Worker stopped")
                             output.write(buffer, 0, bytesRead)
                             downloaded += bytesRead
                             
+                            val effectiveTotalSize = if (combinedTotalSize > 0) combinedTotalSize else (previousDownloaded + totalSize)
+                            val currentTotalDownloaded = previousDownloaded + downloaded
+                            val progress = if (effectiveTotalSize > 0) ((currentTotalDownloaded * 100) / effectiveTotalSize).toInt() else 0
+                            
+                            // Throttled updates: every 1% change or if 1 second passed
                             val currentTime = System.currentTimeMillis()
-                            if (currentTime - lastUpdateTime > 500) {
+                            if (progress > lastProgressUpdate || currentTime - lastUpdateTime > 1000) {
                                 lastUpdateTime = currentTime
-                                val currentTotalDownloaded = previousDownloaded + downloaded
-                                val effectiveTotalSize = if (combinedTotalSize > 0) combinedTotalSize else (previousDownloaded + totalSize)
-                                val displayProgress = if (effectiveTotalSize > 0) ((currentTotalDownloaded * 100) / effectiveTotalSize).toInt() else 0
+                                lastProgressUpdate = progress
                                 
                                 setForeground(createForegroundInfo(
                                     if (isPart) "Downloading $title" else "Downloading $title",
-                                    displayProgress
+                                    progress
                                 ))
                                 downloadDao.updateProgress(videoId, DownloadStatus.DOWNLOADING, currentTotalDownloaded, effectiveTotalSize.coerceAtLeast(currentTotalDownloaded))
                             }
                         }
+                        output.flush() // Ensure final bytes are flushed
                     }
                 }
                 downloaded

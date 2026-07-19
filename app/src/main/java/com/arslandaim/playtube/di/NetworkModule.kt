@@ -29,13 +29,19 @@ object NetworkModule {
         val cache = Cache(cacheDirectory, cacheSize)
 
         val dispatcher = okhttp3.Dispatcher().apply {
-            maxRequests = 64
-            maxRequestsPerHost = 20
+            maxRequests = 128 // Increased from 64 for better background download concurrency
+            maxRequestsPerHost = 40 // Increased from 20 to allow more parallel chunks per server
         }
 
         return OkHttpClient.Builder()
             .cache(cache)
             .dispatcher(dispatcher)
+            .addInterceptor { chain ->
+                val request = chain.request().newBuilder()
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36")
+                    .build()
+                chain.proceed(request)
+            }
             .connectTimeout(30, TimeUnit.SECONDS) // Increased for slow networks
             .readTimeout(30, TimeUnit.SECONDS)    // Increased for slow networks
             .writeTimeout(30, TimeUnit.SECONDS)
