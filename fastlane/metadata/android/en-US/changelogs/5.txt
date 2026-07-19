@@ -1,0 +1,12 @@
+WHAT'S NEW IN VERSION (1.2.5)
+
+New Fluid Glass UI
+Added Search Sorting to Search results
+Added Subtitles support
+Improved Mini-Player transitions
+Dedicated Background Playback button in settings
+Fixed Screen OFF while watching a video
+Adaptive Landscape Mode
+Floating Home Screen Notification
+Much faster Playlist & Single Video Downloads
+Improved app performance
