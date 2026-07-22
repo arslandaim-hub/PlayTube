@@ -1,34 +1,38 @@
 <div align="center">
 
-# PlayTube
-
 <img src="fastlane/metadata/android/en-US/images/icon.png" alt="PlayTube Icon" width="120">
 
-<p>
-  <b>Fast, private, and feature-rich YouTube client for Android. No Ads, tracking or data collection</b>
-</p>
+# PlayTube
 
-<img src="fastlane/metadata/android/en-US/images/PlaytubefeatureGraphic.png" alt="PlayTube Feature Graphic" width="100%" style="max-width: 800px; border-radius: 12px; margin-top: 10px; margin-bottom: 20px;">
+**Fast, private, and feature-rich YouTube client for Android. No Ads, tracking, or data collection.**
+
+<img src="fastlane/metadata/android/en-US/images/PlaytubefeatureGraphic.png" alt="PlayTube Feature Graphic" width="100%">
 
 <br>
 
-<a href="https://github.com/arslandaim-hub/PlayTube/releases/latest"><img src="https://img.shields.io/badge/GET%20IT%20ON-GitHub-000000?style=for-the-badge&logo=github&logoColor=white" height="50" alt="Get it on GitHub" style="margin-right: 15px; margin-bottom: 4px;"></a><a href="https://f-droid.org/packages/com.arslandaim.playtube/"><img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" height="50" alt="Get it on F-Droid"></a>
+<a href="https://github.com/arslandaim-hub/PlayTube/releases/latest">
+  <img src="https://img.shields.io/badge/GET%20IT%20ON-GitHub-000000?style=for-the-badge&logo=github&logoColor=white" height="50" alt="Get it on GitHub">
+</a>
+&nbsp;&nbsp;
+<a href="https://f-droid.org/packages/com.arslandaim.playtube/">
+  <img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" height="50" alt="Get it on F-Droid">
+</a>
 
 </div>
 
 ---
 
 ## ✨ Key Features
-* Fluid Glass UI
-* Background Play Support
-* Picture-in-Picture Support
-* Subtitles Support
-* High quality video downloads up to 4K
-* Built-in video volume/brightness and Seek forward/backward gestures
-* Push up & down landscape/portrait modes
-* Subscription Management (No Gmail Required)
-* Search History & Privacy
-* Dynamic UI, Smooth, full-screen browsing experience.
+
+*   **Fluid Glass UI:** Dynamic, smooth, and full-screen browsing experience.
+*   **Background Play:** Keep listening while using other apps or with the screen off.
+*   **Picture-in-Picture (PiP):** Continue watching in a floating window.
+*   **Subtitles Support:** Fully integrated closed captions.
+*   **High-Quality Downloads:** Save videos locally in resolutions up to 4K.
+*   **Gesture Controls:** Built-in volume and brightness adjustments, plus seek forward/backward gestures.
+*   **Orientation Flexibility:** Seamless push up/down landscape and portrait modes.
+*   **Subscription Management:** Subscribe to your favorite channels directly (No Google account required).
+*   **Privacy First:** Local search history and strict privacy standards.
 
 ---
 
@@ -36,74 +40,62 @@
 
 | Category | Technology | Description |
 | :--- | :--- | :--- |
-| **App Architecture** | **MVVM** | (Model-View-ViewModel) |
-| | **Clean Architecture** | (Domain, Data & UI Layers) |
-| | **Repository Pattern** | Centralized data access from local and remote sources |
-| **Kotlin & Reactive**| **Kotlin Coroutines** | Handles asynchronous tasks and background operations |
-| | **StateFlow** | Reactive UI state management |
-| **UI Framework** | **Jetpack Compose** | 100% declarative UI toolkit |
-| | **Material Design 3** | Modern Android UI components and dynamic theming |
-| | **Compose Animations**| Smooth UI animations and transitions |
-| **Data Storage** | **Room Database** | Stores user Metadata |
-| | **Jetpack DataStore** | Stores user preferences such as PiP and History settings |
-| **Media & Networking**| **AndroidX Media3** | (ExoPlayer) video, audio playback |
-| | **Coil 3** | Fast image loading with caching |
-| | **NewPipeExtractor** | Extracts YouTube streams and metadata |
-| | **OkHttp** | HTTP networking client |
-| **Background & DI** | **Hilt (Dagger)** | Dependency Injection |
-| | **WorkManager** | Reliable background downloads |
-| **Build & Tooling** | **KSP** | Kotlin Symbol Processing annotation processing for Room & Hilt |
-| | **Version Catalogs** | Centralized dependency version management |
+| **App Architecture** | MVVM | Model-View-ViewModel architecture |
+| | Clean Architecture | Strict Domain, Data, & UI layer separation |
+| | Repository Pattern | Centralized data access from local and remote sources |
+| **Kotlin & Reactive** | Kotlin Coroutines | Asynchronous tasks and background operations |
+| | StateFlow | Reactive UI state management |
+| **UI Framework** | Jetpack Compose | 100% declarative UI toolkit |
+| | Material Design 3 | Modern Android UI components and dynamic theming |
+| | Compose Animations | Smooth UI animations and transitions |
+| **Data Storage** | Room Database | Stores local user metadata |
+| | Jetpack DataStore | Stores user preferences (e.g., PiP and History settings) |
+| **Media & Networking**| AndroidX Media3 | ExoPlayer integration for video/audio playback |
+| | Coil 3 | Fast, modern image loading with caching |
+| | NewPipeExtractor | Extracts YouTube streams and metadata |
+| | OkHttp | Reliable HTTP networking client |
+| **Background & DI** | Hilt (Dagger) | Dependency Injection framework |
+| | WorkManager | Guaranteed background task execution for downloads |
+| **Build & Tooling** | KSP | Kotlin Symbol Processing for Room & Hilt |
+| | Version Catalogs | Centralized dependency and version management |
 
 ---
 
 ## 📱 Screenshots
 
 <div align="center">
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/home.png" width="180" style="margin: 5px;">
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/library.png" width="180" style="margin: 5px;">
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/subscriptions.png" width="180" style="margin: 5px;">
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/settings.png" width="180" style="margin: 5px;">
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/search.png" width="180" style="margin: 5px;">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/home.png" width="18%" alt="Home Screen">
+  &nbsp;
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/library.png" width="18%" alt="Library Screen">
+  &nbsp;
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/subscriptions.png" width="18%" alt="Subscriptions Screen">
+  &nbsp;
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/settings.png" width="18%" alt="Settings Screen">
+  &nbsp;
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/search.png" width="18%" alt="Search Screen">
 </div>
 
 <br>
 
-<div align="center">
-  <h2 style="color: #d73a49;">🛑 WARNING 🛑</h2>
-  <p style="color: #d73a49; font-weight: bold; font-size: 16px;">
-    Publishing this app on the Google Play Store violates their Terms of Service.
-  </p>
-</div>
-
-<br>
-
+> [!WARNING]
+> **Publishing this app on the Google Play Store violates their Terms of Service.**
 
 ---
 
 ## Support PlayTube
 
-If you enjoy using **PlayTube** and would like to support its continued development, consider becoming a patron.
-
-Your support helps fixing bugs and long-term maintenance.
+If you enjoy using PlayTube and would like to support its continued development, consider becoming a patron. Your support helps fix bugs and ensures long-term maintenance of the project.
 
 <div align="center">
-
-<a href="https://patreon.com/ArslanDaim77">
-  <img src="https://img.shields.io/badge/Become%20a%20Patron-Patreon-FF424D?style=for-the-badge&logo=patreon&logoColor=white" alt="Become a Patron">
-</a>
-
+  <a href="https://patreon.com/ArslanDaim77">
+    <img src="https://img.shields.io/badge/Become%20a%20Patron-Patreon-FF424D?style=for-the-badge&logo=patreon&logoColor=white" alt="Become a Patron">
+  </a>
 </div>
-
-<p align="center">
-</p>
-
 
 ---
 
 ## 📌 Important Notes
 
-* **Subscriptions:** Subscriptions tab in home screen shows videos only when you subscribe to a channel. Videos in subscriptions tab appear only from subscribed channels.
-* **Recommendations:** The home page suggests videos based on your search history. If search history is paused, the app will not suggest search related videos in home screen.
-
-
+*   **Subscriptions:** The Subscriptions tab on the home screen only populates when you subscribe to a channel. Videos in this tab are strictly from your subscribed channels.
+*   **Recommendations:** The home page suggests videos based on your search history. If you pause your search history in the settings, the app will stop suggesting search-related videos on the home screen.
+*   
