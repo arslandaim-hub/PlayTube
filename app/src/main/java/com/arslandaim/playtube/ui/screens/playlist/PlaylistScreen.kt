@@ -198,7 +198,7 @@ private fun PlaylistContent(
                             }
                         }
 
-                        items(details.videos) { video ->
+                        items(details.videos, key = { it.id }) { video ->
                             Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                                 VideoItemRow(
                                     video = video,

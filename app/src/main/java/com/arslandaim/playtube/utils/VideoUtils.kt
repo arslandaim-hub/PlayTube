@@ -70,6 +70,17 @@ object VideoUtils {
         return date
     }
 
+    fun formatDuration(seconds: Long): String {
+        val h = seconds / 3600
+        val m = (seconds % 3600) / 60
+        val s = seconds % 60
+        return if (h > 0) {
+            String.format(java.util.Locale.getDefault(), "%d:%02d:%02d", h, m, s)
+        } else {
+            String.format(java.util.Locale.getDefault(), "%d:%02d", m, s)
+        }
+    }
+
     fun extractChannelId(url: String?): String? {
         if (url == null) return null
         val trimmed = url.trim()

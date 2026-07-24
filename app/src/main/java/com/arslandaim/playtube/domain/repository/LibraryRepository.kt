@@ -16,6 +16,7 @@ interface LibraryRepository {
     // History
     fun getHistory(): Flow<List<HistoryEntity>>
     suspend fun addToHistory(history: HistoryEntity)
+    suspend fun updateWatchProgress(videoId: String, progressMs: Long, durationMs: Long)
     suspend fun removeFromHistory(videoId: String)
     suspend fun clearHistory()
 

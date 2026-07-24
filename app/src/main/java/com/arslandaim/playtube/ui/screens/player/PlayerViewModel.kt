@@ -5,10 +5,14 @@
 */
 package com.arslandaim.playtube.ui.screens.player
 
+import android.content.Context
+import android.content.Intent
+import com.arslandaim.playtube.services.PlaybackService
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
@@ -23,9 +27,9 @@ import com.arslandaim.playtube.data.local.PreferencesManager
 import com.arslandaim.playtube.data.local.SubscriptionEntity
 import com.arslandaim.playtube.domain.model.StreamBundle
 import com.arslandaim.playtube.domain.model.StreamItem
-import com.arslandaim.playtube.domain.model.SubtitleItem
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.domain.repository.DownloadRepository
+import com.arslandaim.playtube.domain.repository.LibraryRepository
 import com.arslandaim.playtube.domain.usecase.AddToHistoryUseCase
 import com.arslandaim.playtube.domain.usecase.DownloadVideoUseCase
 import com.arslandaim.playtube.domain.usecase.GetVideoStreamsUseCase
@@ -33,6 +37,7 @@ import com.arslandaim.playtube.domain.usecase.IsFavoriteUseCase
 import com.arslandaim.playtube.domain.usecase.IsSubscribedUseCase
 import com.arslandaim.playtube.domain.usecase.ToggleFavoriteUseCase
 import com.arslandaim.playtube.domain.usecase.ToggleSubscriptionUseCase
+import com.arslandaim.playtube.ui.components.DownloadDialogState
 import com.arslandaim.playtube.utils.VideoUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -40,14 +45,19 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.schabi.newpipe.extractor.Page
 import java.io.File
 import javax.inject.Inject
+import kotlin.math.abs
 
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context,
     private val getVideoStreamsUseCase: GetVideoStreamsUseCase,
     private val downloadVideoUseCase: DownloadVideoUseCase,
     val downloadRepository: DownloadRepository,
+    val libraryRepository: LibraryRepository,
+    private val videoRepository: com.arslandaim.playtube.domain.repository.VideoRepository,
     private val addToHistoryUseCase: AddToHistoryUseCase,
     private val toggleFavoriteUseCase: ToggleFavoriteUseCase,
     private val isFavoriteUseCase: IsFavoriteUseCase,
@@ -74,6 +84,16 @@ class PlayerViewModel @Inject constructor(
     private val _isCcEnabled = MutableStateFlow(false)
     val isCcEnabled: StateFlow<Boolean> = _isCcEnabled.asStateFlow()
 
+    // Playback Progress
+    private val _currentPosition = MutableStateFlow(0L)
+    val currentPosition: StateFlow<Long> = _currentPosition.asStateFlow()
+
+    private val _duration = MutableStateFlow(0L)
+    val duration: StateFlow<Long> = _duration.asStateFlow()
+
+    private val _bufferedPosition = MutableStateFlow(0L)
+    val bufferedPosition: StateFlow<Long> = _bufferedPosition.asStateFlow()
+
     private val _currentQuality = MutableStateFlow<String?>(null)
     val currentQuality: StateFlow<String?> = _currentQuality.asStateFlow()
 
@@ -93,6 +113,10 @@ class PlayerViewModel @Inject constructor(
     private val _snackbarMessage = MutableSharedFlow<String>()
     val snackbarMessage: SharedFlow<String> = _snackbarMessage.asSharedFlow()
 
+    // Download Dialog States
+    private val _downloadState = MutableStateFlow<DownloadDialogState>(DownloadDialogState.Idle)
+    val downloadState: StateFlow<DownloadDialogState> = _downloadState.asStateFlow()
+
     val downloadedVideoIds: StateFlow<Set<String>> = downloadRepository.getAllDownloads()
         .map { list -> 
             list.filter { it.status == DownloadStatus.COMPLETED }
@@ -102,12 +126,42 @@ class PlayerViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
     private var currentBundle: StreamBundle? = null
+    private var currentVideoItem: VideoItem? = null
     private var currentVideoId: String? = null
     private var loadingJob: Job? = null
+    private var progressJob: Job? = null
+    private var nextRelatedPage: Page? = null
+    private var isFetchingNextRelatedPage = false
+    private var lastSavedPosition = 0L
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
             _isBuffering.value = playbackState == Player.STATE_BUFFERING
+            _duration.value = player.duration.coerceAtLeast(0L)
+            
+            if (playbackState == Player.STATE_READY) {
+                startProgressUpdate()
+            } else {
+                stopProgressUpdate()
+            }
+
+            if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) {
+                saveWatchProgress()
+            }
+        }
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (!isPlaying) {
+                saveWatchProgress()
+            }
+        }
+
+        override fun onPositionDiscontinuity(
+            oldPosition: Player.PositionInfo,
+            newPosition: Player.PositionInfo,
+            reason: Int
+        ) {
+            _currentPosition.value = newPosition.positionMs
         }
 
         override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
@@ -124,6 +178,8 @@ class PlayerViewModel @Inject constructor(
     }
 
     init {
+        // Ensure we don't have multiple listeners if ViewModel is recreated
+        player.removeListener(playerListener)
         player.addListener(playerListener)
         
         // Load persistent CC preference
@@ -138,6 +194,7 @@ class PlayerViewModel @Inject constructor(
     fun loadVideo(video: VideoItem) {
         val videoId = video.id
         if (videoId.isBlank()) return
+        currentVideoItem = video
 
         // If it's the same video and it's already playing/buffering, don't reload
         // Exception: If the current state is Error, we should allow a retry
@@ -169,11 +226,20 @@ class PlayerViewModel @Inject constructor(
         
         loadingJob?.cancel()
         currentVideoId = videoId
+        nextRelatedPage = null
+        lastSavedPosition = 0L
         
         // Reset player for new content
         player.stop()
         player.clearMediaItems()
         miniPlayerManager.onNewVideoSelected(video)
+        
+        // Start the PlaybackService ONLY if background play is enabled
+        viewModelScope.launch {
+            if (preferencesManager.isBackgroundPlayEnabled.first()) {
+                context.startService(Intent(context, PlaybackService::class.java))
+            }
+        }
         
         loadingJob = viewModelScope.launch {
             _uiState.value = PlayerUiState.Loading
@@ -196,6 +262,13 @@ class PlayerViewModel @Inject constructor(
                 val exists = withContext(Dispatchers.IO) { localFile.exists() }
                 if (exists) {
                     android.util.Log.d("PlayerViewModel", "Local file exists at ${downloadedVideo.filePath}. Playing offline.")
+                    
+                    val metadata = MediaMetadata.Builder()
+                        .setTitle(downloadedVideo.title)
+                        .setArtist(downloadedVideo.uploaderName)
+                        .setArtworkUri(downloadedVideo.thumbnailUrl.let { android.net.Uri.parse(it) })
+                        .build()
+
                     // Minimal bundle for UI, using local file for playback
                     val localBundle = StreamBundle(
                         videoStreams = emptyList(),
@@ -212,9 +285,18 @@ class PlayerViewModel @Inject constructor(
                     currentBundle = localBundle
                     _uiState.value = PlayerUiState.Success(downloadedVideo.title, downloadedVideo.uploaderName, localBundle)
                     
-                    val mediaItem = MediaItem.fromUri(android.net.Uri.fromFile(localFile))
+                    val mediaItem = MediaItem.Builder()
+                        .setUri(android.net.Uri.fromFile(localFile))
+                        .setMediaId(videoId)
+                        .setMediaMetadata(metadata)
+                        .build()
+
                     player.setMediaItem(mediaItem)
                     player.prepare()
+
+                    // Try to resume from history
+                    resumeFromHistory(videoId)
+
                     player.playWhenReady = true
                     _currentQuality.value = "Local (${downloadedVideo.quality})"
                     return@launch
@@ -227,6 +309,7 @@ class PlayerViewModel @Inject constructor(
             getVideoStreamsUseCase(videoId)
                 .onSuccess { bundle ->
                     currentBundle = bundle
+                    nextRelatedPage = bundle.nextRelatedVideosPage
                     _uiState.value = PlayerUiState.Success(bundle.title, bundle.uploaderName, bundle)
                     
                     // Watch subscription status
@@ -260,7 +343,9 @@ class PlayerViewModel @Inject constructor(
                         ?: bundle.videoStreams.firstOrNull() // Lowest quality if sorted ascending
 
                     initialStream?.let { stream ->
-                        setMediaSource(stream)
+                        // Try to resume from history before setting media source
+                        val resumePos = getResumePosition(videoId)
+                        setMediaSource(stream, resumePos)
                     }
                 }
                 .onFailure { exception ->
@@ -274,18 +359,64 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun toggleFavorite() {
-        val bundle = currentBundle ?: return
-        val videoId = currentVideoId ?: return
+    private suspend fun getResumePosition(videoId: String): Long {
+        val history = libraryRepository.getHistory().first()
+        val item = history.find { it.videoId == videoId }
+        return if (item != null && item.durationMs > 0) {
+            // Don't resume if very close to end (e.g. 95%)
+            if (item.progressMs > item.durationMs * 0.95) 0 else item.progressMs
+        } else 0
+    }
+
+    private suspend fun resumeFromHistory(videoId: String) {
+        val resumePos = getResumePosition(videoId)
+        if (resumePos > 0) {
+            player.seekTo(resumePos)
+            lastSavedPosition = resumePos
+        }
+    }
+
+    fun loadNextRelatedPage() {
+        val currentId = currentVideoId
+        val currentPage = nextRelatedPage
+        if (isFetchingNextRelatedPage || currentPage == null || currentId == null) return
+
+        isFetchingNextRelatedPage = true
         viewModelScope.launch {
+            try {
+                val result = videoRepository.fetchNextRelatedPage(currentId, currentPage)
+                val currentState = _uiState.value
+                if (currentState is PlayerUiState.Success) {
+                    nextRelatedPage = result.nextPage
+                    val updatedBundle = currentState.bundle.copy(
+                        relatedVideos = currentState.bundle.relatedVideos + result.items,
+                        nextRelatedVideosPage = result.nextPage
+                    )
+                    currentBundle = updatedBundle
+                    _uiState.value = PlayerUiState.Success(currentState.title, currentState.uploader, updatedBundle)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            isFetchingNextRelatedPage = false
+        }
+    }
+
+    fun toggleFavorite(video: VideoItem? = null) {
+        val targetVideo = video ?: currentVideoItem ?: return
+        val videoId = targetVideo.id
+        
+        viewModelScope.launch {
+            val isFav = libraryRepository.isFavorite(videoId).first()
             toggleFavoriteUseCase(
                 FavoriteEntity(
                     videoId = videoId,
-                    title = bundle.title,
-                    thumbnailUrl = bundle.thumbnailUrl ?: "",
-                    uploaderName = bundle.uploaderName
+                    title = targetVideo.title,
+                    thumbnailUrl = targetVideo.thumbnailUrl,
+                    uploaderName = targetVideo.uploaderName
                 )
             )
+            _snackbarMessage.emit(if (isFav) "Removed from Favorites" else "Added to Favorites")
         }
     }
 
@@ -304,10 +435,21 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun download(url: String?, quality: String?, format: String?, isAdaptive: Boolean = false) {
-        val bundle = currentBundle ?: return
-        val videoId = currentVideoId ?: return
-        
+    fun prepareDownload(video: VideoItem? = null) {
+        val targetVideo = video ?: currentVideoItem ?: return
+        viewModelScope.launch {
+            _downloadState.value = DownloadDialogState.Loading(targetVideo)
+            getVideoStreamsUseCase(targetVideo.id)
+                .onSuccess { bundle ->
+                    _downloadState.value = DownloadDialogState.ShowDialog(targetVideo, bundle)
+                }
+                .onFailure {
+                    _downloadState.value = DownloadDialogState.Idle
+                }
+        }
+    }
+
+    fun download(video: VideoItem, bundle: StreamBundle, url: String?, quality: String?, format: String?, isAdaptive: Boolean) {
         viewModelScope.launch {
             val audioUrl = if (isAdaptive) {
                 val isWebm = format?.contains("webm", ignoreCase = true) == true
@@ -330,22 +472,36 @@ class PlayerViewModel @Inject constructor(
             } else null
 
             downloadVideoUseCase(
-                videoId = videoId,
+                videoId = video.id,
                 url = url,
-                title = bundle.title,
-                thumbnailUrl = bundle.thumbnailUrl ?: "",
-                uploaderName = bundle.uploaderName,
+                title = video.title,
+                thumbnailUrl = video.thumbnailUrl,
+                uploaderName = video.uploaderName,
                 quality = quality,
                 format = format,
                 audioUrl = audioUrl
             )
             _snackbarMessage.emit("Downloading started")
+            _downloadState.value = DownloadDialogState.Idle
         }
+    }
+
+    fun dismissDownloadDialog() {
+        _downloadState.value = DownloadDialogState.Idle
     }
 
     @androidx.annotation.OptIn(UnstableApi::class)
     private fun setMediaSource(stream: StreamItem, startPosition: Long = 0) {
-        // 1. Map available subtitles to native SubtitleConfigurations
+        val bundle = currentBundle
+        
+        // 1. Build MediaMetadata for the MediaItem
+        val metadata = MediaMetadata.Builder()
+            .setTitle(bundle?.title ?: currentVideoItem?.title ?: "Unknown Title")
+            .setArtist(bundle?.uploaderName ?: currentVideoItem?.uploaderName ?: "Unknown Channel")
+            .setArtworkUri(bundle?.thumbnailUrl?.let { android.net.Uri.parse(it) } ?: currentVideoItem?.thumbnailUrl?.let { android.net.Uri.parse(it) })
+            .build()
+
+        // 2. Map available subtitles to native SubtitleConfigurations
         val subtitleConfigs = currentBundle?.subtitles?.filter { it.url.isNotBlank() }?.map { subtitle ->
             val mimeType = when (subtitle.format.lowercase()) {
                 "vtt" -> MimeTypes.TEXT_VTT
@@ -360,14 +516,15 @@ class PlayerViewModel @Inject constructor(
                 .build()
         } ?: emptyList()
 
-        // 2. Build the primary MediaItem
+        // 3. Build the primary MediaItem with Metadata
         val mediaItem = MediaItem.Builder()
             .setUri(stream.url)
             .setMediaId(currentVideoId ?: "")
+            .setMediaMetadata(metadata)
             .setSubtitleConfigurations(subtitleConfigs)
             .build()
 
-        // 3. Set the media source using DefaultMediaSourceFactory logic.
+        // 4. Set the media source using DefaultMediaSourceFactory logic.
         // For adaptive, we still need to merge with audio, but we MUST use the factory 
         // to ensure SubtitleConfigurations are processed.
         val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
@@ -394,6 +551,7 @@ class PlayerViewModel @Inject constructor(
         player.prepare()
         if (startPosition > 0) {
             player.seekTo(startPosition)
+            lastSavedPosition = startPosition
         }
         player.playWhenReady = true
         _currentQuality.value = stream.quality
@@ -438,6 +596,45 @@ class PlayerViewModel @Inject constructor(
         player.trackSelectionParameters = parametersBuilder.build()
     }
 
+    private fun startProgressUpdate() {
+        progressJob?.cancel()
+        progressJob = viewModelScope.launch {
+            while (true) {
+                val pos = player.currentPosition
+                val dur = player.duration.coerceAtLeast(0L)
+                _currentPosition.value = pos
+                _duration.value = dur
+                _bufferedPosition.value = player.bufferedPosition
+                
+                // Debounced save (every 15 seconds or significant jump)
+                if (abs(pos - lastSavedPosition) >= 15000) {
+                    saveWatchProgress()
+                }
+                
+                kotlinx.coroutines.delay(500)
+            }
+        }
+    }
+
+    private fun saveWatchProgress() {
+        val videoId = currentVideoId ?: return
+        val position = player.currentPosition
+        val duration = player.duration
+        
+        if (duration <= 0) return
+        
+        lastSavedPosition = position
+        viewModelScope.launch(Dispatchers.IO) {
+            if (preferencesManager.isHistoryEnabled.first()) {
+                libraryRepository.updateWatchProgress(videoId, position, duration)
+            }
+        }
+    }
+
+    private fun stopProgressUpdate() {
+        progressJob?.cancel()
+    }
+
     fun setQuality(stream: StreamItem) {
         val currentPosition = player.currentPosition
         setMediaSource(stream, currentPosition)
@@ -446,6 +643,12 @@ class PlayerViewModel @Inject constructor(
     fun setPlaybackSpeed(speed: Float) {
         _playbackSpeed.value = speed
         player.setPlaybackSpeed(speed)
+    }
+
+    fun seekTo(position: Long) {
+        player.seekTo(position)
+        _currentPosition.value = position
+        saveWatchProgress()
     }
 
     private var seekJob: Job? = null
@@ -469,6 +672,7 @@ class PlayerViewModel @Inject constructor(
             kotlinx.coroutines.delay(800)
             _showSeekFeedback.value = false
             _seekAmount.value = 0
+            saveWatchProgress()
         }
     }
 
@@ -492,12 +696,15 @@ class PlayerViewModel @Inject constructor(
             uploaderUrl = bundle.uploaderUrl,
             viewCount = bundle.viewCount ?: 0,
             uploadDate = bundle.uploadDate,
-            duration = player.duration / 1000 // In seconds
+            rawUploadDate = null,
+            duration = player.duration / 1000, // In seconds
+            watchProgress = if (player.duration > 0) player.currentPosition.toFloat() / player.duration else null
         )
         miniPlayerManager.minimize(videoItem)
     }
 
     fun stopPlayback() {
+        saveWatchProgress()
         loadingJob?.cancel()
         loadingJob = null
         player.pause()
@@ -510,6 +717,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        saveWatchProgress()
         super.onCleared()
         // DO NOT stop the player here if the activity is just recreating
         // but we handle cleanup in MainActivity.onStop/onDestroy

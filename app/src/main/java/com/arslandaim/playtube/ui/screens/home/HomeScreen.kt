@@ -28,11 +28,17 @@ import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.ui.components.DownloadSelectionSheet
 import com.arslandaim.playtube.ui.components.VideoListSkeleton
 import com.arslandaim.playtube.ui.components.VideoList
+import com.arslandaim.playtube.ui.components.DownloadDialogState
 
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.res.stringResource
 import com.arslandaim.playtube.R
-import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
 
 @Composable
 fun HomeScreen(
@@ -47,7 +53,7 @@ fun HomeScreen(
     val favorites by libraryViewModel.favorites.collectAsState()
     
     // Optimized: Using remember(favorites) for ID mapping to avoid O(N) mapping on every recomposition
-    val favoriteIds = remember(favorites) { 
+    val favoriteIds = remember(favorites) {
         favorites.map { it.videoId }.toSet()
     }
     
@@ -68,10 +74,12 @@ fun HomeScreen(
         onTabSelected = viewModel::onTabSelected,
         onCategorySelected = viewModel::onCategorySelected,
         onRefresh = viewModel::refresh,
+        onLoadMore = viewModel::loadNextTrendingPage,
         onFavoriteClick = viewModel::toggleFavorite,
         onDownloadClick = viewModel::prepareDownload,
         onDownloadConfirm = viewModel::download,
         onDismissDownload = viewModel::dismissDownloadDialog,
+        onPersonalizedNotifyShown = viewModel::onPersonalizedNotifyShown,
         onBarsVisibilityChange = onBarsVisibilityChange,
         onVideoClick = onVideoClick,
         onChannelClick = onChannelClick
@@ -92,10 +100,12 @@ private fun HomeContent(
     onTabSelected: (Int) -> Unit,
     onCategorySelected: (String) -> Unit,
     onRefresh: () -> Unit,
+    onLoadMore: () -> Unit,
     onFavoriteClick: (VideoItem) -> Unit,
     onDownloadClick: (VideoItem) -> Unit,
     onDownloadConfirm: (VideoItem, com.arslandaim.playtube.domain.model.StreamBundle, String?, String?, String?, Boolean) -> Unit,
     onDismissDownload: () -> Unit,
+    onPersonalizedNotifyShown: () -> Unit,
     onBarsVisibilityChange: (Boolean) -> Unit,
     onVideoClick: (VideoItem) -> Unit,
     onChannelClick: (String) -> Unit
@@ -112,7 +122,47 @@ private fun HomeContent(
     val categories = remember { listOf("All", "Music", "Gaming", "News", "Learning", "Trending") }
     
     val pagerState = rememberPagerState(pageCount = { tabs.size })
-    val scrollVisibilityConnection = rememberScrollVisibilityConnection(onBarsVisibilityChange)
+    
+    // Header Scroll State
+    val density = LocalDensity.current
+    var headerHeightPx by remember { mutableFloatStateOf(0f) }
+    var headerOffsetPx by remember { mutableFloatStateOf(0f) }
+
+    val connection = remember(headerHeightPx) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val delta = available.y
+                
+                // Bottom Bar Hiding Logic (Binary Toggle for global Bars)
+                if (delta < -15f) onBarsVisibilityChange(false)
+                if (delta > 15f) onBarsVisibilityChange(true)
+
+                // Scrolling Down: Collapse Header
+                if (delta < 0 && headerOffsetPx > -headerHeightPx) {
+                    val newOffset = (headerOffsetPx + delta).coerceIn(-headerHeightPx, 0f)
+                    val consumed = newOffset - headerOffsetPx
+                    headerOffsetPx = newOffset
+                    return Offset(0f, consumed)
+                }
+                
+                // Scrolling Up: Expand Header
+                // Check if we are at the top of the list or scrolling up significantly
+                if (delta > 0 && headerOffsetPx < 0f) {
+                    val newOffset = (headerOffsetPx + delta).coerceIn(-headerHeightPx, 0f)
+                    val consumed = newOffset - headerOffsetPx
+                    headerOffsetPx = newOffset
+                    return Offset(0f, consumed)
+                }
+
+                return Offset.Zero
+            }
+        }
+    }
+
+    // Ensure Bars are initially visible
+    LaunchedEffect(Unit) {
+        onBarsVisibilityChange(true)
+    }
 
     LaunchedEffect(selectedTab) {
         if (pagerState.currentPage != selectedTab) {
@@ -127,7 +177,7 @@ private fun HomeContent(
     }
 
     val pullToRefreshState = rememberPullToRefreshState()
-    
+
     // Floating Notification State
     var showPersonalizedNotify by remember { mutableStateOf(false) }
     
@@ -136,18 +186,95 @@ private fun HomeContent(
             showPersonalizedNotify = true
             kotlinx.coroutines.delay(4000)
             showPersonalizedNotify = false
+            onPersonalizedNotifyShown()
         }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { onRefresh() },
+            state = pullToRefreshState,
             modifier = Modifier
                 .fillMaxSize()
-                .nestedScroll(scrollVisibilityConnection)
+                .nestedScroll(connection)
+        ) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                userScrollEnabled = true
+            ) { pageIndex ->
+                val videos = if (pageIndex == 0) state.trendingVideos else state.subscriptionVideos
+                val isLoading = if (pageIndex == 0) state.isTrendingLoading else state.isSubscriptionsLoading
+
+                if (isLoading && videos.isEmpty()) {
+                    VideoListSkeleton()
+                } else if (state.error != null && videos.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = state.error,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(onClick = { onRefresh() }) {
+                                Text(stringResource(R.string.retry))
+                            }
+                        }
+                    }
+                } else {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        if (videos.isEmpty() && pageIndex == 1) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(stringResource(R.string.no_subscriptions_videos))
+                            }
+                        } else if (videos.isEmpty() && !isLoading) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(stringResource(R.string.no_videos_found))
+                            }
+                        } else {
+                            VideoList(
+                                videos = videos,
+                                downloadedIds = downloadedIds,
+                                favoriteIds = favoriteIds,
+                                onVideoClick = onVideoClick,
+                                onChannelClick = onChannelClick,
+                                onFavoriteClick = onFavoriteClick,
+                                onDownloadClick = onDownloadClick,
+                                onLoadMore = if (pageIndex == 0 && state.nextTrendingPage != null) onLoadMore else null,
+                                contentPadding = PaddingValues(
+                                    top = with(density) { headerHeightPx.toDp() },
+                                    bottom = 100.dp
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Collapsible Header (Tabs + Categories)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .onGloballyPositioned { layoutCoordinates ->
+                    val newHeight = layoutCoordinates.size.height.toFloat()
+                    if (headerHeightPx != newHeight) {
+                        headerHeightPx = newHeight
+                    }
+                }
+                .graphicsLayer { translationY = headerOffsetPx }
         ) {
             SecondaryTabRow(
                 selectedTabIndex = selectedTab,
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), // Glass Effect
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
                 contentColor = MaterialTheme.colorScheme.onSurface,
                 divider = {},
                 indicator = {
@@ -161,15 +288,15 @@ private fun HomeContent(
                 tabs.forEachIndexed { index, title ->
                     val icon = if (index == 0) Icons.Default.AutoAwesome else Icons.Default.Subscriptions
                     val isTabLoading = if (index == 0) state.isTrendingLoading else state.isSubscriptionsLoading
-                    
+
                     Tab(
                         selected = selectedTab == index,
                         onClick = { onTabSelected(index) },
-                        text = { 
+                        text = {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.padding(vertical = 8.dp)
-                            ) { 
+                            ) {
                                 Box(modifier = Modifier.size(20.dp), contentAlignment = Alignment.Center) {
                                     if (isTabLoading) {
                                         CircularProgressIndicator(
@@ -200,136 +327,78 @@ private fun HomeContent(
             }
 
             if (selectedTab == 0) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(vertical = 12.dp, horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                Surface(
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    categories.forEach { category ->
-                        val isSelected = selectedCategory == category
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = { onCategorySelected(category) },
-                            label = { Text(category) },
-                            shape = CircleShape,
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), // Glass Effect
-                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            ),
-                            border = null
-                        )
-                    }
-                }
-            }
-
-
-            PullToRefreshBox(
-                isRefreshing = isRefreshing,
-                onRefresh = { onRefresh() },
-                state = pullToRefreshState,
-                modifier = Modifier.fillMaxSize()
-            ) {
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
-                    userScrollEnabled = true
-                ) { pageIndex ->
-                    val videos = if (pageIndex == 0) state.trendingVideos else state.subscriptionVideos
-                    val isLoading = if (pageIndex == 0) state.isTrendingLoading else state.isSubscriptionsLoading
-
-                    if (isLoading && videos.isEmpty()) {
-                        VideoListSkeleton()
-                    } else if (state.error != null && videos.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = state.error,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Button(onClick = { onRefresh() }) {
-                                    Text(stringResource(R.string.retry))
-                                }
-                            }
-                        }
-                    } else {
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            if (videos.isEmpty() && pageIndex == 1) {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(stringResource(R.string.no_subscriptions_videos))
-                                }
-                            } else if (videos.isEmpty() && !isLoading) {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(stringResource(R.string.no_videos_found))
-                                }
-                            } else {
-                                VideoList(
-                                    videos = videos,
-                                    downloadedIds = downloadedIds,
-                                    favoriteIds = favoriteIds,
-                                    onVideoClick = onVideoClick,
-                                    onChannelClick = onChannelClick,
-                                    onFavoriteClick = onFavoriteClick,
-                                    onDownloadClick = onDownloadClick
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Quick Action Dialogs
-            when (val downloadDialogState = downloadState) {
-                is DownloadDialogState.Loading -> {
-                    AlertDialog(
-                        onDismissRequest = { onDismissDownload() },
-                        confirmButton = {},
-                        title = { Text(stringResource(R.string.loading)) },
-                        text = {
-                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator()
-                            }
-                        }
-                    )
-                }
-                is DownloadDialogState.ShowDialog -> {
-                    DownloadSelectionSheet(
-                        videoStreams = downloadDialogState.bundle.videoStreams,
-                        audioStreams = downloadDialogState.bundle.audioStreams,
-                        onDismiss = { onDismissDownload() },
-                        onDownload = { stream ->
-                            onDownloadConfirm(
-                                downloadDialogState.video,
-                                downloadDialogState.bundle,
-                                stream.url,
-                                stream.quality,
-                                stream.format,
-                                stream.isAdaptive
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(vertical = 12.dp, horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        categories.forEach { category ->
+                            val isSelected = selectedCategory == category
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { onCategorySelected(category) },
+                                label = { Text(category) },
+                                shape = CircleShape,
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                ),
+                                border = null
                             )
                         }
-                    )
-                }
-                else -> {}
-            }
-
-            state.error?.let { error ->
-                LaunchedEffect(error) {
-                    snackbarHostState.showSnackbar(error)
+                    }
                 }
             }
         }
-        
+
+        // Quick Action Dialogs
+        when (val downloadDialogState = downloadState) {
+            DownloadDialogState.Idle -> {}
+            is DownloadDialogState.Loading -> {
+                AlertDialog(
+                    onDismissRequest = { onDismissDownload() },
+                    confirmButton = {},
+                    title = { Text(stringResource(R.string.loading)) },
+                    text = {
+                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                )
+            }
+            is DownloadDialogState.ShowDialog -> {
+                DownloadSelectionSheet(
+                    videoStreams = downloadDialogState.bundle.videoStreams,
+                    audioStreams = downloadDialogState.bundle.audioStreams,
+                    onDismiss = { onDismissDownload() },
+                    onDownload = { stream ->
+                        onDownloadConfirm(
+                            downloadDialogState.video,
+                            downloadDialogState.bundle,
+                            stream.url,
+                            stream.quality,
+                            stream.format,
+                            stream.isAdaptive
+                        )
+                    }
+                )
+            }
+        }
+
+        state.error?.let { error ->
+            LaunchedEffect(error) {
+                snackbarHostState.showSnackbar(error)
+            }
+        }
+
         // Floating Personalized Notification
         Box(
             modifier = Modifier
@@ -343,7 +412,7 @@ private fun HomeContent(
                 exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
             ) {
                 Surface(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f), // True Glass Effect
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
                     shape = CircleShape,
                     tonalElevation = 8.dp,
                     shadowElevation = 12.dp,
@@ -360,7 +429,7 @@ private fun HomeContent(
                         Icon(
                             imageVector = Icons.Default.AutoAwesome,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary, // Red as accent only
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
@@ -381,10 +450,8 @@ private fun HomeContent(
                 }
             }
         }
-    }
-    
-    // Snackbar overlay
-    Box(modifier = Modifier.fillMaxSize()) {
+
+        // Snackbar overlay
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp)

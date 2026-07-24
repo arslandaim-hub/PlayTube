@@ -5,6 +5,9 @@
 */
 package com.arslandaim.playtube.domain.model
 
+import androidx.compose.runtime.Stable
+
+@Stable
 data class VideoItem(
     val id: String,
     val title: String,
@@ -15,5 +18,7 @@ data class VideoItem(
     val viewCount: Long,
     val subscriberCount: Long? = null,
     val uploadDate: String?,
-    val duration: Long // in seconds
+    val rawUploadDate: Long? = null, // Epoch milliseconds for precise sorting
+    val duration: Long, // in seconds
+    val watchProgress: Float? = null // 0.0 to 1.0
 )

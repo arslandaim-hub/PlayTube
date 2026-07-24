@@ -5,45 +5,272 @@
 */
 package com.arslandaim.playtube.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.res.stringResource
-import com.arslandaim.playtube.R
 import coil3.compose.AsyncImage
+import com.arslandaim.playtube.R
 import com.arslandaim.playtube.domain.model.VideoItem
-import java.util.Locale
-
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.ui.platform.LocalConfiguration
+import com.arslandaim.playtube.domain.model.SearchItem
+import com.arslandaim.playtube.domain.model.PlaylistItem
+import com.arslandaim.playtube.utils.VideoUtils
 import android.content.res.Configuration
+
+@Composable
+fun PremiumChannelCard(
+    channel: SearchItem.Channel,
+    onToggleSubscription: () -> Unit,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 16.dp, horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AsyncImage(
+            model = channel.thumbnailUrl,
+            contentDescription = null,
+            modifier = Modifier
+                .size(84.dp)
+                .clip(CircleShape),
+            contentScale = ContentScale.Crop,
+            filterQuality = FilterQuality.Medium
+        )
+        
+        Spacer(modifier = Modifier.width(16.dp))
+        
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = channel.name,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            
+            if (channel.subscriberCount != null && channel.subscriberCount >= 0) {
+                Text(
+                    text = stringResource(R.string.subscribers_count, VideoUtils.formatNumber(channel.subscriberCount)),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            
+            channel.description?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        
+        if (channel.isSubscribed) {
+            FilledTonalButton(
+                onClick = onToggleSubscription,
+                shape = CircleShape,
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                modifier = Modifier.height(36.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.subscribed),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        } else {
+            Button(
+                onClick = onToggleSubscription,
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.onSurface,
+                    contentColor = MaterialTheme.colorScheme.surface
+                ),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                modifier = Modifier.height(36.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.subscribe),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun PremiumPlaylistCard(
+    playlist: PlaylistItem,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(bottom = 12.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+        ) {
+            // Stack Effect Layer 1 (Bottom)
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.85f)
+                    .fillMaxHeight(0.85f)
+                    .align(Alignment.TopCenter)
+                    .offset(y = 8.dp)
+                    .graphicsLayer { alpha = 0.4f },
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shadowElevation = 2.dp
+            ) {}
+
+            // Stack Effect Layer 2 (Middle)
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .fillMaxHeight(0.92f)
+                    .align(Alignment.TopCenter)
+                    .offset(y = 4.dp)
+                    .graphicsLayer { alpha = 0.7f },
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shadowElevation = 4.dp
+            ) {}
+
+            // Main Thumbnail (Top)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(12.dp))
+            ) {
+                AsyncImage(
+                    model = playlist.thumbnailUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    filterQuality = FilterQuality.Medium
+                )
+                
+                // Right Side Overlay (Playlist Info)
+                Surface(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(100.dp)
+                        .align(Alignment.CenterEnd),
+                    color = Color.Black.copy(alpha = 0.6f)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlaylistPlay,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = playlist.streamCount.toString(),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "VIDEOS",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.8f)
+                        )
+                    }
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp, start = 8.dp, end = 8.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            // Playlist Icon Placeholder
+            Surface(
+                modifier = Modifier.size(40.dp),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.LibraryMusic,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.width(12.dp))
+            
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = playlist.title,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 22.sp
+                    ),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                Text(
+                    text = "${playlist.uploaderName} • Playlist",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
 
 @Composable
 fun VideoList(
@@ -54,6 +281,7 @@ fun VideoList(
     onChannelClick: ((String) -> Unit)? = null,
     onFavoriteClick: ((VideoItem) -> Unit)? = null,
     onDownloadClick: ((VideoItem) -> Unit)? = null,
+    onLoadMore: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(bottom = 100.dp)
 ) {
@@ -62,7 +290,23 @@ fun VideoList(
     val columns = if (isLandscape) 2 else 1
 
     if (columns > 1) {
+        val gridState = rememberLazyGridState()
+        val shouldLoadMore = remember {
+            derivedStateOf {
+                val totalItemsCount = gridState.layoutInfo.totalItemsCount
+                val lastVisibleItemIndex = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                lastVisibleItemIndex >= totalItemsCount - 5 // Trigger when 5 items from the end
+            }
+        }
+
+        LaunchedEffect(shouldLoadMore.value) {
+            if (shouldLoadMore.value && onLoadMore != null && videos.isNotEmpty()) {
+                onLoadMore()
+            }
+        }
+
         LazyVerticalGrid(
+            state = gridState,
             columns = GridCells.Fixed(columns),
             modifier = modifier.fillMaxSize(),
             contentPadding = contentPadding,
@@ -84,9 +328,38 @@ fun VideoList(
                     onClick = { onVideoClick(video) }
                 )
             }
+            
+            if (onLoadMore != null && videos.isNotEmpty()) {
+                item(span = { GridItemSpan(columns) }) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                    }
+                }
+            }
         }
     } else {
+        val listState = rememberLazyListState()
+        val shouldLoadMore = remember {
+            derivedStateOf {
+                val totalItemsCount = listState.layoutInfo.totalItemsCount
+                val lastVisibleItemIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                lastVisibleItemIndex >= totalItemsCount - 5
+            }
+        }
+
+        LaunchedEffect(shouldLoadMore.value) {
+            if (shouldLoadMore.value && onLoadMore != null && videos.isNotEmpty()) {
+                onLoadMore()
+            }
+        }
+
         LazyColumn(
+            state = listState,
             modifier = modifier.fillMaxSize(),
             contentPadding = contentPadding,
             verticalArrangement = Arrangement.spacedBy(0.dp)
@@ -105,6 +378,19 @@ fun VideoList(
                     onChannelClick = if (onChannelClick != null && video.uploaderUrl != null) { { onChannelClick(video.uploaderUrl) } } else null,
                     onClick = { onVideoClick(video) }
                 )
+            }
+
+            if (onLoadMore != null && videos.isNotEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                    }
+                }
             }
         }
     }
@@ -142,7 +428,7 @@ fun VideoItemRow(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp)) // Added clip for modern rounded thumbnails
+                .clip(RoundedCornerShape(12.dp))
         ) {
             AsyncImage(
                 model = video.thumbnailUrl,
@@ -164,7 +450,7 @@ fun VideoItemRow(
                         .padding(8.dp)
                 ) {
                     Text(
-                        text = formatDuration(video.duration),
+                        text = VideoUtils.formatDuration(video.duration),
                         color = Color.White,
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
@@ -184,6 +470,18 @@ fun VideoItemRow(
                         contentDescription = "Downloaded",
                         modifier = Modifier.padding(6.dp).size(16.dp),
                         tint = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
+            }
+
+            // Watch Progress Bar
+            video.watchProgress?.let { progress ->
+                if (progress > 0.01f && progress < 0.95f) {
+                    WatchProgressBar(
+                        progress = progress,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
                     )
                 }
             }
@@ -315,13 +613,21 @@ fun VideoItemRow(
     }
 }
 
-private fun formatDuration(seconds: Long): String {
-    val h = seconds / 3600
-    val m = (seconds % 3600) / 60
-    val s = seconds % 60
-    return if (h > 0) {
-        String.format(Locale.getDefault(), "%d:%02d:%02d", h, m, s)
-    } else {
-        String.format(Locale.getDefault(), "%d:%02d", m, s)
+@Composable
+fun WatchProgressBar(
+    progress: Float,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .height(3.dp)
+            .background(Color.Gray.copy(alpha = 0.3f))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(progress.coerceIn(0f, 1f))
+                .background(Color.Red)
+        )
     }
 }

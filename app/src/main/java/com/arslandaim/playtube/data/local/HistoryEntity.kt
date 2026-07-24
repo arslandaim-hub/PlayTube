@@ -16,7 +16,9 @@ data class HistoryEntity(
     val title: String,
     val thumbnailUrl: String,
     val uploaderName: String,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val progressMs: Long = 0,
+    val durationMs: Long = 0
 ) {
     fun toVideoItem() = VideoItem(
         id = videoId,
@@ -26,6 +28,8 @@ data class HistoryEntity(
         uploaderUrl = null,
         viewCount = 0,
         uploadDate = null,
-        duration = 0
+        rawUploadDate = null,
+        duration = durationMs / 1000,
+        watchProgress = if (durationMs > 0) progressMs.toFloat() / durationMs else null
     )
 }

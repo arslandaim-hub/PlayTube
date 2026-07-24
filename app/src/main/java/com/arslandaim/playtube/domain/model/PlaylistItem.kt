@@ -5,6 +5,9 @@
 */
 package com.arslandaim.playtube.domain.model
 
+import androidx.compose.runtime.Stable
+
+@Stable
 data class PlaylistItem(
     val id: String,
     val title: String,

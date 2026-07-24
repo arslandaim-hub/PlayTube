@@ -5,6 +5,8 @@
 */
 package com.arslandaim.playtube.domain.model
 
+import org.schabi.newpipe.extractor.Page
+
 data class StreamBundle(
     val videoStreams: List<StreamItem>,
     val audioStreams: List<StreamItem>,
@@ -18,6 +20,7 @@ data class StreamBundle(
     val uploadDate: String?,
     val thumbnailUrl: String?,
     val relatedVideos: List<VideoItem> = emptyList(),
+    val nextRelatedVideosPage: Page? = null,
     val bestAudioStreamUrl: String? = null,
     val subtitles: List<SubtitleItem> = emptyList()
 )

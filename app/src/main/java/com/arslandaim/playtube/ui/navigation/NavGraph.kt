@@ -178,6 +178,7 @@ fun NavGraph(
             ChannelScreen(
                 channelUrl = java.net.URLDecoder.decode(channelUrl, "UTF-8"),
                 viewModel = viewModel,
+                libraryViewModel = libraryViewModel,
                 onBarsVisibilityChange = onBarsVisibilityChange,
                 onBack = { navController.popBackStack() },
                 onVideoClick = { video ->
@@ -212,6 +213,9 @@ fun NavGraph(
                 },
                 onChannelClick = { channelUrl ->
                     navController.navigate(Screen.Channel.createRoute(channelUrl))
+                },
+                onPlaylistClick = { playlistId ->
+                    navController.navigate(Screen.Playlist.createRoute(playlistId))
                 },
                 onBack = { navController.popBackStack() }
             )

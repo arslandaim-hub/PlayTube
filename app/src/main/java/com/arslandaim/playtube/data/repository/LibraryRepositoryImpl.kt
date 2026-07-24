@@ -24,6 +24,10 @@ class LibraryRepositoryImpl @Inject constructor(
         historyDao.insertHistory(history)
     }
 
+    override suspend fun updateWatchProgress(videoId: String, progressMs: Long, durationMs: Long) {
+        historyDao.updateProgress(videoId, progressMs, durationMs, System.currentTimeMillis())
+    }
+
     override suspend fun removeFromHistory(videoId: String) {
         historyDao.deleteHistory(videoId)
     }

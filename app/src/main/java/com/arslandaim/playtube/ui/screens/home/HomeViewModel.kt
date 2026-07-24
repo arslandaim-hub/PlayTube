@@ -11,25 +11,22 @@ import com.arslandaim.playtube.data.local.FavoriteEntity
 import com.arslandaim.playtube.data.local.SearchHistoryDao
 import com.arslandaim.playtube.domain.model.StreamBundle
 import com.arslandaim.playtube.domain.model.VideoItem
+import com.arslandaim.playtube.domain.model.SearchItem
 import com.arslandaim.playtube.domain.repository.LibraryRepository
 import com.arslandaim.playtube.domain.repository.SearchRepository
 import com.arslandaim.playtube.domain.repository.VideoRepository
 import com.arslandaim.playtube.domain.usecase.DownloadVideoUseCase
 import com.arslandaim.playtube.domain.usecase.GetVideoStreamsUseCase
 import com.arslandaim.playtube.domain.usecase.ToggleFavoriteUseCase
+import com.arslandaim.playtube.ui.components.DownloadDialogState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import org.schabi.newpipe.extractor.Page
 import javax.inject.Inject
 
 @HiltViewModel
@@ -43,8 +40,19 @@ class HomeViewModel @Inject constructor(
     private val downloadVideoUseCase: DownloadVideoUseCase
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(HomeState())
-    val uiState: StateFlow<HomeState> = _uiState.asStateFlow()
+    private val _internalState = MutableStateFlow(HomeState())
+
+    val uiState: StateFlow<HomeState> = combine(
+        _internalState,
+        libraryRepository.getHistory()
+    ) { state, history ->
+        val historyMap = history.associateBy({ it.videoId }, { if (it.durationMs > 0) it.progressMs.toFloat() / it.durationMs else null })
+        
+        state.copy(
+            trendingVideos = state.trendingVideos.map { it.copy(watchProgress = historyMap[it.id]) },
+            subscriptionVideos = state.subscriptionVideos.map { it.copy(watchProgress = historyMap[it.id]) }
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeState())
 
     private val _selectedTab = MutableStateFlow(0) // 0: For You, 1: Subscriptions
     val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
@@ -63,7 +71,9 @@ class HomeViewModel @Inject constructor(
     val downloadState: StateFlow<DownloadDialogState> = _downloadState.asStateFlow()
 
     private val categoryCache = mutableMapOf<String, List<VideoItem>>()
+    private val nextPageCache = mutableMapOf<String, Page?>()
     private var trendingFetchJob: Job? = null
+    private var isFetchingNextPage = false
 
     init {
         loadTrending()
@@ -71,9 +81,9 @@ class HomeViewModel @Inject constructor(
 
     fun onTabSelected(index: Int) {
         _selectedTab.value = index
-        if (index == 0 && _uiState.value.trendingVideos.isEmpty()) {
+        if (index == 0 && _internalState.value.trendingVideos.isEmpty()) {
             loadTrending()
-        } else if (index == 1 && _uiState.value.subscriptionVideos.isEmpty()) {
+        } else if (index == 1 && _internalState.value.subscriptionVideos.isEmpty()) {
             loadSubscriptionsFeed()
         }
     }
@@ -84,12 +94,15 @@ class HomeViewModel @Inject constructor(
         
         // Instant UI update if cached
         categoryCache[category]?.let { cachedVideos ->
-            _uiState.value = _uiState.value.copy(
-                trendingVideos = cachedVideos,
-                isTrendingLoading = false,
-                isPersonalized = category == "All" && _uiState.value.isPersonalized,
-                error = null
-            )
+            _internalState.update { 
+                it.copy(
+                    trendingVideos = cachedVideos,
+                    nextTrendingPage = nextPageCache[category],
+                    isTrendingLoading = false,
+                    isPersonalized = category == "All" && it.isPersonalized,
+                    error = null
+                )
+            }
             return 
         }
 
@@ -102,7 +115,8 @@ class HomeViewModel @Inject constructor(
             if (_selectedTab.value == 0) {
                 // Clear cache on manual refresh to get fresh data
                 categoryCache.clear()
-                fetchTrending()
+                nextPageCache.clear()
+                fetchTrending(isRefresh = true)
             } else {
                 fetchSubscriptionsFeed()
             }
@@ -113,68 +127,108 @@ class HomeViewModel @Inject constructor(
     fun loadTrending() {
         trendingFetchJob?.cancel()
         trendingFetchJob = viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isTrendingLoading = true, error = null)
-            fetchTrending()
-            _uiState.value = _uiState.value.copy(isTrendingLoading = false)
+            _internalState.update { it.copy(isTrendingLoading = true, error = null) }
+            fetchTrending(isRefresh = false)
+            _internalState.update { it.copy(isTrendingLoading = false) }
         }
     }
 
-    private suspend fun fetchTrending() {
+    private suspend fun fetchTrending(isRefresh: Boolean) {
         try {
             val history = searchHistoryDao.getAllSearchHistory().first()
             val category = _selectedCategory.value
             
-            val trendingVideos = if (category != "All") {
-                searchRepository.search(category)
-            } else {
-                coroutineScope {
-                    val topics = if (history.isNotEmpty()) {
-                        // Blend history topics with general ones
-                        val topQueries = history.map { it.query }.distinct().take(2)
-                        (topQueries + listOf("trending", "music", "gaming", "news")).distinct()
-                    } else {
-                        // Richer initial list for new installs
-                        listOf("trending", "music", "gaming", "news", "movies", "tech")
-                    }
+            // For "All", we use a mix but keep a primary topic for pagination tokens if possible
+            // Here we pick "trending" or the latest history topic as the pagination driver
+            val primaryTopic = if (category == "All") {
+                if (history.isNotEmpty()) history.first().query else "trending"
+            } else category
 
-                    val deferredResults = topics.map { topic ->
+            val trendingVideosResult = searchRepository.search(primaryTopic)
+            val trendingItems = trendingVideosResult.items.filterIsInstance<SearchItem.Video>().map { it.video }
+            
+            val finalVideos = if (category == "All" && history.size > 1) {
+                // Supplement with other topics if it's the personalized "All" tab
+                coroutineScope {
+                    val otherTopics = history.drop(1).take(2).map { it.query } + listOf("music", "gaming")
+                    val deferredResults = otherTopics.distinct().map { topic ->
                         async { 
                             try {
-                                searchRepository.search(topic).take(15)
+                                searchRepository.search(topic).items
+                                    .filterIsInstance<SearchItem.Video>()
+                                    .map { it.video }
+                                    .take(10)
                             } catch (e: Exception) {
                                 emptyList()
                             }
                         }
                     }
-                    
-                    deferredResults.awaitAll().flatten().distinctBy { it.id }.shuffled()
+                    val extra = deferredResults.awaitAll().flatten()
+                    (trendingItems + extra).distinctBy { it.id }.shuffled()
                 }
+            } else {
+                trendingItems
             }
             
             // Update cache
-            categoryCache[category] = trendingVideos
+            categoryCache[category] = finalVideos
+            nextPageCache[category] = trendingVideosResult.nextPage
 
-            _uiState.value = _uiState.value.copy(
-                trendingVideos = trendingVideos,
-                isPersonalized = category == "All" && history.isNotEmpty()
-            )
+            _internalState.update { 
+                it.copy(
+                    trendingVideos = finalVideos,
+                    nextTrendingPage = trendingVideosResult.nextPage,
+                    isPersonalized = isRefresh && category == "All" && history.isNotEmpty()
+                )
+            }
+            
         } catch (e: Exception) {
             val errorMessage = if (e is java.net.UnknownHostException || e is java.io.IOException) {
                 "No internet connection"
             } else {
                 e.message ?: "Unknown error"
             }
-            _uiState.value = _uiState.value.copy(
-                error = errorMessage
-            )
+            _internalState.update { it.copy(error = errorMessage) }
+        }
+    }
+
+    fun loadNextTrendingPage() {
+        val category = _selectedCategory.value
+        val page = _internalState.value.nextTrendingPage
+        if (isFetchingNextPage || page == null) return
+
+        isFetchingNextPage = true
+        viewModelScope.launch {
+            try {
+                val history = if (category == "All") searchHistoryDao.getAllSearchHistory().first() else emptyList()
+                val primaryTopic = if (category == "All") {
+                    if (history.isNotEmpty()) history.first().query else "trending"
+                } else category
+
+                val result = searchRepository.fetchNextPage(primaryTopic, com.arslandaim.playtube.domain.model.SearchSort.RELEVANCE, page)
+                val newVideos = result.items.filterIsInstance<SearchItem.Video>().map { it.video }
+                val updatedVideos = _internalState.value.trendingVideos + newVideos
+                categoryCache[category] = updatedVideos
+                nextPageCache[category] = result.nextPage
+                
+                _internalState.update { 
+                    it.copy(
+                        trendingVideos = updatedVideos,
+                        nextTrendingPage = result.nextPage
+                    )
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            isFetchingNextPage = false
         }
     }
 
     fun loadSubscriptionsFeed() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isSubscriptionsLoading = true, error = null)
+            _internalState.update { it.copy(isSubscriptionsLoading = true, error = null) }
             fetchSubscriptionsFeed()
-            _uiState.value = _uiState.value.copy(isSubscriptionsLoading = false)
+            _internalState.update { it.copy(isSubscriptionsLoading = false) }
         }
     }
 
@@ -182,34 +236,39 @@ class HomeViewModel @Inject constructor(
         try {
             val subscriptions = libraryRepository.getSubscriptions().first()
             if (subscriptions.isEmpty()) {
-                _uiState.value = _uiState.value.copy(
-                    subscriptionVideos = emptyList()
-                )
+                _internalState.update { it.copy(subscriptionVideos = emptyList()) }
                 return
             }
 
             val allVideos = mutableListOf<VideoItem>()
-            subscriptions.take(15).forEach { sub ->
-                try {
-                    val details = videoRepository.getChannelDetails(sub.channelId)
-                    allVideos.addAll(details.videos)
-                } catch (e: Exception) {
-                    // Skip failed channel fetches
+            // Increase fetch count to 25 channels for a richer feed
+            coroutineScope {
+                val deferredVideos = subscriptions.take(25).map { sub ->
+                    async {
+                        try {
+                            videoRepository.getChannelDetails(sub.channelId).videos
+                        } catch (e: Exception) {
+                            emptyList<VideoItem>()
+                        }
+                    }
                 }
+                allVideos.addAll(deferredVideos.awaitAll().flatten())
             }
             
-            _uiState.value = _uiState.value.copy(
-                subscriptionVideos = allVideos.shuffled().take(30)
-            )
+            // Sort by rawUploadDate (newest first)
+            val sortedVideos = allVideos
+                .distinctBy { it.id }
+                .sortedByDescending { it.rawUploadDate ?: 0L }
+                .take(60)
+
+            _internalState.update { it.copy(subscriptionVideos = sortedVideos) }
         } catch (e: Exception) {
             val errorMessage = if (e is java.net.UnknownHostException || e is java.io.IOException) {
                 "No internet connection"
             } else {
                 e.message ?: "Unknown error"
             }
-            _uiState.value = _uiState.value.copy(
-                error = errorMessage
-            )
+            _internalState.update { it.copy(error = errorMessage) }
         }
     }
 
@@ -235,7 +294,7 @@ class HomeViewModel @Inject constructor(
                 .onSuccess { bundle ->
                     _downloadState.value = DownloadDialogState.ShowDialog(video, bundle)
                 }
-                .onFailure { error ->
+                .onFailure {
                     _downloadState.value = DownloadDialogState.Idle
                 }
         }
@@ -275,19 +334,28 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun downloadPlaylist(playlistTitle: String, videos: List<VideoItem>) {
+        viewModelScope.launch {
+            videos.forEach { video ->
+                prepareDownload(video)
+                // We need a way to automatically select quality for bulk download
+                // For now, this just opens the dialog for each video (not ideal)
+            }
+        }
+    }
+
     fun dismissDownloadDialog() {
         _downloadState.value = DownloadDialogState.Idle
     }
-}
 
-sealed class DownloadDialogState {
-    object Idle : DownloadDialogState()
-    data class Loading(val video: VideoItem) : DownloadDialogState()
-    data class ShowDialog(val video: VideoItem, val bundle: StreamBundle) : DownloadDialogState()
+    fun onPersonalizedNotifyShown() {
+        _internalState.update { it.copy(isPersonalized = false) }
+    }
 }
 
 data class HomeState(
     val trendingVideos: List<VideoItem> = emptyList(),
+    val nextTrendingPage: Page? = null,
     val subscriptionVideos: List<VideoItem> = emptyList(),
     val isTrendingLoading: Boolean = false,
     val isSubscriptionsLoading: Boolean = false,

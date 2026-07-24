@@ -5,19 +5,19 @@
 */
 package com.arslandaim.playtube.ui.screens.search
 
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
@@ -28,28 +28,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.FilterQuality
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
-import androidx.compose.ui.res.stringResource
-import com.arslandaim.playtube.R
-import com.arslandaim.playtube.ui.components.VideoMetadata
-import com.arslandaim.playtube.ui.components.VideoList
-import com.arslandaim.playtube.ui.components.EmptyState
-import com.arslandaim.playtube.domain.model.VideoItem
-import com.arslandaim.playtube.domain.model.SearchSort
-import com.arslandaim.playtube.ui.screens.library.LibraryViewModel
-import com.arslandaim.playtube.utils.VideoUtils
-import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
-import java.util.Locale
-
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.dp
+import com.arslandaim.playtube.R
+import com.arslandaim.playtube.domain.model.SearchItem
+import com.arslandaim.playtube.domain.model.SearchSort
+import com.arslandaim.playtube.domain.model.StreamBundle
+import com.arslandaim.playtube.domain.model.VideoItem
+import com.arslandaim.playtube.ui.components.*
+import com.arslandaim.playtube.ui.screens.library.LibraryViewModel
+import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
+import kotlinx.coroutines.flow.SharedFlow
 
 @Composable
 fun SearchScreen(
@@ -58,6 +50,7 @@ fun SearchScreen(
     onBarsVisibilityChange: (Boolean) -> Unit,
     onVideoClick: (VideoItem) -> Unit,
     onChannelClick: (String) -> Unit,
+    onPlaylistClick: (String) -> Unit,
     onBack: () -> Unit
 ) {
     val searchQuery by viewModel.searchQuery.collectAsState()
@@ -66,6 +59,12 @@ fun SearchScreen(
     val suggestions by viewModel.suggestions.collectAsState()
     val searchHistory by viewModel.searchHistory.collectAsState()
     val downloadedIds by libraryViewModel.downloadedVideoIds.collectAsState()
+    val favorites by libraryViewModel.favorites.collectAsState()
+    val downloadState by viewModel.downloadState.collectAsState()
+
+    val favoriteIds = remember(favorites) {
+        favorites.map { it.videoId }.toSet()
+    }
 
     SearchContent(
         searchQuery = searchQuery,
@@ -74,18 +73,29 @@ fun SearchScreen(
         suggestions = suggestions,
         searchHistory = searchHistory,
         downloadedIds = downloadedIds,
+        favoriteIds = favoriteIds,
+        downloadState = downloadState,
+        snackbarMessage = viewModel.snackbarMessage,
         onQueryChange = viewModel::onQueryChange,
         onSortChange = viewModel::onSortChange,
         onSearch = viewModel::search,
+        onLoadMore = viewModel::loadNextPage,
         onDeleteHistory = { viewModel.deleteSearchQuery(it.query) },
         onClearHistory = viewModel::clearSearchHistory,
+        onFavoriteClick = viewModel::toggleFavorite,
+        onDownloadClick = viewModel::prepareDownload,
+        onDownloadConfirm = viewModel::download,
+        onDismissDownload = viewModel::dismissDownloadDialog,
+        onToggleSubscription = viewModel::toggleSubscription,
         onBarsVisibilityChange = onBarsVisibilityChange,
         onVideoClick = onVideoClick,
         onChannelClick = onChannelClick,
+        onPlaylistClick = onPlaylistClick,
         onBack = onBack
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SearchContent(
     searchQuery: String,
@@ -94,14 +104,24 @@ private fun SearchContent(
     suggestions: List<String>,
     searchHistory: List<com.arslandaim.playtube.data.local.SearchHistoryEntity>,
     downloadedIds: Set<String>,
+    favoriteIds: Set<String>,
+    downloadState: DownloadDialogState,
+    snackbarMessage: SharedFlow<String>,
     onQueryChange: (String) -> Unit,
     onSortChange: (SearchSort) -> Unit,
     onSearch: (String) -> Unit,
+    onLoadMore: () -> Unit,
     onDeleteHistory: (com.arslandaim.playtube.data.local.SearchHistoryEntity) -> Unit,
     onClearHistory: () -> Unit,
+    onFavoriteClick: (VideoItem) -> Unit,
+    onDownloadClick: (VideoItem) -> Unit,
+    onDownloadConfirm: (VideoItem, StreamBundle, String?, String?, String?, Boolean) -> Unit,
+    onDismissDownload: () -> Unit,
+    onToggleSubscription: (SearchItem.Channel) -> Unit,
     onBarsVisibilityChange: (Boolean) -> Unit,
     onVideoClick: (VideoItem) -> Unit,
     onChannelClick: (String) -> Unit,
+    onPlaylistClick: (String) -> Unit,
     onBack: () -> Unit
 ) {
     val focusManager = LocalFocusManager.current
@@ -110,9 +130,17 @@ private fun SearchContent(
 
     val surfaceColor = MaterialTheme.colorScheme.surface
     val searchBarColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(Unit) {
+        snackbarMessage.collect { message ->
+            snackbarHostState.showSnackbar(message)
+        }
+    }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollVisibilityConnection),
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             Column(modifier = Modifier.background(surfaceColor)) {
                 SearchBar(
@@ -139,37 +167,46 @@ private fun SearchContent(
                 )
                 
                 // Sort Chips Row
-                AnimatedVisibility(visible = uiState is SearchUiState.Success && !isSearchFocused) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                AnimatedVisibility(
+                    visible = uiState is SearchUiState.Success && !isSearchFocused,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().animateContentSize(),
+                        color = surfaceColor
                     ) {
-                        SearchSort.entries.forEach { sort ->
-                            FilterChip(
-                                selected = searchSort == sort,
-                                onClick = { onSortChange(sort) },
-                                label = { 
-                                    Text(
-                                        when(sort) {
-                                            SearchSort.RELEVANCE -> stringResource(R.string.sort_relevance)
-                                            SearchSort.UPLOAD_DATE -> stringResource(R.string.sort_newest)
-                                            SearchSort.VIEW_COUNT -> stringResource(R.string.sort_most_viewed)
-                                            SearchSort.RATING -> stringResource(R.string.sort_top_rated)
-                                        }
-                                    ) 
-                                },
-                                shape = CircleShape,
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                ),
-                                border = null
-                            )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            SearchSort.entries.forEach { sort ->
+                                FilterChip(
+                                    selected = searchSort == sort,
+                                    onClick = { onSortChange(sort) },
+                                    label = { 
+                                        Text(
+                                            when(sort) {
+                                                SearchSort.RELEVANCE -> stringResource(R.string.sort_relevance)
+                                                SearchSort.UPLOAD_DATE -> stringResource(R.string.sort_newest)
+                                                SearchSort.VIEW_COUNT -> stringResource(R.string.sort_most_viewed)
+                                                SearchSort.RATING -> stringResource(R.string.sort_top_rated)
+                                            }
+                                        ) 
+                                    },
+                                    shape = CircleShape,
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    ),
+                                    border = null
+                                )
+                            }
                         }
                     }
                 }
@@ -182,15 +219,79 @@ private fun SearchContent(
                     InitialSearchState()
                 }
                 is SearchUiState.Loading -> {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
                 }
                 is SearchUiState.Success -> {
-                    VideoList(
-                        videos = uiState.videos,
-                        downloadedIds = downloadedIds,
-                        onVideoClick = onVideoClick,
-                        onChannelClick = onChannelClick
-                    )
+                    val listState = rememberLazyListState()
+                    val shouldLoadMore = remember {
+                        derivedStateOf {
+                            val totalItemsCount = listState.layoutInfo.totalItemsCount
+                            val lastVisibleItemIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                            lastVisibleItemIndex >= totalItemsCount - 5
+                        }
+                    }
+
+                    LaunchedEffect(shouldLoadMore.value) {
+                        if (shouldLoadMore.value) {
+                            onLoadMore()
+                        }
+                    }
+
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 100.dp)
+                    ) {
+                        items(uiState.items) { item ->
+                            when (item) {
+                                is SearchItem.Video -> {
+                                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                        VideoItemRow(
+                                            video = item.video,
+                                            isDownloaded = downloadedIds.contains(item.video.id),
+                                            isFavorite = favoriteIds.contains(item.video.id),
+                                            onFavoriteClick = { onFavoriteClick(item.video) },
+                                            onDownloadClick = { onDownloadClick(item.video) },
+                                            onChannelClick = { item.video.uploaderUrl?.let { onChannelClick(it) } },
+                                            onClick = { onVideoClick(item.video) }
+                                        )
+                                    }
+                                }
+                                is SearchItem.Channel -> {
+                                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                        PremiumChannelCard(
+                                            channel = item,
+                                            onClick = { onChannelClick(item.id) },
+                                            onToggleSubscription = { onToggleSubscription(item) }
+                                        )
+                                    }
+                                }
+                                is SearchItem.Playlist -> {
+                                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                        PremiumPlaylistCard(
+                                            playlist = item.playlist,
+                                            onClick = { onPlaylistClick(item.playlist.id) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (uiState.isLoadingMore) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                                }
+                            }
+                        }
+                    }
                 }
                 is SearchUiState.Error -> {
                     EmptyState(
@@ -220,6 +321,40 @@ private fun SearchContent(
                         },
                         onDeleteHistory = { onDeleteHistory(it) },
                         onClearHistory = onClearHistory
+                    )
+                }
+            }
+
+            // Download Dialogs
+            when (val currentDownloadState = downloadState) {
+                DownloadDialogState.Idle -> {}
+                is DownloadDialogState.Loading -> {
+                    AlertDialog(
+                        onDismissRequest = { onDismissDownload() },
+                        confirmButton = {},
+                        title = { Text(stringResource(R.string.loading)) },
+                        text = {
+                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator()
+                            }
+                        }
+                    )
+                }
+                is DownloadDialogState.ShowDialog -> {
+                    DownloadSelectionSheet(
+                        videoStreams = currentDownloadState.bundle.videoStreams,
+                        audioStreams = currentDownloadState.bundle.audioStreams,
+                        onDismiss = { onDismissDownload() },
+                        onDownload = { stream ->
+                            onDownloadConfirm(
+                                currentDownloadState.video,
+                                currentDownloadState.bundle,
+                                stream.url,
+                                stream.quality,
+                                stream.format,
+                                stream.isAdaptive
+                            )
+                        }
                     )
                 }
             }

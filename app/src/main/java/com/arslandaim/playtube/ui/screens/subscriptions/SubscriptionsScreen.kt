@@ -113,54 +113,63 @@ private fun SubscriptionsContent(
         modifier = Modifier.nestedScroll(scrollVisibilityConnection),
         topBar = {
             if (showTopAppBar) {
-                TopAppBar(
-                    title = {
-                        if (isSearchActive) {
-                            TextField(
-                                value = searchQuery,
-                                onValueChange = onSearchQueryChange,
-                                modifier = Modifier.fillMaxWidth(),
-                                placeholder = { Text("Search subscriptions") },
-                                singleLine = true,
-                                colors = TextFieldDefaults.colors(
-                                    focusedContainerColor = Color.Transparent,
-                                    unfocusedContainerColor = Color.Transparent,
-                                    focusedIndicatorColor = Color.Transparent,
-                                    unfocusedIndicatorColor = Color.Transparent
-                                ),
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                                keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() })
-                            )
-                        } else {
-                            Text(text = "Subscriptions", fontWeight = FontWeight.Bold)
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), // Glass Effect
+                    tonalElevation = 0.dp
+                ) {
+                    TopAppBar(
+                        title = {
                             if (isSearchActive) {
-                                isSearchActive = false
-                                onSearchQueryChange("")
-                                focusManager.clearFocus()
+                                TextField(
+                                    value = searchQuery,
+                                    onValueChange = onSearchQueryChange,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    placeholder = { Text("Search subscriptions") },
+                                    singleLine = true,
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent,
+                                        focusedIndicatorColor = Color.Transparent,
+                                        unfocusedIndicatorColor = Color.Transparent
+                                    ),
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                    keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() })
+                                )
                             } else {
-                                onBackClick()
+                                Text(text = "Subscriptions", fontWeight = FontWeight.Bold)
                             }
-                        }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                    },
-                    actions = {
-                        if (!isSearchActive) {
-                            IconButton(onClick = { isSearchActive = true }) {
-                                Icon(Icons.Default.Search, contentDescription = "Search")
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = {
+                                if (isSearchActive) {
+                                    isSearchActive = false
+                                    onSearchQueryChange("")
+                                    focusManager.clearFocus()
+                                } else {
+                                    onBackClick()
+                                }
+                            }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                             }
-                        } else if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { onSearchQueryChange("") }) {
-                                Icon(Icons.Default.Close, contentDescription = "Clear")
+                        },
+                        actions = {
+                            if (!isSearchActive) {
+                                IconButton(onClick = { isSearchActive = true }) {
+                                    Icon(Icons.Default.Search, contentDescription = "Search")
+                                }
+                            } else if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { onSearchQueryChange("") }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Clear")
+                                }
                             }
-                        }
-                    },
-                    windowInsets = WindowInsets(0, 0, 0, 0)
-                )
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent
+                        ),
+                        windowInsets = WindowInsets(0, 0, 0, 0)
+                    )
+                }
             }
         }
     ) { padding ->

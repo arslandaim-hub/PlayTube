@@ -10,10 +10,10 @@ import android.content.pm.ActivityInfo
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,18 +56,25 @@ import com.arslandaim.playtube.R
 import com.arslandaim.playtube.ui.components.DownloadSelectionSheet
 import com.arslandaim.playtube.ui.components.PlaybackSpeedSelectionSheet
 import com.arslandaim.playtube.ui.components.QualitySelectionSheet
+import com.arslandaim.playtube.ui.components.DownloadDialogState
 import com.arslandaim.playtube.domain.model.StreamItem
 import com.arslandaim.playtube.domain.model.VideoItem
+import com.arslandaim.playtube.domain.model.StreamBundle
 import com.arslandaim.playtube.ui.components.VideoItemRow
 import com.arslandaim.playtube.utils.VideoUtils
 import kotlinx.coroutines.delay
 import android.media.AudioManager
 import android.provider.Settings
 import android.content.res.Configuration
-import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import kotlinx.coroutines.flow.SharedFlow
 
 @Composable
 fun PlayerScreen(
@@ -86,11 +93,19 @@ fun PlayerScreen(
     val currentQuality by viewModel.currentQuality.collectAsState()
     val isBuffering by viewModel.isBuffering.collectAsState()
     val downloadedIds by viewModel.downloadedVideoIds.collectAsState()
+    val favorites by viewModel.libraryRepository.getFavorites().collectAsState(initial = emptyList())
     val seekAmount by viewModel.seekAmount.collectAsState()
     val showSeekFeedback by viewModel.showSeekFeedback.collectAsState()
     val isSeekForward by viewModel.isSeekForward.collectAsState()
     val isCcEnabled by viewModel.isCcEnabled.collectAsState()
-    val isMinimized by viewModel.miniPlayerManager.isMinimized.collectAsState()
+    val currentPosition by viewModel.currentPosition.collectAsState()
+    val bufferedPosition by viewModel.bufferedPosition.collectAsState()
+    val duration by viewModel.duration.collectAsState()
+    val downloadState by viewModel.downloadState.collectAsState()
+
+    val favoriteIds = remember(favorites) {
+        favorites.map { it.videoId }.toSet()
+    }
     
     PlayerContent(
         videoId = videoId,
@@ -103,20 +118,29 @@ fun PlayerScreen(
         currentQuality = currentQuality,
         isBuffering = isBuffering,
         downloadedIds = downloadedIds,
+        favoriteIds = favoriteIds,
         seekAmount = seekAmount,
         showSeekFeedback = showSeekFeedback,
         isSeekForward = isSeekForward,
         isCcEnabled = isCcEnabled,
+        currentPosition = currentPosition,
+        bufferedPosition = bufferedPosition,
+        duration = duration,
+        downloadState = downloadState,
         player = viewModel.player,
         snackbarMessage = viewModel.snackbarMessage,
-        onToggleFavorite = viewModel::toggleFavorite,
+        onToggleFavorite = { viewModel.toggleFavorite(it) },
         onToggleSubscription = viewModel::toggleSubscription,
         onSetQuality = viewModel::setQuality,
         onSetPlaybackSpeed = viewModel::setPlaybackSpeed,
         onToggleSubtitles = viewModel::toggleSubtitles,
-        onDownload = viewModel::download,
+        onDownloadConfirm = viewModel::download,
+        onDownloadClick = { viewModel.prepareDownload(it) },
+        onDismissDownload = viewModel::dismissDownloadDialog,
+        onLoadMore = viewModel::loadNextRelatedPage,
         onSeekForward = viewModel::seekForward,
         onSeekBackward = viewModel::seekBackward,
+        onSeekTo = viewModel::seekTo,
         onBack = onBack,
         onVideoClick = onVideoClick,
         onChannelClick = onChannelClick
@@ -136,33 +160,41 @@ private fun PlayerContent(
     currentQuality: String?,
     isBuffering: Boolean,
     downloadedIds: Set<String>,
+    favoriteIds: Set<String>,
     seekAmount: Int,
     showSeekFeedback: Boolean,
     isSeekForward: Boolean,
     isCcEnabled: Boolean,
+    currentPosition: Long,
+    bufferedPosition: Long,
+    duration: Long,
+    downloadState: DownloadDialogState,
     player: Player,
-    snackbarMessage: kotlinx.coroutines.flow.SharedFlow<String>,
-    onToggleFavorite: () -> Unit,
+    snackbarMessage: SharedFlow<String>,
+    onToggleFavorite: (VideoItem?) -> Unit,
     onToggleSubscription: () -> Unit,
     onSetQuality: (com.arslandaim.playtube.domain.model.StreamItem) -> Unit,
     onSetPlaybackSpeed: (Float) -> Unit,
     onToggleSubtitles: () -> Unit,
-    onDownload: (String?, String?, String?, Boolean) -> Unit,
+    onDownloadConfirm: (VideoItem, StreamBundle, String?, String?, String?, Boolean) -> Unit,
+    onDownloadClick: (VideoItem?) -> Unit,
+    onDismissDownload: () -> Unit,
+    onLoadMore: () -> Unit,
     onSeekForward: () -> Unit,
     onSeekBackward: () -> Unit,
+    onSeekTo: (Long) -> Unit,
     onBack: () -> Unit,
     onVideoClick: (VideoItem) -> Unit,
     onChannelClick: (String) -> Unit
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
-    var showDownloadDialog by remember { mutableStateOf(false) }
     var showQualityDialog by remember { mutableStateOf(false) }
     var showSpeedSheet by remember { mutableStateOf(false) }
     var showSettingsSheet by remember { mutableStateOf(false) }
     var showDescriptionSheet by remember { mutableStateOf(false) }
+    var controlsVisible by remember { mutableStateOf(true) }
 
-    val isDownloaded = downloadedIds.contains(videoId)
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     // Gesture states
@@ -190,27 +222,26 @@ private fun PlayerContent(
         }
     }
 
+    val listState = rememberLazyListState()
+    val shouldLoadMore = remember {
+        derivedStateOf {
+            val totalItemsCount = listState.layoutInfo.totalItemsCount
+            val lastVisibleItemIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            lastVisibleItemIndex >= totalItemsCount - 5
+        }
+    }
+
+    LaunchedEffect(shouldLoadMore.value) {
+        if (shouldLoadMore.value) {
+            onLoadMore()
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             // Reset orientation on dispose
             val activity = context as? Activity
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        }
-    }
-
-
-    if (showDownloadDialog) {
-        val state = uiState as? PlayerUiState.Success
-        state?.let {
-            DownloadSelectionSheet(
-                videoStreams = it.bundle.videoStreams,
-                audioStreams = it.bundle.audioStreams,
-                onDismiss = { showDownloadDialog = false },
-                onDownload = { stream ->
-                    onDownload(stream.url, stream.quality, stream.format, stream.isAdaptive)
-                    showDownloadDialog = false
-                }
-            )
         }
     }
 
@@ -348,7 +379,7 @@ private fun PlayerContent(
                             VideoPlayerGestureDetector(
                                 onDoubleTapLeft = onSeekBackward,
                                 onDoubleTapRight = onSeekForward,
-                                onSingleTap = { /* PlayerView handles its own controls usually */ },
+                                onSingleTap = { controlsVisible = !controlsVisible },
                                 onSwipeDown = onBack,
                                 onSwipeUp = {
                                     val activity = context as? Activity
@@ -388,13 +419,42 @@ private fun PlayerContent(
                                 )
                             }
 
-                            // Top Player Controls (Settings & CC)
-                            TopPlayerControls(
-                                isCcEnabled = isCcEnabled,
-                                hasSubtitles = uiState.bundle.subtitles.isNotEmpty(),
-                                onToggleSubtitles = onToggleSubtitles,
-                                onShowSettings = { showSettingsSheet = true }
+                            // Persistent Progress Bar (Always visible at the very bottom)
+                            PersistentProgressBar(
+                                progress = if (duration > 0) currentPosition.toFloat() / duration else 0f,
+                                bufferedProgress = if (duration > 0) bufferedPosition.toFloat() / duration else 0f,
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .height(2.dp)
                             )
+
+                            // Custom Controls Overlay
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = controlsVisible,
+                                enter = androidx.compose.animation.fadeIn(),
+                                exit = androidx.compose.animation.fadeOut()
+                            ) {
+                                PlayerControlsOverlay(
+                                    isPlaying = player.isPlaying,
+                                    currentPosition = currentPosition,
+                                    duration = duration,
+                                    isCcEnabled = isCcEnabled,
+                                    hasSubtitles = uiState.bundle.subtitles.isNotEmpty(),
+                                    onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
+                                    onSeekTo = onSeekTo,
+                                    onToggleSubtitles = onToggleSubtitles,
+                                    onShowSettings = { showSettingsSheet = true },
+                                    onBack = onBack
+                                )
+                            }
+
+                            LaunchedEffect(controlsVisible, player.isPlaying) {
+                                if (controlsVisible && player.isPlaying) {
+                                    delay(3000)
+                                    controlsVisible = false
+                                }
+                            }
 
                             SeekGestureOverlay(
                                 visible = showSeekFeedback,
@@ -443,6 +503,7 @@ private fun PlayerContent(
 
                 // Metadata Area
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize()
                 ) {
                     when (uiState) {
@@ -567,14 +628,14 @@ private fun PlayerContent(
                                                 PlayerActionItem(
                                                     icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                                     label = if (isFavorite) stringResource(R.string.liked) else stringResource(R.string.like),
-                                                    onClick = onToggleFavorite,
+                                                    onClick = { onToggleFavorite(null) },
                                                     active = isFavorite
                                                 )
                                                 PlayerActionItem(
-                                                    icon = if (isDownloaded) Icons.Default.CheckCircle else Icons.Default.Download,
-                                                    label = if (isDownloaded) stringResource(R.string.downloaded) else stringResource(R.string.download),
-                                                    onClick = { if (!isDownloaded) showDownloadDialog = true },
-                                                    active = isDownloaded
+                                                    icon = if (downloadedIds.contains(videoId)) Icons.Default.CheckCircle else Icons.Default.Download,
+                                                    label = if (downloadedIds.contains(videoId)) stringResource(R.string.downloaded) else stringResource(R.string.download),
+                                                    onClick = { if (!downloadedIds.contains(videoId)) onDownloadClick(null) },
+                                                    active = downloadedIds.contains(videoId)
                                                 )
                                                 PlayerActionItem(
                                                     icon = Icons.Default.Description,
@@ -600,16 +661,32 @@ private fun PlayerContent(
                             }
 
 
-                            items(uiState.bundle.relatedVideos) { relatedVideo ->
+                            items(uiState.bundle.relatedVideos, key = { it.id }) { relatedVideo ->
                                 Box(modifier = Modifier.padding(horizontal = 16.dp)) {
                                     VideoItemRow(
                                         video = relatedVideo,
                                         isDownloaded = downloadedIds.contains(relatedVideo.id),
+                                        isFavorite = favoriteIds.contains(relatedVideo.id),
+                                        onFavoriteClick = { onToggleFavorite(relatedVideo) },
+                                        onDownloadClick = { onDownloadClick(relatedVideo) },
                                         onChannelClick = { onChannelClick(relatedVideo.uploaderUrl ?: "") },
                                         onClick = { onVideoClick(relatedVideo) }
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(16.dp))
+                            }
+
+                            if (uiState.bundle.nextRelatedVideosPage != null) {
+                                item {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(24.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                                    }
+                                }
                             }
                         }
                         is PlayerUiState.Error -> {
@@ -632,52 +709,40 @@ private fun PlayerContent(
                     }
                 }
             }
-        }
-    }
-}
 
-@Composable
-private fun TopPlayerControls(
-    isCcEnabled: Boolean,
-    hasSubtitles: Boolean,
-    onToggleSubtitles: () -> Unit,
-    onShowSettings: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(8.dp),
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (hasSubtitles) {
-            IconButton(
-                onClick = onToggleSubtitles,
-                colors = IconButtonDefaults.iconButtonColors(
-                    containerColor = Color.Transparent,
-                    contentColor = Color.White
-                )
-            ) {
-                Icon(
-                    imageVector = if (isCcEnabled) Icons.Default.ClosedCaption else Icons.Default.ClosedCaptionDisabled,
-                    contentDescription = stringResource(R.string.toggle_subtitles),
-                    tint = if (isCcEnabled) MaterialTheme.colorScheme.primary else Color.White
-                )
+            // Shared Download Dialog logic
+            when (val currentDownloadState = downloadState) {
+                DownloadDialogState.Idle -> {}
+                is DownloadDialogState.Loading -> {
+                    AlertDialog(
+                        onDismissRequest = { onDismissDownload() },
+                        confirmButton = {},
+                        title = { Text(stringResource(R.string.loading)) },
+                        text = {
+                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator()
+                            }
+                        }
+                    )
+                }
+                is DownloadDialogState.ShowDialog -> {
+                    DownloadSelectionSheet(
+                        videoStreams = currentDownloadState.bundle.videoStreams,
+                        audioStreams = currentDownloadState.bundle.audioStreams,
+                        onDismiss = { onDismissDownload() },
+                        onDownload = { stream ->
+                            onDownloadConfirm(
+                                currentDownloadState.video,
+                                currentDownloadState.bundle,
+                                stream.url,
+                                stream.quality,
+                                stream.format,
+                                stream.isAdaptive
+                            )
+                        }
+                    )
+                }
             }
-            Spacer(modifier = Modifier.width(8.dp))
-        }
-
-        IconButton(
-            onClick = onShowSettings,
-            colors = IconButtonDefaults.iconButtonColors(
-                containerColor = Color.Transparent,
-                contentColor = Color.White
-            )
-        ) {
-            Icon(
-                imageVector = Icons.Default.Settings,
-                contentDescription = stringResource(R.string.settings)
-            )
         }
     }
 }
@@ -723,14 +788,9 @@ private fun VideoPlayerView(
         factory = { context ->
             PlayerView(context).apply {
                 this.player = player
-                this.keepScreenOn = true // Keep screen awake during playback
+                this.keepScreenOn = true 
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                useController = true
-                setShowSubtitleButton(false)
-                setShowPreviousButton(false)
-                setShowNextButton(false)
-                setShowFastForwardButton(false)
-                setShowRewindButton(false)
+                useController = false // We use our custom Compose controller
                 
                 // Professional Subtitle Styling
                 subtitleView?.apply {
@@ -746,50 +806,148 @@ private fun VideoPlayerView(
                         )
                     )
                     setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * 0.8f)
-                    setBottomPaddingFraction(0.1f)
+                    setBottomPaddingFraction(0.15f) // Increased padding to avoid being covered by progress bar
                 }
-
-                // Hide settings and speed buttons via ID (Safe approach for different Media3 layouts)
-                findViewById<android.view.View>(androidx.media3.ui.R.id.exo_settings)?.visibility = android.view.View.GONE
-                findViewById<android.view.View>(androidx.media3.ui.R.id.exo_playback_speed)?.visibility = android.view.View.GONE
             }
         },
         update = {
-            // State Updates - Does NOT recreate the view
+            // State Updates
         },
         modifier = modifier
     )
 }
 
 @Composable
-fun DownloadQualityDialog(
-    videoStreams: List<StreamItem>,
-    audioStreams: List<StreamItem>,
-    onDismiss: () -> Unit,
-    onDownload: (StreamItem) -> Unit
+private fun PersistentProgressBar(
+    progress: Float,
+    bufferedProgress: Float,
+    modifier: Modifier = Modifier
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Select Quality") },
-        text = {
-            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                Text("Video", style = MaterialTheme.typography.labelLarge)
-                videoStreams.forEach { stream ->
-                    TextButton(onClick = { onDownload(stream) }) {
-                        Text("${stream.quality} (${stream.format})")
+    Box(
+        modifier = modifier
+            .background(Color.White.copy(alpha = 0.1f))
+    ) {
+        // Buffered (Preloaded) line
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(bufferedProgress.coerceIn(0f, 1f))
+                .background(Color.White.copy(alpha = 0.4f))
+        )
+        // Playback progress line
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(progress.coerceIn(0f, 1f))
+                .background(Color.Red)
+        )
+    }
+}
+
+@Composable
+private fun PlayerControlsOverlay(
+    isPlaying: Boolean,
+    currentPosition: Long,
+    duration: Long,
+    isCcEnabled: Boolean,
+    hasSubtitles: Boolean,
+    onPlayPause: () -> Unit,
+    onSeekTo: (Long) -> Unit,
+    onToggleSubtitles: () -> Unit,
+    onShowSettings: () -> Unit,
+    onBack: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.45f))
+    ) {
+        // Center Controls
+        Box(
+            modifier = Modifier.align(Alignment.Center),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                onClick = onPlayPause,
+                shape = CircleShape,
+                color = Color.Black.copy(alpha = 0.3f),
+                modifier = Modifier.size(72.dp)
+            ) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.padding(16.dp).fillMaxSize()
+                )
+            }
+        }
+
+        // Bottom Controls
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(bottom = 8.dp) // Leave room for persistent progress bar at the very bottom
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${VideoUtils.formatDuration(currentPosition / 1000)} / ${VideoUtils.formatDuration(duration / 1000)}",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White
+                )
+            }
+            
+            Slider(
+                value = currentPosition.toFloat(),
+                onValueChange = { onSeekTo(it.toLong()) },
+                valueRange = 0f..duration.toFloat().coerceAtLeast(1f),
+                colors = SliderDefaults.colors(
+                    thumbColor = Color.Red,
+                    activeTrackColor = Color.Red,
+                    inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                ),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+            )
+        }
+
+        // Top Controls
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.background(Color.Black.copy(alpha = 0.2f), CircleShape)
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
+            }
+            
+            Spacer(modifier = Modifier.weight(1f))
+
+            Row(modifier = Modifier.background(Color.Black.copy(alpha = 0.2f), RoundedCornerShape(20.dp))) {
+                if (hasSubtitles) {
+                    IconButton(onClick = onToggleSubtitles) {
+                        Icon(
+                            imageVector = if (isCcEnabled) Icons.Default.ClosedCaption else Icons.Default.ClosedCaptionDisabled,
+                            contentDescription = null,
+                            tint = if (isCcEnabled) MaterialTheme.colorScheme.primary else Color.White
+                        )
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Audio", style = MaterialTheme.typography.labelLarge)
-                audioStreams.forEach { stream ->
-                    TextButton(onClick = { onDownload(stream) }) {
-                        Text("${stream.quality} (${stream.format})")
-                    }
+
+                IconButton(onClick = onShowSettings) {
+                    Icon(Icons.Default.Settings, null, tint = Color.White)
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
         }
-    )
+    }
 }

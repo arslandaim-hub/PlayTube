@@ -6,6 +6,7 @@
 package com.arslandaim.playtube.data.repository
 
 import com.arslandaim.playtube.domain.model.ChannelDetails
+import com.arslandaim.playtube.domain.model.PaginatedList
 import com.arslandaim.playtube.domain.model.PlaylistDetails
 import com.arslandaim.playtube.domain.model.PlaylistItem
 import com.arslandaim.playtube.domain.model.StreamBundle
@@ -18,6 +19,7 @@ import android.util.LruCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
+import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.channel.ChannelInfo
 import org.schabi.newpipe.extractor.playlist.PlaylistInfo
@@ -96,6 +98,7 @@ class VideoRepositoryImpl @Inject constructor() : VideoRepository {
                 }
             }
 
+            val relatedItems = streamInfo.relatedItems
             val bundle = StreamBundle(
                 videoStreams = videoStreams.sortedByDescending {
                     it.quality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 
@@ -110,29 +113,23 @@ class VideoRepositoryImpl @Inject constructor() : VideoRepository {
                 viewCount = streamInfo.viewCount,
                 uploadDate = streamInfo.textualUploadDate ?: streamInfo.uploadDate?.offsetDateTime()?.toLocalDate()?.toString(),
                 thumbnailUrl = streamInfo.thumbnails?.maxByOrNull { it.width }?.url ?: streamInfo.thumbnails?.firstOrNull()?.url,
-                relatedVideos = streamInfo.relatedItems
+                relatedVideos = relatedItems
                     ?.filterIsInstance<StreamInfoItem>()
                     ?.map { item ->
-                        val videoId = VideoUtils.extractVideoId(item.url)
-                        VideoItem(
-                            id = videoId,
-                            title = item.name ?: "Unknown Title",
-                            thumbnailUrl = VideoUtils.getBestThumbnailUrl(videoId),
-                            uploaderName = item.uploaderName ?: "Unknown Channel",
-                            uploaderUrl = item.uploaderUrl ?: "",
-                            uploaderThumbnailUrl = item.uploaderAvatars?.firstOrNull()?.url,
-                            viewCount = item.viewCount,
-                            subscriberCount = null,
-                            duration = item.duration,
-                            uploadDate = item.textualUploadDate ?: item.uploadDate?.toString() ?: ""
-                        )
+                        mapToVideoItem(item)
                     } ?: emptyList(),
+                nextRelatedVideosPage = null, // NewPipe doesn't easily support pagination for related streams in StreamInfo
                 bestAudioStreamUrl = bestAudioStream?.url,
                 subtitles = subtitles
             )
             streamCache.put(videoId, bundle)
             bundle
         }
+    }
+
+    override suspend fun fetchNextRelatedPage(videoId: String, page: Page): PaginatedList<VideoItem> {
+        // Not implemented as NewPipe doesn't easily expose this for YouTube related videos in current extractor version
+        return PaginatedList(emptyList(), null)
     }
 
     override suspend fun getChannelDetails(channelUrl: String): ChannelDetails {
@@ -159,26 +156,17 @@ class VideoRepositoryImpl @Inject constructor() : VideoRepository {
 
                     val extractor = service.getChannelTabExtractor(videosTabLinkHandler)
                     extractor.fetchPage()
-                    extractor.initialPage.items
+                    val page = extractor.initialPage
+                    val videos = page.items
                         .filterIsInstance<StreamInfoItem>()
                         .map { item ->
-                            val videoId = VideoUtils.extractVideoId(item.url)
-                            VideoItem(
-                                id = videoId,
-                                title = item.name ?: "Unknown Title",
-                                thumbnailUrl = VideoUtils.getBestThumbnailUrl(videoId),
-                                uploaderName = item.uploaderName ?: "Unknown Channel",
-                                uploaderUrl = item.uploaderUrl ?: "",
-                                uploaderThumbnailUrl = channelAvatarUrl ?: item.uploaderAvatars?.firstOrNull()?.url,
-                                viewCount = item.viewCount,
-                                subscriberCount = null,
-                                duration = item.duration,
-                                uploadDate = item.textualUploadDate ?: item.uploadDate?.toString() ?: ""
-                            )
+                            mapToVideoItem(item, channelAvatarUrl)
                         }
+                    
+                    Pair(videos, if (page.hasNextPage()) page.nextPage else null)
                 } catch (e: Exception) {
                     e.printStackTrace()
-                    emptyList()
+                    Pair(emptyList<VideoItem>(), null)
                 }
             }
 
@@ -208,6 +196,8 @@ class VideoRepositoryImpl @Inject constructor() : VideoRepository {
                 }
             }
 
+            val (videos, nextPage) = videosDeferred.await()
+
             ChannelDetails(
                 id = channelInfo.id ?: "",
                 name = channelInfo.name ?: "Unknown",
@@ -215,10 +205,49 @@ class VideoRepositoryImpl @Inject constructor() : VideoRepository {
                 bannerUrl = channelInfo.banners?.find { it.width in 800..1500 }?.url ?: channelInfo.banners?.firstOrNull()?.url,
                 avatarUrl = channelInfo.avatars?.find { it.width in 150..300 }?.url ?: channelInfo.avatars?.firstOrNull()?.url,
                 subscriberCount = channelInfo.subscriberCount,
-                videos = videosDeferred.await(),
+                videos = videos,
+                nextVideosPage = nextPage,
                 playlists = playlistsDeferred.await()
             )
         }
+    }
+
+    override suspend fun fetchNextChannelVideosPage(channelUrl: String, page: Page): PaginatedList<VideoItem> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val service = ServiceList.YouTube
+                val videosTabLinkHandler = service.channelTabLHFactory.fromUrl(channelUrl + "/videos")
+                val extractor = service.getChannelTabExtractor(videosTabLinkHandler)
+                extractor.fetchPage() // Some extractors need this to initialize
+                val nextPage = extractor.getPage(page)
+                
+                val videos = nextPage.items.filterIsInstance<StreamInfoItem>().map { item: StreamInfoItem ->
+                    mapToVideoItem(item)
+                }
+
+                PaginatedList(videos, if (nextPage.hasNextPage()) nextPage.nextPage else null)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                PaginatedList(emptyList(), null)
+            }
+        }
+    }
+
+    private fun mapToVideoItem(item: StreamInfoItem, uploaderThumbnailUrl: String? = null): VideoItem {
+        val vId = VideoUtils.extractVideoId(item.url)
+        return VideoItem(
+            id = vId,
+            title = item.name ?: "Unknown Title",
+            thumbnailUrl = VideoUtils.getBestThumbnailUrl(vId),
+            uploaderName = item.uploaderName ?: "Unknown Channel",
+            uploaderUrl = item.uploaderUrl ?: "",
+            uploaderThumbnailUrl = uploaderThumbnailUrl ?: item.uploaderAvatars?.firstOrNull()?.url,
+            viewCount = item.viewCount,
+            subscriberCount = null,
+            duration = item.duration,
+            uploadDate = item.textualUploadDate ?: item.uploadDate?.offsetDateTime()?.toLocalDate()?.toString() ?: "",
+            rawUploadDate = item.uploadDate?.instant?.toEpochMilli()
+        )
     }
 
     override suspend fun getPlaylistDetails(playlistUrl: String): PlaylistDetails {
@@ -235,19 +264,7 @@ class VideoRepositoryImpl @Inject constructor() : VideoRepository {
                 videos = playlistInfo.relatedItems
                     .filterIsInstance<StreamInfoItem>()
                     .map { item ->
-                        val videoId = VideoUtils.extractVideoId(item.url)
-                        VideoItem(
-                            id = videoId,
-                            title = item.name ?: "Unknown Title",
-                            thumbnailUrl = VideoUtils.getBestThumbnailUrl(videoId),
-                            uploaderName = item.uploaderName ?: "Unknown Channel",
-                            uploaderUrl = item.uploaderUrl ?: "",
-                            uploaderThumbnailUrl = item.uploaderAvatars?.firstOrNull()?.url,
-                            viewCount = item.viewCount,
-                            subscriberCount = null,
-                            duration = item.duration,
-                            uploadDate = item.textualUploadDate ?: item.uploadDate?.toString() ?: ""
-                        )
+                        mapToVideoItem(item)
                     }
             )
         }

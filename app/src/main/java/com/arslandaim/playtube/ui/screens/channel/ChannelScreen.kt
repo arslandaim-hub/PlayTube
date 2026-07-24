@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -31,8 +32,13 @@ import com.arslandaim.playtube.R
 import coil3.compose.AsyncImage
 import com.arslandaim.playtube.domain.model.PlaylistItem
 import com.arslandaim.playtube.domain.model.VideoItem
+import com.arslandaim.playtube.domain.model.StreamBundle
 import com.arslandaim.playtube.ui.components.VideoItemRow
+import com.arslandaim.playtube.ui.components.DownloadSelectionSheet
+import com.arslandaim.playtube.ui.components.DownloadDialogState
+import com.arslandaim.playtube.ui.screens.library.LibraryViewModel
 import com.arslandaim.playtube.utils.VideoUtils
+import kotlinx.coroutines.flow.SharedFlow
 
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
@@ -41,6 +47,7 @@ import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
 fun ChannelScreen(
     channelUrl: String,
     viewModel: ChannelViewModel,
+    libraryViewModel: LibraryViewModel,
     onBarsVisibilityChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     onVideoClick: (VideoItem) -> Unit,
@@ -48,13 +55,29 @@ fun ChannelScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isSubscribed by viewModel.isSubscribed.collectAsState()
+    val downloadedIds by libraryViewModel.downloadedVideoIds.collectAsState()
+    val favorites by libraryViewModel.favorites.collectAsState()
+    val downloadState by viewModel.downloadState.collectAsState()
+
+    val favoriteIds = remember(favorites) {
+        favorites.map { it.videoId }.toSet()
+    }
 
     ChannelContent(
         channelUrl = channelUrl,
         uiState = uiState,
         isSubscribed = isSubscribed,
+        downloadedIds = downloadedIds,
+        favoriteIds = favoriteIds,
+        downloadState = downloadState,
+        snackbarMessage = viewModel.snackbarMessage,
         onLoadChannel = viewModel::loadChannel,
+        onLoadMore = viewModel::loadNextPage,
         onToggleSubscription = viewModel::toggleSubscription,
+        onFavoriteClick = viewModel::toggleFavorite,
+        onDownloadClick = viewModel::prepareDownload,
+        onDownloadConfirm = viewModel::download,
+        onDismissDownload = viewModel::dismissDownloadDialog,
         onBarsVisibilityChange = onBarsVisibilityChange,
         onBack = onBack,
         onVideoClick = onVideoClick,
@@ -68,8 +91,17 @@ private fun ChannelContent(
     channelUrl: String,
     uiState: ChannelUiState,
     isSubscribed: Boolean?,
+    downloadedIds: Set<String>,
+    favoriteIds: Set<String>,
+    downloadState: DownloadDialogState,
+    snackbarMessage: SharedFlow<String>,
     onLoadChannel: (String) -> Unit,
+    onLoadMore: () -> Unit,
     onToggleSubscription: () -> Unit,
+    onFavoriteClick: (VideoItem) -> Unit,
+    onDownloadClick: (VideoItem) -> Unit,
+    onDownloadConfirm: (VideoItem, StreamBundle, String?, String?, String?, Boolean) -> Unit,
+    onDismissDownload: () -> Unit,
     onBarsVisibilityChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     onVideoClick: (VideoItem) -> Unit,
@@ -77,14 +109,39 @@ private fun ChannelContent(
 ) {
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     val tabs = listOf(stringResource(R.string.videos), stringResource(R.string.playlists))
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(channelUrl) {
         onLoadChannel(channelUrl)
     }
 
+    LaunchedEffect(Unit) {
+        snackbarMessage.collect { message ->
+            snackbarHostState.showSnackbar(message)
+        }
+    }
+
+    val listState = rememberLazyListState()
+    val shouldLoadMore = remember {
+        derivedStateOf {
+            val totalItemsCount = listState.layoutInfo.totalItemsCount
+            val lastVisibleItemIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            lastVisibleItemIndex >= totalItemsCount - 5
+        }
+    }
+
+    LaunchedEffect(shouldLoadMore.value) {
+        if (shouldLoadMore.value && selectedTabIndex == 0) {
+            onLoadMore()
+        }
+    }
+
     val scrollVisibilityConnection = rememberScrollVisibilityConnection(onBarsVisibilityChange)
 
-    Scaffold(modifier = Modifier.nestedScroll(scrollVisibilityConnection)) { padding ->
+    Scaffold(
+        modifier = Modifier.nestedScroll(scrollVisibilityConnection),
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
+    ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
             when (uiState) {
                 is ChannelUiState.Loading -> {
@@ -92,7 +149,10 @@ private fun ChannelContent(
                 }
                 is ChannelUiState.Success -> {
                     val details = uiState.details
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
                         item {
                             // Banner with Back Button Overlay
                             Box(modifier = Modifier.fillMaxWidth().height(140.dp)) {
@@ -233,9 +293,26 @@ private fun ChannelContent(
                         }
 
                         if (selectedTabIndex == 0) {
-                            items(details.videos) { video ->
+                            items(details.videos, key = { it.id }) { video ->
                                 Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                                    VideoItemRow(video = video, onClick = { onVideoClick(video) })
+                                    VideoItemRow(
+                                        video = video,
+                                        isDownloaded = downloadedIds.contains(video.id),
+                                        isFavorite = favoriteIds.contains(video.id),
+                                        onFavoriteClick = { onFavoriteClick(video) },
+                                        onDownloadClick = { onDownloadClick(video) },
+                                        onClick = { onVideoClick(video) }
+                                    )
+                                }
+                            }
+                            if (details.nextVideosPage != null) {
+                                item {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().padding(24.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                                    }
                                 }
                             }
                             if (details.videos.isEmpty()) {
@@ -244,7 +321,7 @@ private fun ChannelContent(
                                 }
                             }
                         } else {
-                            items(details.playlists) { playlist ->
+                            items(details.playlists, key = { it.id }) { playlist ->
                                 Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                                     PlaylistItemRow(playlist = playlist, onClick = { onPlaylistClick(playlist.id) })
                                 }
@@ -267,6 +344,40 @@ private fun ChannelContent(
                             Text("Retry")
                         }
                     }
+                }
+            }
+
+            // Download Dialogs
+            when (val currentDownloadState = downloadState) {
+                DownloadDialogState.Idle -> {}
+                is DownloadDialogState.Loading -> {
+                    AlertDialog(
+                        onDismissRequest = { onDismissDownload() },
+                        confirmButton = {},
+                        title = { Text(stringResource(R.string.loading)) },
+                        text = {
+                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator()
+                            }
+                        }
+                    )
+                }
+                is DownloadDialogState.ShowDialog -> {
+                    DownloadSelectionSheet(
+                        videoStreams = currentDownloadState.bundle.videoStreams,
+                        audioStreams = currentDownloadState.bundle.audioStreams,
+                        onDismiss = { onDismissDownload() },
+                        onDownload = { stream ->
+                            onDownloadConfirm(
+                                currentDownloadState.video,
+                                currentDownloadState.bundle,
+                                stream.url,
+                                stream.quality,
+                                stream.format,
+                                stream.isAdaptive
+                            )
+                        }
+                    )
                 }
             }
         }

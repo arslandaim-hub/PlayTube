@@ -5,6 +5,8 @@
 */
 package com.arslandaim.playtube.domain.model
 
+import org.schabi.newpipe.extractor.Page
+
 data class ChannelDetails(
     val id: String,
     val name: String,
@@ -13,5 +15,6 @@ data class ChannelDetails(
     val avatarUrl: String?,
     val subscriberCount: Long?,
     val videos: List<VideoItem>,
+    val nextVideosPage: Page? = null,
     val playlists: List<PlaylistItem> = emptyList()
 )

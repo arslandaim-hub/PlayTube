@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.arslandaim.playtube.ui.screens.library.HistoryItemRow
 import com.arslandaim.playtube.ui.screens.settings.SettingsViewModel
@@ -73,20 +74,29 @@ private fun HistoryContent(
         modifier = Modifier.nestedScroll(scrollVisibilityConnection),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text("History") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showClearHistoryDialog = true }) {
-                        Icon(Icons.Default.DeleteSweep, contentDescription = "Clear History")
-                    }
-                },
-                windowInsets = WindowInsets(0, 0, 0, 0)
-            )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), // Glass Effect
+                tonalElevation = 0.dp
+            ) {
+                TopAppBar(
+                    title = { Text("History", fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { showClearHistoryDialog = true }) {
+                            Icon(Icons.Default.DeleteSweep, contentDescription = "Clear History")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = androidx.compose.ui.graphics.Color.Transparent
+                    ),
+                    windowInsets = WindowInsets(0, 0, 0, 0)
+                )
+            }
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
@@ -106,7 +116,7 @@ private fun HistoryContent(
                 )
             }
             
-            HorizontalDivider()
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
             if (history.isEmpty()) {
                 EmptyState(
@@ -117,12 +127,17 @@ private fun HistoryContent(
                     onActionClick = onDiscoverVideos
                 )
             } else {
-                LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
-                    items(history) { item ->
-                        HistoryItemRow(
-                            item = item,
-                            onClick = { onVideoClick(item.toVideoItem()) }
-                        )
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(), 
+                    contentPadding = PaddingValues(bottom = 100.dp)
+                ) {
+                    items(history, key = { it.videoId + it.timestamp }) { item ->
+                        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                            HistoryItemRow(
+                                item = item,
+                                onClick = { onVideoClick(item.toVideoItem()) }
+                            )
+                        }
                     }
                 }
             }

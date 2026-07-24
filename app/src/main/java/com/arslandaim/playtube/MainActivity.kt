@@ -68,6 +68,15 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.arslandaim.playtube.services.PlaybackService
+import com.google.common.util.concurrent.MoreExecutors
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -88,6 +97,12 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var connectivityObserver: ConnectivityObserver
     @Inject lateinit var miniPlayerManager: MiniPlayerManager
     
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        // Handle permission result if needed
+    }
+
     private val mainViewModel: MainViewModel by viewModels()
     private val playerViewModel: com.arslandaim.playtube.ui.screens.player.PlayerViewModel by viewModels()
 
@@ -120,6 +135,36 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val darkTheme = isSystemInDarkTheme()
+            val isBackgroundPlayEnabled by mainViewModel.isBackgroundPlayEnabled.collectAsState()
+
+            // Connect to MediaSession ONLY if background play is enabled
+            if (isBackgroundPlayEnabled) {
+                LaunchedEffect(Unit) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        if (ContextCompat.checkSelfPermission(
+                                this@MainActivity,
+                                Manifest.permission.POST_NOTIFICATIONS
+                            ) != PackageManager.PERMISSION_GRANTED
+                        ) {
+                            requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    }
+                }
+
+                DisposableEffect(Unit) {
+                    val sessionToken = SessionToken(this@MainActivity, android.content.ComponentName(this@MainActivity, PlaybackService::class.java))
+                    val controllerFuture = MediaController.Builder(this@MainActivity, sessionToken).buildAsync()
+                    controllerFuture.addListener(
+                        {
+                            // Controller is connected
+                        },
+                        MoreExecutors.directExecutor()
+                    )
+                    onDispose {
+                        MediaController.releaseFuture(controllerFuture)
+                    }
+                }
+            }
 
             PlayTubeTheme(darkTheme = darkTheme) {
                 val navController = rememberNavController()
@@ -127,7 +172,8 @@ class MainActivity : ComponentActivity() {
 
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
-                val isExpanded by miniPlayerManager.isExpanded.collectAsState()
+                val playerVisibility by miniPlayerManager.visibilityState.collectAsState()
+                val isExpanded = playerVisibility == com.arslandaim.playtube.ui.screens.player.MiniPlayerVisibility.Expanded
                 val currentVideo by miniPlayerManager.currentVideo.collectAsState()
 
                 isPlayerScreen = currentRoute?.startsWith("player") == true
@@ -193,8 +239,8 @@ class MainActivity : ComponentActivity() {
                     topBar = {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                            tonalElevation = 0.dp
+                            color = MaterialTheme.colorScheme.surface, // Solid surface to prevent background bleed
+                            tonalElevation = 3.dp // Slight elevation for depth
                         ) {
                             Column(modifier = Modifier.fillMaxWidth().statusBarsPadding()) {
                                 OfflineStatusBar(status = connectivityStatus)

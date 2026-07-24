@@ -35,6 +35,7 @@ data class DownloadEntity(
         uploaderUrl = null,
         viewCount = 0,
         uploadDate = null,
+        rawUploadDate = null,
         duration = 0
     )
 }

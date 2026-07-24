@@ -16,6 +16,9 @@ interface HistoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertHistory(history: HistoryEntity)
 
+    @Query("UPDATE history SET progressMs = :progress, durationMs = :duration, timestamp = :timestamp WHERE videoId = :videoId")
+    suspend fun updateProgress(videoId: String, progress: Long, duration: Long, timestamp: Long)
+
     @Query("DELETE FROM history WHERE videoId = :videoId")
     suspend fun deleteHistory(videoId: String)
 
