@@ -25,14 +25,14 @@
 ## ✨ Key Features
 
 *   **Fluid Glass UI:** Dynamic, smooth, and full-screen browsing experience.
-*   **Background Play:** Keep listening while using other apps or with the screen off.
-*   **Picture-in-Picture (PiP):** Continue watching in a floating window.
-*   **Subtitles Support:** Fully integrated closed captions.
-*   **High-Quality Downloads:** Save videos locally in resolutions up to 4K.
-*   **Gesture Controls:** Built-in volume and brightness adjustments, plus seek forward/backward gestures.
-*   **Orientation Flexibility:** Seamless push up/down landscape and portrait modes.
-*   **Subscription Management:** Subscribe to your favorite channels directly (No Google account required).
-*   **Privacy First:** Local search history and strict privacy standards.
+*   **Background Play with media controls.** 
+*   **Picture-in-Picture (PiP).** 
+*   **Subtitles Support.**
+*   **High-Quality Downloads.**
+*   **Gesture Controls.**
+*   **Orientation Flexibility:** Push up/down landscape and portrait modes.
+*   **Subscription Management:** (No Google account required).
+*   **Privacy First.**
 
 ---
 
@@ -98,4 +98,3 @@ If you enjoy using PlayTube and would like to support its continued development,
 
 *   **Subscriptions:** The Subscriptions tab on the home screen only populates when you subscribe to a channel. Videos in this tab are strictly from your subscribed channels.
 *   **Recommendations:** The home page suggests videos based on your search history. If you pause your search history in the settings, the app will stop suggesting search-related videos on the home screen.
-*   
