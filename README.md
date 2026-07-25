@@ -33,6 +33,8 @@
 *   **Orientation Flexibility:** Push up/down landscape and portrait modes.
 *   **Subscription Management:** (No Google account required).
 *   **Privacy First.**
+    
+**PlayTube** has a simple learning algorithm that learns & recommends videos based on user activity.
 
 ---
 
@@ -92,9 +94,14 @@ If you enjoy using PlayTube and would like to support its continued development,
   </a>
 </div>
 
----
+
 
 ## 📌 Important Notes
 
 *   **Subscriptions:** The Subscriptions tab on the home screen only populates when you subscribe to a channel. Videos in this tab are strictly from your subscribed channels.
 *   **Recommendations:** The home page suggests videos based on your search history. If you pause your search history in the settings, the app will stop suggesting search-related videos on the home screen.
+<!--
+<p align="center">
+  <img src="https://img.shields.io/github/downloads/arslandaim-hub/PlayTube/total?style=for-the-badge&logo=github" alt="Downloads">
+</p>
+-->
