@@ -1,0 +1,11 @@
+WHAT'S NEW IN (v1.3.0)
+
+- Improved thumbnail quality for a sharper experience.
+- Personalized video recommendations based on your activity.
+- Removed Home screen category chips for a cleaner interface.
+- Fixed issues with watch progress tracking.
+- Mini player text now adapts dynamically.
+- Improved search result sorting and accuracy.
+- Performance improvements, smoother scrolling, and bug fixes.
+
+PlayTube is now faster, smarter, and more responsive. More features and improvements are on the way.
