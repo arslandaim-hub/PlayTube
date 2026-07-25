@@ -9,18 +9,25 @@
 <img src="fastlane/metadata/android/en-US/images/PlaytubefeatureGraphic.png" alt="PlayTube Feature Graphic" width="100%">
 
 <br>
+<br><br>
+<div align="center">
 
 <a href="https://github.com/arslandaim-hub/PlayTube/releases/latest">
   <img src="https://img.shields.io/badge/GET%20IT%20ON-GitHub-000000?style=for-the-badge&logo=github&logoColor=white" height="50" alt="Get it on GitHub">
 </a>
-&nbsp;&nbsp;
+<br><br>
 <a href="https://f-droid.org/packages/com.arslandaim.playtube/">
   <img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" height="50" alt="Get it on F-Droid">
 </a>
+<br><br>
+<a href="https://github.com/ImranR98/Obtainium">
+  <img src="https://img.shields.io/badge/Get%20Updates%20via-Obtainium-4CAF50?style=for-the-badge" height="50" alt="Obtainium">
+</a>
+<br>
+
+<sub>Install via <b>Obtainium</b> to receive direct update notifications from GitHub releases.</sub>
 
 </div>
-
----
 
 ## ✨ Key Features
 
