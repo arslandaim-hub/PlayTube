@@ -36,7 +36,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arslandaim.playtube.R
+import com.arslandaim.playtube.ui.theme.GlassAlpha
 import com.arslandaim.playtube.data.local.DownloadEntity
 import com.arslandaim.playtube.data.local.FavoriteEntity
 import com.arslandaim.playtube.data.local.HistoryEntity
@@ -50,6 +52,8 @@ import androidx.compose.material.icons.filled.PlaylistPlay
 
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
+import com.arslandaim.playtube.ui.components.ThumbnailImage
+import com.arslandaim.playtube.utils.VideoUtils
 
 @Composable
 fun LibraryScreen(
@@ -61,11 +65,11 @@ fun LibraryScreen(
     onSeeAllHistory: () -> Unit,
     onSeeAllSubscriptions: () -> Unit
 ) {
-    val downloads by viewModel.downloads.collectAsState()
-    val favorites by viewModel.favorites.collectAsState()
-    val history by viewModel.history.collectAsState()
-    val subscriptions by viewModel.subscriptions.collectAsState()
-    val playlists by viewModel.playlists.collectAsState()
+    val downloads by viewModel.downloads.collectAsStateWithLifecycle()
+    val favorites by viewModel.favorites.collectAsStateWithLifecycle()
+    val history by viewModel.history.collectAsStateWithLifecycle()
+    val subscriptions by viewModel.subscriptions.collectAsStateWithLifecycle()
+    val playlists by viewModel.playlists.collectAsStateWithLifecycle()
 
     LibraryContent(
         downloads = downloads,
@@ -239,7 +243,7 @@ private fun LibraryContent(
         stickyHeader {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), // Glass Effect
+                color = MaterialTheme.colorScheme.surface.copy(alpha = GlassAlpha), // Standard Glass Effect
                 tonalElevation = 0.dp
             ) {
                 PrimaryTabRow(
@@ -375,12 +379,10 @@ fun PlaylistDownloadRow(
                     .size(100.dp, 56.dp)
                     .clip(RoundedCornerShape(4.dp))
             ) {
-                AsyncImage(
-                    model = thumbnailUrl,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    filterQuality = FilterQuality.Medium
+                ThumbnailImage(
+                    videoId = VideoUtils.extractPlaylistId(thumbnailUrl), // Heuristic: use thumbnailUrl as data if needed, or pass videoId
+                    thumbnailUrl = thumbnailUrl,
+                    modifier = Modifier.fillMaxSize()
                 )
                 // Overlay for playlist indicator
                 Surface(
@@ -470,16 +472,31 @@ fun HistoryCard(
             .width(160.dp)
             .clickable(onClick = onClick)
     ) {
-        AsyncImage(
-            model = item.thumbnailUrl,
-            contentDescription = null,
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(8.dp)),
-            contentScale = ContentScale.Crop,
-            filterQuality = FilterQuality.High
-        )
+                .clip(RoundedCornerShape(8.dp))
+        ) {
+            ThumbnailImage(
+                videoId = item.videoId,
+                thumbnailUrl = item.thumbnailUrl,
+                modifier = Modifier.fillMaxSize()
+            )
+            
+            // Red Progress Bar Overlay
+            if (item.durationMs > 0) {
+                val progress = item.progressMs.toFloat() / item.durationMs
+                if (progress > 0.001f) {
+                    com.arslandaim.playtube.ui.components.WatchProgressBar(
+                        progress = progress,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                    )
+                }
+            }
+        }
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = item.title,
@@ -514,12 +531,10 @@ fun PlaylistCard(
                 .aspectRatio(16f / 9f)
                 .clip(RoundedCornerShape(8.dp))
         ) {
-            AsyncImage(
-                model = playlist.thumbnailUrl,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                filterQuality = FilterQuality.High
+            ThumbnailImage(
+                videoId = playlist.playlistId,
+                thumbnailUrl = playlist.thumbnailUrl,
+                modifier = Modifier.fillMaxSize()
             )
             // Playlist Overlay
             Surface(
@@ -664,6 +679,7 @@ fun HistoryItemRow(
         title = item.title,
         uploader = item.uploaderName,
         thumbnailUrl = item.thumbnailUrl,
+        watchProgress = if (item.durationMs > 0) item.progressMs.toFloat() / item.durationMs else null,
         onClick = onClick
     )
 }
@@ -678,6 +694,7 @@ fun FavoriteItemRow(
         title = favorite.title,
         uploader = favorite.uploaderName,
         thumbnailUrl = favorite.thumbnailUrl,
+        watchProgress = null, // Favorites don't typically show progress unless merged with history
         onClick = onClick,
         trailingContent = {
             IconButton(onClick = onRemoveClick) {
@@ -696,6 +713,7 @@ fun VideoRow(
     title: String,
     uploader: String,
     thumbnailUrl: String,
+    watchProgress: Float? = null,
     onClick: () -> Unit = {},
     trailingContent: (@Composable () -> Unit)? = null
 ) {
@@ -710,15 +728,29 @@ fun VideoRow(
             modifier = Modifier.padding(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            AsyncImage(
-                model = thumbnailUrl,
-                contentDescription = null,
+            Box(
                 modifier = Modifier
                     .size(100.dp, 56.dp)
-                    .clip(RoundedCornerShape(4.dp)),
-                contentScale = ContentScale.Crop,
-                filterQuality = FilterQuality.High
-            )
+                    .clip(RoundedCornerShape(4.dp))
+            ) {
+                ThumbnailImage(
+                    videoId = VideoUtils.extractVideoId(thumbnailUrl), // Best effort extraction
+                    thumbnailUrl = thumbnailUrl,
+                    modifier = Modifier.fillMaxSize()
+                )
+                
+                // Watch Progress Bar
+                watchProgress?.let { progress ->
+                    if (progress > 0.001f) {
+                        com.arslandaim.playtube.ui.components.WatchProgressBar(
+                            progress = progress,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                        )
+                    }
+                }
+            }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(

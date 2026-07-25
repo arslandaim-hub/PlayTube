@@ -25,7 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
-import coil3.compose.AsyncImage
+import com.arslandaim.playtube.ui.components.ThumbnailImage
 import com.arslandaim.playtube.domain.model.VideoItem
 
 @Composable
@@ -60,7 +60,8 @@ fun MiniPlayerUI(
                 indication = null,
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
             ),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = com.arslandaim.playtube.ui.theme.GlassAlpha),
+        contentColor = MaterialTheme.colorScheme.onSurface,
         shape = RoundedCornerShape(16.dp),
         tonalElevation = 0.dp, // Reduced for transparency purity
         shadowElevation = 8.dp,
@@ -76,15 +77,15 @@ fun MiniPlayerUI(
                     .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                AsyncImage(
-                    model = video.thumbnailUrl,
-                    contentDescription = null,
+                ThumbnailImage(
+                    videoId = video.id,
+                    thumbnailUrl = video.thumbnailUrl,
                     modifier = Modifier
                         .height(44.dp)
                         .aspectRatio(16f / 9f)
                         .clip(RoundedCornerShape(8.dp)),
                     contentScale = ContentScale.Crop,
-                    filterQuality = FilterQuality.Medium
+                    filterQuality = FilterQuality.High
                 )
                 
                 Spacer(modifier = Modifier.width(12.dp))

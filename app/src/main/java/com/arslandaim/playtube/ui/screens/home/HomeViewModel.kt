@@ -11,7 +11,6 @@ import com.arslandaim.playtube.data.local.FavoriteEntity
 import com.arslandaim.playtube.data.local.SearchHistoryDao
 import com.arslandaim.playtube.domain.model.StreamBundle
 import com.arslandaim.playtube.domain.model.VideoItem
-import com.arslandaim.playtube.domain.model.SearchItem
 import com.arslandaim.playtube.domain.repository.LibraryRepository
 import com.arslandaim.playtube.domain.repository.SearchRepository
 import com.arslandaim.playtube.domain.repository.VideoRepository
@@ -31,13 +30,12 @@ import javax.inject.Inject
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    private val searchRepository: SearchRepository,
     private val libraryRepository: LibraryRepository,
     private val videoRepository: VideoRepository,
-    private val searchHistoryDao: SearchHistoryDao,
     private val toggleFavoriteUseCase: ToggleFavoriteUseCase,
     private val getVideoStreamsUseCase: GetVideoStreamsUseCase,
-    private val downloadVideoUseCase: DownloadVideoUseCase
+    private val downloadVideoUseCase: DownloadVideoUseCase,
+    private val getRecommendationsUseCase: com.arslandaim.playtube.domain.usecase.GetRecommendationsUseCase
 ) : ViewModel() {
 
     private val _internalState = MutableStateFlow(HomeState())
@@ -57,9 +55,6 @@ class HomeViewModel @Inject constructor(
     private val _selectedTab = MutableStateFlow(0) // 0: For You, 1: Subscriptions
     val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
 
-    private val _selectedCategory = MutableStateFlow("All")
-    val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
-
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
@@ -70,10 +65,7 @@ class HomeViewModel @Inject constructor(
     private val _downloadState = MutableStateFlow<DownloadDialogState>(DownloadDialogState.Idle)
     val downloadState: StateFlow<DownloadDialogState> = _downloadState.asStateFlow()
 
-    private val categoryCache = mutableMapOf<String, List<VideoItem>>()
-    private val nextPageCache = mutableMapOf<String, Page?>()
     private var trendingFetchJob: Job? = null
-    private var isFetchingNextPage = false
 
     init {
         loadTrending()
@@ -88,34 +80,10 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun onCategorySelected(category: String) {
-        if (_selectedCategory.value == category) return
-        _selectedCategory.value = category
-        
-        // Instant UI update if cached
-        categoryCache[category]?.let { cachedVideos ->
-            _internalState.update { 
-                it.copy(
-                    trendingVideos = cachedVideos,
-                    nextTrendingPage = nextPageCache[category],
-                    isTrendingLoading = false,
-                    isPersonalized = category == "All" && it.isPersonalized,
-                    error = null
-                )
-            }
-            return 
-        }
-
-        loadTrending()
-    }
-
     fun refresh() {
         viewModelScope.launch {
             _isRefreshing.value = true
             if (_selectedTab.value == 0) {
-                // Clear cache on manual refresh to get fresh data
-                categoryCache.clear()
-                nextPageCache.clear()
                 fetchTrending(isRefresh = true)
             } else {
                 fetchSubscriptionsFeed()
@@ -135,50 +103,13 @@ class HomeViewModel @Inject constructor(
 
     private suspend fun fetchTrending(isRefresh: Boolean) {
         try {
-            val history = searchHistoryDao.getAllSearchHistory().first()
-            val category = _selectedCategory.value
-            
-            // For "All", we use a mix but keep a primary topic for pagination tokens if possible
-            // Here we pick "trending" or the latest history topic as the pagination driver
-            val primaryTopic = if (category == "All") {
-                if (history.isNotEmpty()) history.first().query else "trending"
-            } else category
-
-            val trendingVideosResult = searchRepository.search(primaryTopic)
-            val trendingItems = trendingVideosResult.items.filterIsInstance<SearchItem.Video>().map { it.video }
-            
-            val finalVideos = if (category == "All" && history.size > 1) {
-                // Supplement with other topics if it's the personalized "All" tab
-                coroutineScope {
-                    val otherTopics = history.drop(1).take(2).map { it.query } + listOf("music", "gaming")
-                    val deferredResults = otherTopics.distinct().map { topic ->
-                        async { 
-                            try {
-                                searchRepository.search(topic).items
-                                    .filterIsInstance<SearchItem.Video>()
-                                    .map { it.video }
-                                    .take(10)
-                            } catch (e: Exception) {
-                                emptyList()
-                            }
-                        }
-                    }
-                    val extra = deferredResults.awaitAll().flatten()
-                    (trendingItems + extra).distinctBy { it.id }.shuffled()
-                }
-            } else {
-                trendingItems
-            }
-            
-            // Update cache
-            categoryCache[category] = finalVideos
-            nextPageCache[category] = trendingVideosResult.nextPage
+            val finalVideos = getRecommendationsUseCase().getOrDefault(emptyList())
 
             _internalState.update { 
                 it.copy(
                     trendingVideos = finalVideos,
-                    nextTrendingPage = trendingVideosResult.nextPage,
-                    isPersonalized = isRefresh && category == "All" && history.isNotEmpty()
+                    nextTrendingPage = null,
+                    isPersonalized = isRefresh
                 )
             }
             
@@ -193,35 +124,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun loadNextTrendingPage() {
-        val category = _selectedCategory.value
-        val page = _internalState.value.nextTrendingPage
-        if (isFetchingNextPage || page == null) return
-
-        isFetchingNextPage = true
-        viewModelScope.launch {
-            try {
-                val history = if (category == "All") searchHistoryDao.getAllSearchHistory().first() else emptyList()
-                val primaryTopic = if (category == "All") {
-                    if (history.isNotEmpty()) history.first().query else "trending"
-                } else category
-
-                val result = searchRepository.fetchNextPage(primaryTopic, com.arslandaim.playtube.domain.model.SearchSort.RELEVANCE, page)
-                val newVideos = result.items.filterIsInstance<SearchItem.Video>().map { it.video }
-                val updatedVideos = _internalState.value.trendingVideos + newVideos
-                categoryCache[category] = updatedVideos
-                nextPageCache[category] = result.nextPage
-                
-                _internalState.update { 
-                    it.copy(
-                        trendingVideos = updatedVideos,
-                        nextTrendingPage = result.nextPage
-                    )
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            isFetchingNextPage = false
-        }
+        // Recommendations currently do not support pagination via keywords in the same way
     }
 
     fun loadSubscriptionsFeed() {

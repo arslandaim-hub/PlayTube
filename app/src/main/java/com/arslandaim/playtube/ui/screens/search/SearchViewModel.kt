@@ -52,17 +52,25 @@ class SearchViewModel @Inject constructor(
 
     private val _internalUiState = MutableStateFlow<SearchUiState>(SearchUiState.Initial)
     
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _searchSort = MutableStateFlow(SearchSort.RELEVANCE)
+    val searchSort: StateFlow<SearchSort> = _searchSort.asStateFlow()
+
     private var isFetchingNextPage by mutableStateOf(false)
 
     val uiState: StateFlow<SearchUiState> = combine(
         _internalUiState,
+        _searchSort,
         libraryRepository.getHistory(),
         libraryRepository.getSubscriptions(),
         snapshotFlow { isFetchingNextPage }
-    ) { state, history, subs, isLoadingMore ->
+    ) { state, sort, history, subs, isLoadingMore ->
         if (state is SearchUiState.Success) {
             val historyMap = history.associateBy({ it.videoId }, { if (it.durationMs > 0) it.progressMs.toFloat() / it.durationMs else null })
             
+            // Step 1: Apply watch progress and subscription status
             val updatedItems = state.items.map { item ->
                 when (item) {
                     is SearchItem.Video -> {
@@ -76,17 +84,36 @@ class SearchViewModel @Inject constructor(
                     is SearchItem.Playlist -> item
                 }
             }
-            SearchUiState.Success(updatedItems, isLoadingMore)
+
+            // Step 2: Apply Local Sorting Fallback
+            val sortedItems = when (sort) {
+                SearchSort.UPLOAD_DATE -> {
+                    updatedItems.sortedWith(compareByDescending<SearchItem> { 
+                        (it as? SearchItem.Video)?.video?.rawUploadDate ?: 0L 
+                    }.thenByDescending {
+                        (it as? SearchItem.Video)?.video?.viewCount ?: 0L
+                    })
+                }
+                SearchSort.VIEW_COUNT -> {
+                    updatedItems.sortedByDescending { 
+                        (it as? SearchItem.Video)?.video?.viewCount ?: 0L 
+                    }
+                }
+                SearchSort.RATING -> {
+                    // NewPipe doesn't provide rating scores easily for search items, 
+                    // so we fallback to view count for "Top Rated" popularity.
+                    updatedItems.sortedByDescending { 
+                        (it as? SearchItem.Video)?.video?.viewCount ?: 0L 
+                    }
+                }
+                SearchSort.RELEVANCE -> updatedItems // Use original extractor order
+            }
+
+            SearchUiState.Success(sortedItems, isLoadingMore)
         } else {
             state
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SearchUiState.Initial)
-
-    private val _searchQuery = MutableStateFlow("")
-    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
-
-    private val _searchSort = MutableStateFlow(SearchSort.RELEVANCE)
-    val searchSort: StateFlow<SearchSort> = _searchSort.asStateFlow()
 
     private val _snackbarMessage = MutableSharedFlow<String>()
     val snackbarMessage: SharedFlow<String> = _snackbarMessage.asSharedFlow()
@@ -100,9 +127,14 @@ class SearchViewModel @Inject constructor(
     @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
     val suggestions: StateFlow<List<String>> = _searchQuery
         .debounce(300.milliseconds)
-        .filter { it.isNotBlank() }
-        .combine(preferencesManager.isSearchHistoryPaused) { query, paused ->
-            if (paused) emptyList() else searchRepository.getSearchSuggestions(query)
+        .flatMapLatest { query ->
+            if (query.isBlank()) {
+                flowOf(emptyList())
+            } else {
+                flow {
+                    emit(searchRepository.getSearchSuggestions(query))
+                }
+            }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 

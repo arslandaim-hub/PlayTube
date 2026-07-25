@@ -51,7 +51,10 @@ import androidx.media3.ui.PlayerView
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.SubtitleView
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arslandaim.playtube.R
 import com.arslandaim.playtube.ui.components.DownloadSelectionSheet
 import com.arslandaim.playtube.ui.components.PlaybackSpeedSelectionSheet
@@ -61,6 +64,7 @@ import com.arslandaim.playtube.domain.model.StreamItem
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.domain.model.StreamBundle
 import com.arslandaim.playtube.ui.components.VideoItemRow
+import com.arslandaim.playtube.ui.components.ThumbnailImage
 import com.arslandaim.playtube.utils.VideoUtils
 import kotlinx.coroutines.delay
 import android.media.AudioManager
@@ -86,22 +90,22 @@ fun PlayerScreen(
     onVideoClick: (VideoItem) -> Unit,
     onChannelClick: (String) -> Unit
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val isFavorite by viewModel.isFavorite.collectAsState()
-    val isSubscribed by viewModel.isSubscribed.collectAsState()
-    val playbackSpeed by viewModel.playbackSpeed.collectAsState()
-    val currentQuality by viewModel.currentQuality.collectAsState()
-    val isBuffering by viewModel.isBuffering.collectAsState()
-    val downloadedIds by viewModel.downloadedVideoIds.collectAsState()
-    val favorites by viewModel.libraryRepository.getFavorites().collectAsState(initial = emptyList())
-    val seekAmount by viewModel.seekAmount.collectAsState()
-    val showSeekFeedback by viewModel.showSeekFeedback.collectAsState()
-    val isSeekForward by viewModel.isSeekForward.collectAsState()
-    val isCcEnabled by viewModel.isCcEnabled.collectAsState()
-    val currentPosition by viewModel.currentPosition.collectAsState()
-    val bufferedPosition by viewModel.bufferedPosition.collectAsState()
-    val duration by viewModel.duration.collectAsState()
-    val downloadState by viewModel.downloadState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isFavorite by viewModel.isFavorite.collectAsStateWithLifecycle()
+    val isSubscribed by viewModel.isSubscribed.collectAsStateWithLifecycle()
+    val playbackSpeed by viewModel.playbackSpeed.collectAsStateWithLifecycle()
+    val currentQuality by viewModel.currentQuality.collectAsStateWithLifecycle()
+    val isBuffering by viewModel.isBuffering.collectAsStateWithLifecycle()
+    val downloadedIds by viewModel.downloadedVideoIds.collectAsStateWithLifecycle()
+    val favorites by viewModel.libraryRepository.getFavorites().collectAsStateWithLifecycle(initialValue = emptyList())
+    val seekAmount by viewModel.seekAmount.collectAsStateWithLifecycle()
+    val showSeekFeedback by viewModel.showSeekFeedback.collectAsStateWithLifecycle()
+    val isSeekForward by viewModel.isSeekForward.collectAsStateWithLifecycle()
+    val isCcEnabled by viewModel.isCcEnabled.collectAsStateWithLifecycle()
+    val currentPosition by viewModel.currentPosition.collectAsStateWithLifecycle()
+    val bufferedPosition by viewModel.bufferedPosition.collectAsStateWithLifecycle()
+    val duration by viewModel.duration.collectAsStateWithLifecycle()
+    val downloadState by viewModel.downloadState.collectAsStateWithLifecycle()
 
     val favoriteIds = remember(favorites) {
         favorites.map { it.videoId }.toSet()
@@ -358,13 +362,13 @@ private fun PlayerContent(
                 ) {
                     when (uiState) {
                         is PlayerUiState.Loading, is PlayerUiState.Error -> {
-                            // Show placeholder during loading or error
-                            AsyncImage(
-                                model = initialThumbnail,
-                                contentDescription = null,
+                            // Show high-res placeholder during loading or error
+                            ThumbnailImage(
+                                videoId = videoId,
+                                thumbnailUrl = initialThumbnail ?: VideoUtils.getBestThumbnailUrl(videoId),
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop,
-                                filterQuality = FilterQuality.Medium
+                                filterQuality = FilterQuality.High
                             )
                             if (uiState is PlayerUiState.Loading) {
                                 CircularProgressIndicator(
@@ -524,157 +528,57 @@ private fun PlayerContent(
                         }
                         is PlayerUiState.Success -> {
                             item {
-                                Column(modifier = Modifier.padding(16.dp)) {
-                                    Text(
-                                        text = uiState.title,
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = "${VideoUtils.formatViewCount(uiState.bundle.viewCount)} • ${VideoUtils.formatUploadDate(uiState.bundle.uploadDate)}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                                        )
-                                        Spacer(modifier = Modifier.weight(1f))
-                                        Text(
-                                            text = stringResource(R.string.more),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.clickable { showDescriptionSheet = true }
-                                        )
-                                    }
-                                    
-                                    Spacer(modifier = Modifier.height(16.dp))
-
-                                    // Unified Channel & Action Bar
+                                VideoHeaderSection(
+                                    title = uiState.title,
+                                    viewCount = uiState.bundle.viewCount,
+                                    uploadDate = uiState.bundle.uploadDate,
+                                    onShowDescription = { showDescriptionSheet = true }
+                                )
+                            }
+                            
+                            item {
+                                Box(modifier = Modifier.padding(horizontal = 16.dp)) {
                                     Surface(
                                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                                         shape = RoundedCornerShape(16.dp),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Column(modifier = Modifier.padding(12.dp)) {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clickable { uiState.bundle.uploaderUrl?.let { onChannelClick(it) } },
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                AsyncImage(
-                                                    model = uiState.bundle.uploaderThumbnailUrl,
-                                                    contentDescription = null,
-                                                    modifier = Modifier
-                                                        .size(40.dp)
-                                                        .clip(CircleShape),
-                                                    contentScale = ContentScale.Crop,
-                                                    filterQuality = FilterQuality.Medium
-                                                )
-                                                Spacer(modifier = Modifier.width(12.dp))
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        text = uiState.uploader,
-                                                        style = MaterialTheme.typography.titleMedium,
-                                                        fontWeight = FontWeight.Bold,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
-                                                    if (uiState.bundle.uploaderSubscriberCount != null && uiState.bundle.uploaderSubscriberCount > 0) {
-                                                        Text(
-                                                            text = "${VideoUtils.formatNumber(uiState.bundle.uploaderSubscriberCount)} subscribers",
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                            maxLines = 1
-                                                        )
-                                                    }
-                                                }
-                                                Button(
-                                                    onClick = onToggleSubscription,
-                                                    colors = if (isSubscribed) {
-                                                        ButtonDefaults.buttonColors(
-                                                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                                        )
-                                                    } else {
-                                                        ButtonDefaults.buttonColors(
-                                                            containerColor = MaterialTheme.colorScheme.onSurface,
-                                                            contentColor = MaterialTheme.colorScheme.surface
-                                                        )
-                                                    },
-                                                    shape = CircleShape,
-                                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                                                ) {
-                                                    Text(
-                                                        text = if (isSubscribed) stringResource(R.string.subscribed) else stringResource(R.string.subscribe),
-                                                        style = MaterialTheme.typography.labelMedium,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                }
-                                            }
+                                            ChannelInfoSection(
+                                                uploaderName = uiState.uploader,
+                                                uploaderThumbnailUrl = uiState.bundle.uploaderThumbnailUrl,
+                                                uploaderUrl = uiState.bundle.uploaderUrl,
+                                                subscriberCount = uiState.bundle.uploaderSubscriberCount,
+                                                isSubscribed = isSubscribed,
+                                                onToggleSubscription = onToggleSubscription,
+                                                onChannelClick = onChannelClick
+                                            )
                                             
                                             Spacer(modifier = Modifier.height(12.dp))
                                             HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                                             Spacer(modifier = Modifier.height(12.dp))
                                             
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceAround,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                PlayerActionItem(
-                                                    icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                                    label = if (isFavorite) stringResource(R.string.liked) else stringResource(R.string.like),
-                                                    onClick = { onToggleFavorite(null) },
-                                                    active = isFavorite
-                                                )
-                                                PlayerActionItem(
-                                                    icon = if (downloadedIds.contains(videoId)) Icons.Default.CheckCircle else Icons.Default.Download,
-                                                    label = if (downloadedIds.contains(videoId)) stringResource(R.string.downloaded) else stringResource(R.string.download),
-                                                    onClick = { if (!downloadedIds.contains(videoId)) onDownloadClick(null) },
-                                                    active = downloadedIds.contains(videoId)
-                                                )
-                                                PlayerActionItem(
-                                                    icon = Icons.Default.Description,
-                                                    label = stringResource(R.string.info),
-                                                    onClick = { showDescriptionSheet = true }
-                                                )
-                                            }
+                                            PlayerActionRow(
+                                                isFavorite = isFavorite,
+                                                isDownloaded = downloadedIds.contains(videoId),
+                                                onToggleFavorite = { onToggleFavorite(null) },
+                                                onDownloadClick = { if (!downloadedIds.contains(videoId)) onDownloadClick(null) },
+                                                onShowDescription = { showDescriptionSheet = true }
+                                            )
                                         }
                                     }
                                 }
                             }
 
-                            item {
-                                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = stringResource(R.string.related_videos),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                }
-                            }
-
-
-                            items(uiState.bundle.relatedVideos, key = { it.id }) { relatedVideo ->
-                                Box(modifier = Modifier.padding(horizontal = 16.dp)) {
-                                    VideoItemRow(
-                                        video = relatedVideo,
-                                        isDownloaded = downloadedIds.contains(relatedVideo.id),
-                                        isFavorite = favoriteIds.contains(relatedVideo.id),
-                                        onFavoriteClick = { onToggleFavorite(relatedVideo) },
-                                        onDownloadClick = { onDownloadClick(relatedVideo) },
-                                        onChannelClick = { onChannelClick(relatedVideo.uploaderUrl ?: "") },
-                                        onClick = { onVideoClick(relatedVideo) }
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(16.dp))
-                            }
+                            relatedVideosSection(
+                                relatedVideos = uiState.bundle.relatedVideos,
+                                downloadedIds = downloadedIds,
+                                favoriteIds = favoriteIds,
+                                onVideoClick = onVideoClick,
+                                onChannelClick = onChannelClick,
+                                onFavoriteClick = { onToggleFavorite(it) },
+                                onDownloadClick = { onDownloadClick(it) }
+                            )
 
                             if (uiState.bundle.nextRelatedVideosPage != null) {
                                 item {
@@ -747,35 +651,6 @@ private fun PlayerContent(
     }
 }
 
-@Composable
-private fun PlayerActionItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit,
-    active: Boolean = false
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(8.dp)
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(24.dp)
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            fontWeight = if (active) FontWeight.Bold else FontWeight.Medium
-        )
-    }
-}
 
 
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -798,15 +673,15 @@ private fun VideoPlayerView(
                     setStyle(
                         CaptionStyleCompat(
                             Color.White.toArgb(),
+                            0x80000000.toInt(), // Semi-transparent black background
                             Color.Transparent.toArgb(),
-                            Color.Transparent.toArgb(),
-                            CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                            CaptionStyleCompat.EDGE_TYPE_NONE,
                             Color.Black.toArgb(),
-                            null
+                            android.graphics.Typeface.DEFAULT_BOLD
                         )
                     )
-                    setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * 0.8f)
-                    setBottomPaddingFraction(0.15f) // Increased padding to avoid being covered by progress bar
+                    setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * 0.9f)
+                    setBottomPaddingFraction(0.18f) // Positioned at lower third, above progress bar
                 }
             }
         },

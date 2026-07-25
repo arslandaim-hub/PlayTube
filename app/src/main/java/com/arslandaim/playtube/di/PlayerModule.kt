@@ -53,7 +53,11 @@ object PlayerModule {
         okHttpClient: OkHttpClient,
         cache: SimpleCache
     ): DataSource.Factory {
+        val userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
         val httpDataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
+            .setUserAgent(userAgent)
+            .setDefaultRequestProperties(mapOf("Accept-Language" to "en-US,en;q=0.9"))
+
         val defaultDataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
         
         return CacheDataSource.Factory()

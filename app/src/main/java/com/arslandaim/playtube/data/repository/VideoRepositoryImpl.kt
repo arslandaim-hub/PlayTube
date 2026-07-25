@@ -44,6 +44,22 @@ class VideoRepositoryImpl @Inject constructor() : VideoRepository {
             val streamInfo = StreamInfo.getInfo(service, videoUrl)
 
             val videoStreams = mutableListOf<StreamItem>()
+            val isLive = streamInfo.streamType.name == "LIVE"
+
+            // Handle HLS streams for live content
+            if (isLive) {
+                streamInfo.hlsUrl?.let { url ->
+                    videoStreams.add(
+                        StreamItem(
+                            url = url,
+                            quality = "Auto (Live)",
+                            format = "m3u8",
+                            isAdaptive = false
+                        )
+                    )
+                }
+            }
+
             streamInfo.videoStreams?.forEach {
                 videoStreams.add(
                     StreamItem(
@@ -113,6 +129,7 @@ class VideoRepositoryImpl @Inject constructor() : VideoRepository {
                 viewCount = streamInfo.viewCount,
                 uploadDate = streamInfo.textualUploadDate ?: streamInfo.uploadDate?.offsetDateTime()?.toLocalDate()?.toString(),
                 thumbnailUrl = streamInfo.thumbnails?.maxByOrNull { it.width }?.url ?: streamInfo.thumbnails?.firstOrNull()?.url,
+                isLive = isLive,
                 relatedVideos = relatedItems
                     ?.filterIsInstance<StreamInfoItem>()
                     ?.map { item ->

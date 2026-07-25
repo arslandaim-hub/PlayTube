@@ -143,15 +143,15 @@ fun NavGraph(
                 onPlaylistClick = { playlistId ->
                     navController.navigate(Screen.Playlist.createRoute(playlistId))
                 },
-                onSeeAllHistory = { navController.navigate(Screen.History.route) },
-                onSeeAllSubscriptions = { navController.navigate(Screen.SubscriptionsList.route) }
+                onSeeAllHistory = { navController.navigate(Screen.History.route) { launchSingleTop = true } },
+                onSeeAllSubscriptions = { navController.navigate(Screen.SubscriptionsList.route) { launchSingleTop = true } }
             )
         }
         composable(Screen.Settings.route) {
             val viewModel: SettingsViewModel = hiltViewModel()
             SettingsScreen(
                 viewModel = viewModel,
-                onViewHistory = { navController.navigate(Screen.History.route) },
+                onViewHistory = { navController.navigate(Screen.History.route) { launchSingleTop = true } },
                 onBack = { navController.popBackStack() }
             )
         }

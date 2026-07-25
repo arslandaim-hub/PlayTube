@@ -39,8 +39,12 @@ object VideoUtils {
     }
 
     fun getBestThumbnailUrl(videoId: String): String {
-        // hqdefault (480x360) is the sweet spot for mobile lists.
-        // It's much smaller than maxresdefault (1920x1080) but still high quality.
+        // Prioritize maxresdefault (1280x720) for high-DPI displays.
+        // Fallback to hqdefault (480x360) is handled in the UI layer via Coil.
+        return getMaxResThumbnail(videoId)
+    }
+
+    fun getFallbackThumbnailUrl(videoId: String): String {
         return getHighResThumbnail(videoId)
     }
 

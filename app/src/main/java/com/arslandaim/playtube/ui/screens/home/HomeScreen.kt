@@ -38,6 +38,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.arslandaim.playtube.ui.theme.GlassAlpha
 import com.arslandaim.playtube.R
 
 @Composable
@@ -48,31 +50,28 @@ fun HomeScreen(
     onVideoClick: (VideoItem) -> Unit,
     onChannelClick: (String) -> Unit
 ) {
-    val state by viewModel.uiState.collectAsState()
-    val downloadedIds by libraryViewModel.downloadedVideoIds.collectAsState()
-    val favorites by libraryViewModel.favorites.collectAsState()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val downloadedIds by libraryViewModel.downloadedVideoIds.collectAsStateWithLifecycle()
+    val favorites by libraryViewModel.favorites.collectAsStateWithLifecycle()
     
     // Optimized: Using remember(favorites) for ID mapping to avoid O(N) mapping on every recomposition
     val favoriteIds = remember(favorites) {
         favorites.map { it.videoId }.toSet()
     }
     
-    val selectedTab by viewModel.selectedTab.collectAsState()
-    val selectedCategory by viewModel.selectedCategory.collectAsState()
-    val isRefreshing by viewModel.isRefreshing.collectAsState()
-    val downloadState by viewModel.downloadState.collectAsState()
+    val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
+    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val downloadState by viewModel.downloadState.collectAsStateWithLifecycle()
 
     HomeContent(
         state = state,
         selectedTab = selectedTab,
-        selectedCategory = selectedCategory,
         isRefreshing = isRefreshing,
         downloadState = downloadState,
         downloadedIds = downloadedIds,
         favoriteIds = favoriteIds,
         snackbarMessage = viewModel.snackbarMessage,
         onTabSelected = viewModel::onTabSelected,
-        onCategorySelected = viewModel::onCategorySelected,
         onRefresh = viewModel::refresh,
         onLoadMore = viewModel::loadNextTrendingPage,
         onFavoriteClick = viewModel::toggleFavorite,
@@ -91,14 +90,12 @@ fun HomeScreen(
 private fun HomeContent(
     state: HomeState,
     selectedTab: Int,
-    selectedCategory: String,
     isRefreshing: Boolean,
     downloadState: DownloadDialogState,
     downloadedIds: Set<String>,
     favoriteIds: Set<String>,
     snackbarMessage: kotlinx.coroutines.flow.SharedFlow<String>,
     onTabSelected: (Int) -> Unit,
-    onCategorySelected: (String) -> Unit,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     onFavoriteClick: (VideoItem) -> Unit,
@@ -119,7 +116,6 @@ private fun HomeContent(
     }
 
     val tabs = listOf(stringResource(R.string.tab_for_you), stringResource(R.string.tab_subscriptions))
-    val categories = remember { listOf("All", "Music", "Gaming", "News", "Learning", "Trending") }
     
     val pagerState = rememberPagerState(pageCount = { tabs.size })
     
@@ -274,7 +270,7 @@ private fun HomeContent(
         ) {
             SecondaryTabRow(
                 selectedTabIndex = selectedTab,
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = GlassAlpha),
                 contentColor = MaterialTheme.colorScheme.onSurface,
                 divider = {},
                 indicator = {
@@ -323,38 +319,6 @@ private fun HomeContent(
                             }
                         }
                     )
-                }
-            }
-
-            if (selectedTab == 0) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
-                            .padding(vertical = 12.dp, horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        categories.forEach { category ->
-                            val isSelected = selectedCategory == category
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { onCategorySelected(category) },
-                                label = { Text(category) },
-                                shape = CircleShape,
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                ),
-                                border = null
-                            )
-                        }
-                    }
                 }
             }
         }
@@ -412,7 +376,7 @@ private fun HomeContent(
                 exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
             ) {
                 Surface(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = GlassAlpha),
                     shape = CircleShape,
                     tonalElevation = 8.dp,
                     shadowElevation = 12.dp,

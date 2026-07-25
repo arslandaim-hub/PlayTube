@@ -19,6 +19,7 @@ data class StreamBundle(
     val viewCount: Long,
     val uploadDate: String?,
     val thumbnailUrl: String?,
+    val isLive: Boolean = false,
     val relatedVideos: List<VideoItem> = emptyList(),
     val nextRelatedVideosPage: Page? = null,
     val bestAudioStreamUrl: String? = null,

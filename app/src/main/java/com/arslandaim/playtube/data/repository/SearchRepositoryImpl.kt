@@ -26,12 +26,14 @@ class SearchRepositoryImpl @Inject constructor() : SearchRepository {
         return withContext(Dispatchers.IO) {
             try {
                 val youtubeService = ServiceList.YouTube
-                val queryHandler = youtubeService.getSearchQHFactory().fromQuery(
-                    query, 
-                    listOf("all"), // Use "all" to get videos, channels, and playlists
-                    sort.value
+                val sortToken = sort.value.ifBlank { "relevance" }
+                android.util.Log.d("SearchRepository", "Searching for: $query with sort: $sortToken")
+                
+                val extractor = youtubeService.getSearchExtractor(
+                    query,
+                    listOf("videos", "channels", "playlists"),
+                    sortToken
                 )
-                val extractor = youtubeService.getSearchExtractor(queryHandler)
                 extractor.fetchPage()
 
                 val page = extractor.initialPage
@@ -71,12 +73,14 @@ class SearchRepositoryImpl @Inject constructor() : SearchRepository {
         return withContext(Dispatchers.IO) {
             try {
                 val youtubeService = ServiceList.YouTube
-                val queryHandler = youtubeService.getSearchQHFactory().fromQuery(
-                    query, 
-                    listOf("all"),
-                    sort.value
+                val sortToken = sort.value.ifBlank { "relevance" }
+                android.util.Log.d("SearchRepository", "Fetching next page for: $query with sort: $sortToken")
+                
+                val extractor = youtubeService.getSearchExtractor(
+                    query,
+                    listOf("videos", "channels", "playlists"),
+                    sortToken
                 )
-                val extractor = youtubeService.getSearchExtractor(queryHandler)
                 val nextPage = extractor.getPage(page)
                 
                 val items = nextPage.items.mapNotNull { item ->

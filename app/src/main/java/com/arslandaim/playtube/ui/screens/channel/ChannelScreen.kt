@@ -30,10 +30,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import com.arslandaim.playtube.R
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
+import androidx.compose.ui.platform.LocalContext
 import com.arslandaim.playtube.domain.model.PlaylistItem
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.domain.model.StreamBundle
 import com.arslandaim.playtube.ui.components.VideoItemRow
+import com.arslandaim.playtube.ui.components.ThumbnailImage
 import com.arslandaim.playtube.ui.components.DownloadSelectionSheet
 import com.arslandaim.playtube.ui.components.DownloadDialogState
 import com.arslandaim.playtube.ui.screens.library.LibraryViewModel
@@ -157,11 +161,14 @@ private fun ChannelContent(
                             // Banner with Back Button Overlay
                             Box(modifier = Modifier.fillMaxWidth().height(140.dp)) {
                                 AsyncImage(
-                                    model = details.bannerUrl,
+                                    model = ImageRequest.Builder(LocalContext.current)
+                                        .data(details.bannerUrl)
+                                        .crossfade(true)
+                                        .build(),
                                     contentDescription = null,
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Crop,
-                                    filterQuality = FilterQuality.Medium
+                                    filterQuality = FilterQuality.High
                                 )
                                 // Back Button Overlay
                                 IconButton(
@@ -187,12 +194,15 @@ private fun ChannelContent(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 AsyncImage(
-                                    model = details.avatarUrl,
+                                    model = ImageRequest.Builder(LocalContext.current)
+                                        .data(details.avatarUrl)
+                                        .crossfade(true)
+                                        .build(),
                                     contentDescription = null,
                                     modifier = Modifier
                                         .size(80.dp)
                                         .clip(CircleShape),
-                                    filterQuality = FilterQuality.Medium
+                                    filterQuality = FilterQuality.High
                                 )
                                 Spacer(modifier = Modifier.height(12.dp))
                                 
@@ -406,12 +416,10 @@ fun PlaylistItemRow(
                     .aspectRatio(16f / 9f)
                     .clip(RoundedCornerShape(8.dp))
             ) {
-                AsyncImage(
-                    model = playlist.thumbnailUrl,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    filterQuality = FilterQuality.Medium
+                ThumbnailImage(
+                    videoId = VideoUtils.extractPlaylistId(playlist.id),
+                    thumbnailUrl = playlist.thumbnailUrl,
+                    modifier = Modifier.fillMaxSize()
                 )
                 // Playlist Overlay
                 Surface(

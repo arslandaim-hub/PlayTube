@@ -94,6 +94,11 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalMaterial3Api::class)
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    companion object {
+        val BOTTOM_BAR_HEIGHT = 64.dp
+        const val TOP_BAR_HEIGHT_PX = 64
+    }
+
     @Inject lateinit var connectivityObserver: ConnectivityObserver
     @Inject lateinit var miniPlayerManager: MiniPlayerManager
     
@@ -247,14 +252,14 @@ class MainActivity : ComponentActivity() {
                                 if (showBars || barsVisibilityProgress > 0f) {
                                     Box(modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(64.dp * barsVisibilityProgress)
+                                        .height(BOTTOM_BAR_HEIGHT * barsVisibilityProgress)
                                         .clipToBounds()
                                     ) {
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .graphicsLayer {
-                                                    translationY = -64.dp.toPx() * (1f - barsVisibilityProgress)
+                                                    translationY = -BOTTOM_BAR_HEIGHT.toPx() * (1f - barsVisibilityProgress)
                                                     alpha = barsVisibilityProgress
                                                 }
                                         ) {
@@ -264,7 +269,7 @@ class MainActivity : ComponentActivity() {
                                                         Icon(
                                                             imageVector = Icons.Default.PlayArrow,
                                                             contentDescription = null,
-                                                            tint = Color.Red,
+                                                            tint = MaterialTheme.colorScheme.primary,
                                                             modifier = Modifier.size(28.dp)
                                                         )
                                                         Spacer(modifier = Modifier.width(6.dp))
@@ -343,8 +348,8 @@ class MainActivity : ComponentActivity() {
                                 Surface(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(64.dp),
-                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                        .height(BOTTOM_BAR_HEIGHT),
+                                    color = MaterialTheme.colorScheme.surface.copy(alpha = com.arslandaim.playtube.ui.theme.GlassAlpha),
                                     shape = RoundedCornerShape(20.dp),
                                     tonalElevation = 8.dp,
                                     shadowElevation = 12.dp,
@@ -363,7 +368,7 @@ class MainActivity : ComponentActivity() {
                 PlayerOverlay(
                     isExpanded = isExpanded,
                     currentVideo = currentVideo,
-                    bottomBarHeight = 64.dp * barsVisibilityProgress,
+                    bottomBarHeight = BOTTOM_BAR_HEIGHT * barsVisibilityProgress,
                     viewModel = playerViewModel,
                     onClose = {
                         miniPlayerManager.close {
@@ -464,7 +469,7 @@ fun PlayTubeBottomBar(navController: androidx.navigation.NavHostController) {
         Screen.Library to Icons.Default.LibraryMusic
     )
     NavigationBar(
-        modifier = Modifier.height(64.dp),
+        modifier = Modifier.height(MainActivity.BOTTOM_BAR_HEIGHT),
         containerColor = Color.Transparent,
         tonalElevation = 0.dp
     ) {

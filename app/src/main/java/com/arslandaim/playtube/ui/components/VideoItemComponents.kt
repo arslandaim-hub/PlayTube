@@ -44,8 +44,55 @@ import com.arslandaim.playtube.R
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.domain.model.SearchItem
 import com.arslandaim.playtube.domain.model.PlaylistItem
+import androidx.compose.ui.platform.LocalContext
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.arslandaim.playtube.utils.VideoUtils
 import android.content.res.Configuration
+
+@Composable
+fun ThumbnailImage(
+    videoId: String,
+    thumbnailUrl: String,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop,
+    filterQuality: FilterQuality = FilterQuality.High
+) {
+    var currentUrl by remember(thumbnailUrl) { mutableStateOf(thumbnailUrl) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    Box(modifier = modifier) {
+        if (isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .shimmerEffect()
+            )
+        }
+
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(currentUrl)
+                .crossfade(true)
+                .build(),
+            onLoading = { isLoading = true },
+            onSuccess = { isLoading = false },
+            onError = {
+                val fallback = VideoUtils.getFallbackThumbnailUrl(videoId)
+                if (currentUrl != fallback) {
+                    currentUrl = fallback
+                    isLoading = true
+                } else {
+                    isLoading = false
+                }
+            },
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = contentScale,
+            filterQuality = filterQuality
+        )
+    }
+}
 
 @Composable
 fun PremiumChannelCard(
@@ -176,28 +223,26 @@ fun PremiumPlaylistCard(
                 shadowElevation = 4.dp
             ) {}
 
-            // Main Thumbnail (Top)
-            Box(
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(12.dp)),
+            color = MaterialTheme.colorScheme.surfaceVariant
+        ) {
+            ThumbnailImage(
+                videoId = VideoUtils.extractPlaylistId(playlist.id),
+                thumbnailUrl = playlist.thumbnailUrl,
+                modifier = Modifier.fillMaxSize()
+            )
+            
+            // Right Side Overlay (Playlist Info)
+            Surface(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(12.dp))
+                    .fillMaxHeight()
+                    .width(100.dp)
+                    .align(Alignment.CenterEnd),
+                color = Color.Black.copy(alpha = 0.7f)
             ) {
-                AsyncImage(
-                    model = playlist.thumbnailUrl,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    filterQuality = FilterQuality.Medium
-                )
-                
-                // Right Side Overlay (Playlist Info)
-                Surface(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .width(100.dp)
-                        .align(Alignment.CenterEnd),
-                    color = Color.Black.copy(alpha = 0.6f)
-                ) {
                     Column(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.Center,
@@ -430,14 +475,12 @@ fun VideoItemRow(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
         ) {
-            AsyncImage(
-                model = video.thumbnailUrl,
-                contentDescription = null,
+            ThumbnailImage(
+                videoId = video.id,
+                thumbnailUrl = video.thumbnailUrl,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(16f / 9f),
-                contentScale = ContentScale.Crop,
-                filterQuality = FilterQuality.Medium
+                    .aspectRatio(16f / 9f)
             )
             
             // Duration Badge
@@ -476,7 +519,7 @@ fun VideoItemRow(
 
             // Watch Progress Bar
             video.watchProgress?.let { progress ->
-                if (progress > 0.01f && progress < 0.95f) {
+                if (progress > 0.001f) {
                     WatchProgressBar(
                         progress = progress,
                         modifier = Modifier
@@ -499,12 +542,11 @@ fun VideoItemRow(
                     .size(40.dp)
                     .clickable(
                         enabled = onChannelClick != null,
-                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                        indication = null,
                         onClick = { onChannelClick?.invoke() }
                     ),
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceVariant
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                tonalElevation = 2.dp
             ) {
                 AsyncImage(
                     model = video.uploaderThumbnailUrl,
@@ -621,13 +663,13 @@ fun WatchProgressBar(
     Box(
         modifier = modifier
             .height(3.dp)
-            .background(Color.Gray.copy(alpha = 0.3f))
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
     ) {
         Box(
             modifier = Modifier
                 .fillMaxHeight()
                 .fillMaxWidth(progress.coerceIn(0f, 1f))
-                .background(Color.Red)
+                .background(MaterialTheme.colorScheme.primary)
         )
     }
 }

@@ -20,6 +20,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MergingMediaSource
+import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.common.PlaybackException
 import com.arslandaim.playtube.data.local.DownloadStatus
 import com.arslandaim.playtube.data.local.FavoriteEntity
 import com.arslandaim.playtube.data.local.HistoryEntity
@@ -136,6 +138,7 @@ class PlayerViewModel @Inject constructor(
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
+            android.util.Log.d("PlayerLifecycle", "onPlaybackStateChanged: $playbackState")
             _isBuffering.value = playbackState == Player.STATE_BUFFERING
             _duration.value = player.duration.coerceAtLeast(0L)
             
@@ -150,7 +153,17 @@ class PlayerViewModel @Inject constructor(
             }
         }
 
+        override fun onPlayerError(error: PlaybackException) {
+            android.util.Log.e("PlayerLifecycle", "onPlayerError: ${error.message}", error)
+            if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+                player.seekToDefaultPosition()
+                player.prepare()
+                player.play()
+            }
+        }
+
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            android.util.Log.d("PlayerLifecycle", "onIsPlayingChanged: $isPlaying")
             if (!isPlaying) {
                 saveWatchProgress()
             }
@@ -344,8 +357,8 @@ class PlayerViewModel @Inject constructor(
 
                     initialStream?.let { stream ->
                         // Try to resume from history before setting media source
-                        val resumePos = getResumePosition(videoId)
-                        setMediaSource(stream, resumePos)
+                        val resumePos = if (bundle.isLive) 0 else getResumePosition(videoId)
+                        setMediaSource(stream, resumePos, bundle.isLive)
                     }
                 }
                 .onFailure { exception ->
@@ -491,7 +504,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     @androidx.annotation.OptIn(UnstableApi::class)
-    private fun setMediaSource(stream: StreamItem, startPosition: Long = 0) {
+    private fun setMediaSource(stream: StreamItem, startPosition: Long = 0, isLive: Boolean = false) {
         val bundle = currentBundle
         
         // 1. Build MediaMetadata for the MediaItem
@@ -517,26 +530,38 @@ class PlayerViewModel @Inject constructor(
         } ?: emptyList()
 
         // 3. Build the primary MediaItem with Metadata
-        val mediaItem = MediaItem.Builder()
+        val mediaItemBuilder = MediaItem.Builder()
             .setUri(stream.url)
             .setMediaId(currentVideoId ?: "")
             .setMediaMetadata(metadata)
             .setSubtitleConfigurations(subtitleConfigs)
-            .build()
+            
+        if (isLive || stream.format == "m3u8") {
+            mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
+            mediaItemBuilder.setLiveConfiguration(
+                MediaItem.LiveConfiguration.Builder()
+                    .setTargetOffsetMs(10000)
+                    .setMaxPlaybackSpeed(1.05f)
+                    .setMinPlaybackSpeed(0.95f)
+                    .build()
+            )
+        }
 
-        // 4. Set the media source using DefaultMediaSourceFactory logic.
-        // For adaptive, we still need to merge with audio, but we MUST use the factory 
-        // to ensure SubtitleConfigurations are processed.
+        val mediaItem = mediaItemBuilder.build()
+
+        // 4. Set the media source using appropriate factories
         val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
         
-        if (stream.isAdaptive) {
+        if (isLive || stream.format == "m3u8") {
+            val hlsMediaSource = HlsMediaSource.Factory(dataSourceFactory)
+                .setAllowChunklessPreparation(false)
+                .createMediaSource(mediaItem)
+            player.setMediaSource(hlsMediaSource)
+        } else if (stream.isAdaptive) {
             val audioUrl = currentBundle?.bestAudioStreamUrl
             if (audioUrl != null) {
-                // The correct way: Use the factory to create the video source (it handles subtitles)
                 val videoSource = mediaSourceFactory.createMediaSource(mediaItem)
-                // Audio is a separate simple source
                 val audioSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(audioUrl))
-                
                 player.setMediaSource(MergingMediaSource(videoSource, audioSource))
             } else {
                 player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
@@ -637,7 +662,7 @@ class PlayerViewModel @Inject constructor(
 
     fun setQuality(stream: StreamItem) {
         val currentPosition = player.currentPosition
-        setMediaSource(stream, currentPosition)
+        setMediaSource(stream, currentPosition, currentBundle?.isLive ?: false)
     }
 
     fun setPlaybackSpeed(speed: Float) {
