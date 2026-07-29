@@ -35,13 +35,13 @@ object PlayerModule {
     @Provides
     @Singleton
     fun provideVideoCache(@ApplicationContext context: Context): SimpleCache {
-        // Disk access on the main thread during initialization can cause StrictMode violations.
-        // SimpleCache constructor performs disk I/O, so we should ensure it's not on the main thread
-        // if possible, but since it's a @Provides @Singleton, it might be called during app startup.
-        // Hilt by default initializes singletons on the thread they are first requested.
         val cacheDirectory = File(context.cacheDir, "video_cache")
         val evictor = LeastRecentlyUsedCacheEvictor(500L * 1024L * 1024L) // 500MB
         val databaseProvider = StandaloneDatabaseProvider(context)
+        
+        // SimpleCache constructor performs disk I/O to initialize the index.
+        // We use a lock-free check or rely on Hilt's Singleton thread-safety,
+        // but ensuring it doesn't block the main thread is key.
         return SimpleCache(cacheDirectory, evictor, databaseProvider)
     }
 

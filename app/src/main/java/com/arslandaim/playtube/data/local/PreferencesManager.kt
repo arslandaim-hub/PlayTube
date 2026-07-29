@@ -41,6 +41,14 @@ class PreferencesManager @Inject constructor(@ApplicationContext context: Contex
         preferences[SUBTITLES_ENABLED] ?: false
     }
 
+    val isOnboardingCompleted: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[ONBOARDING_COMPLETED] ?: false
+    }
+
+    val isSearchGridView: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[SEARCH_GRID_VIEW] ?: false
+    }
+
     suspend fun setHistoryEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[HISTORY_ENABLED] = enabled
@@ -71,11 +79,25 @@ class PreferencesManager @Inject constructor(@ApplicationContext context: Contex
         }
     }
 
+    suspend fun setOnboardingCompleted(completed: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[ONBOARDING_COMPLETED] = completed
+        }
+    }
+
+    suspend fun setSearchGridView(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[SEARCH_GRID_VIEW] = enabled
+        }
+    }
+
     companion object {
         val HISTORY_ENABLED = booleanPreferencesKey("history_enabled")
         val SEARCH_HISTORY_PAUSED = booleanPreferencesKey("search_history_paused")
         val PIP_ENABLED = booleanPreferencesKey("pip_enabled")
         val BACKGROUND_PLAY_ENABLED = booleanPreferencesKey("background_play_enabled")
         val SUBTITLES_ENABLED = booleanPreferencesKey("subtitles_enabled")
+        val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
+        val SEARCH_GRID_VIEW = booleanPreferencesKey("search_grid_view")
     }
 }

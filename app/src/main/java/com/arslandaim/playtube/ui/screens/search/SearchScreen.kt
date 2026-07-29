@@ -40,6 +40,10 @@ import com.arslandaim.playtube.domain.model.StreamBundle
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.ui.components.*
 import com.arslandaim.playtube.ui.screens.library.LibraryViewModel
+import com.arslandaim.playtube.ui.screens.library.VideoRow
+import com.arslandaim.playtube.ui.screens.library.ModernChannelCard
+import com.arslandaim.playtube.ui.screens.library.ModernPlaylistRow
+import com.arslandaim.playtube.ui.screens.library.GlobalGlassAlpha
 import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
 import kotlinx.coroutines.flow.SharedFlow
 
@@ -58,6 +62,7 @@ fun SearchScreen(
     val uiState by viewModel.uiState.collectAsState()
     val suggestions by viewModel.suggestions.collectAsState()
     val searchHistory by viewModel.searchHistory.collectAsState()
+    val isGridView by viewModel.isGridView.collectAsState()
     val downloadedIds by libraryViewModel.downloadedVideoIds.collectAsState()
     val favorites by libraryViewModel.favorites.collectAsState()
     val downloadState by viewModel.downloadState.collectAsState()
@@ -72,12 +77,14 @@ fun SearchScreen(
         uiState = uiState,
         suggestions = suggestions,
         searchHistory = searchHistory,
+        isGridView = isGridView,
         downloadedIds = downloadedIds,
         favoriteIds = favoriteIds,
         downloadState = downloadState,
         snackbarMessage = viewModel.snackbarMessage,
         onQueryChange = viewModel::onQueryChange,
         onSortChange = viewModel::onSortChange,
+        onToggleGrid = viewModel::toggleGridView,
         onSearch = viewModel::search,
         onLoadMore = viewModel::loadNextPage,
         onDeleteHistory = { viewModel.deleteSearchQuery(it.query) },
@@ -103,12 +110,14 @@ private fun SearchContent(
     uiState: SearchUiState,
     suggestions: List<String>,
     searchHistory: List<com.arslandaim.playtube.data.local.SearchHistoryEntity>,
+    isGridView: Boolean,
     downloadedIds: Set<String>,
     favoriteIds: Set<String>,
     downloadState: DownloadDialogState,
     snackbarMessage: SharedFlow<String>,
     onQueryChange: (String) -> Unit,
     onSortChange: (SearchSort) -> Unit,
+    onToggleGrid: () -> Unit,
     onSearch: (String) -> Unit,
     onLoadMore: () -> Unit,
     onDeleteHistory: (com.arslandaim.playtube.data.local.SearchHistoryEntity) -> Unit,
@@ -181,8 +190,26 @@ private fun SearchContent(
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState())
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
+                            // Grid Toggle Button
+                            IconButton(
+                                onClick = onToggleGrid,
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), CircleShape)
+                            ) {
+                                Icon(
+                                    imageVector = if (isGridView) Icons.Default.ViewStream else Icons.Default.GridView,
+                                    contentDescription = "Toggle Layout",
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+
+                            VerticalDivider(modifier = Modifier.height(20.dp).padding(horizontal = 4.dp), thickness = 0.5.dp)
+
                             SearchSort.entries.forEach { sort ->
                                 FilterChip(
                                     selected = searchSort == sort,
@@ -244,24 +271,43 @@ private fun SearchContent(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 100.dp)
                     ) {
-                        items(uiState.items) { item ->
+                        items(
+                            items = uiState.items,
+                            key = { it.uniqueKey } // Stable keys prevent UI jumping and duplication artifacts
+                        ) { item ->
                             when (item) {
                                 is SearchItem.Video -> {
-                                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                                        VideoItemRow(
-                                            video = item.video,
-                                            isDownloaded = downloadedIds.contains(item.video.id),
-                                            isFavorite = favoriteIds.contains(item.video.id),
-                                            onFavoriteClick = { onFavoriteClick(item.video) },
-                                            onDownloadClick = { onDownloadClick(item.video) },
-                                            onChannelClick = { item.video.uploaderUrl?.let { onChannelClick(it) } },
-                                            onClick = { onVideoClick(item.video) }
-                                        )
+                                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
+                                        if (isGridView) {
+                                            VideoItemRow(
+                                                video = item.video,
+                                                isDownloaded = downloadedIds.contains(item.video.id),
+                                                isFavorite = favoriteIds.contains(item.video.id),
+                                                onFavoriteClick = { onFavoriteClick(item.video) },
+                                                onDownloadClick = { onDownloadClick(item.video) },
+                                                onChannelClick = { item.video.uploaderUrl?.let { onChannelClick(it) } },
+                                                onClick = { onVideoClick(item.video) }
+                                            )
+                                        } else {
+                                            VideoRow(
+                                                videoId = item.video.id,
+                                                title = item.video.title,
+                                                uploader = item.video.uploaderName,
+                                                thumbnailUrl = item.video.thumbnailUrl,
+                                                watchProgress = item.video.watchProgress,
+                                                isDownloaded = downloadedIds.contains(item.video.id),
+                                                isFavorite = favoriteIds.contains(item.video.id),
+                                                onFavoriteClick = { onFavoriteClick(item.video) },
+                                                onDownloadClick = { onDownloadClick(item.video) },
+                                                onChannelClick = { item.video.uploaderUrl?.let { onChannelClick(it) } },
+                                                onClick = { onVideoClick(item.video) }
+                                            )
+                                        }
                                     }
                                 }
                                 is SearchItem.Channel -> {
-                                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                                        PremiumChannelCard(
+                                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
+                                        ModernChannelCard(
                                             channel = item,
                                             onClick = { onChannelClick(item.id) },
                                             onToggleSubscription = { onToggleSubscription(item) }
@@ -269,8 +315,8 @@ private fun SearchContent(
                                     }
                                 }
                                 is SearchItem.Playlist -> {
-                                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                                        PremiumPlaylistCard(
+                                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
+                                        ModernPlaylistRow(
                                             playlist = item.playlist,
                                             onClick = { onPlaylistClick(item.playlist.id) }
                                         )

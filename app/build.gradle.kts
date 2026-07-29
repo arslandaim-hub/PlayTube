@@ -14,8 +14,8 @@ android {
         minSdk = 24
         targetSdk = 36
 
-        versionCode = 7
-        versionName = "1.3.0"
+        versionCode = 8
+        versionName = "1.3.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -99,6 +99,9 @@ dependencies {
     // OkHttp
     implementation(libs.okhttp)
     implementation(libs.errorproneAnnotations)
+
+    // JSON
+    implementation(libs.gson)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

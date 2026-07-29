@@ -34,10 +34,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -65,6 +67,7 @@ import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.domain.model.StreamBundle
 import com.arslandaim.playtube.ui.components.VideoItemRow
 import com.arslandaim.playtube.ui.components.ThumbnailImage
+import com.arslandaim.playtube.ui.components.rememberSyncShimmerTransition
 import com.arslandaim.playtube.utils.VideoUtils
 import kotlinx.coroutines.delay
 import android.media.AudioManager
@@ -106,6 +109,8 @@ fun PlayerScreen(
     val bufferedPosition by viewModel.bufferedPosition.collectAsStateWithLifecycle()
     val duration by viewModel.duration.collectAsStateWithLifecycle()
     val downloadState by viewModel.downloadState.collectAsStateWithLifecycle()
+    val isRecovering by viewModel.isRecovering.collectAsStateWithLifecycle()
+    val syncTransition = rememberSyncShimmerTransition()
 
     val favoriteIds = remember(favorites) {
         favorites.map { it.videoId }.toSet()
@@ -121,6 +126,7 @@ fun PlayerScreen(
         playbackSpeed = playbackSpeed,
         currentQuality = currentQuality,
         isBuffering = isBuffering,
+        isRecovering = isRecovering,
         downloadedIds = downloadedIds,
         favoriteIds = favoriteIds,
         seekAmount = seekAmount,
@@ -132,6 +138,7 @@ fun PlayerScreen(
         duration = duration,
         downloadState = downloadState,
         player = viewModel.player,
+        syncTransition = syncTransition,
         snackbarMessage = viewModel.snackbarMessage,
         onToggleFavorite = { viewModel.toggleFavorite(it) },
         onToggleSubscription = viewModel::toggleSubscription,
@@ -145,7 +152,8 @@ fun PlayerScreen(
         onSeekForward = viewModel::seekForward,
         onSeekBackward = viewModel::seekBackward,
         onSeekTo = viewModel::seekTo,
-        onBack = onBack,
+        onShareVideo = viewModel::shareVideo,
+        onBack = onBack, // Use the provided onBack lambda which is passed from PlayerOverlay as onMinimize
         onVideoClick = onVideoClick,
         onChannelClick = onChannelClick
     )
@@ -163,6 +171,7 @@ private fun PlayerContent(
     playbackSpeed: Float,
     currentQuality: String?,
     isBuffering: Boolean,
+    isRecovering: Boolean,
     downloadedIds: Set<String>,
     favoriteIds: Set<String>,
     seekAmount: Int,
@@ -174,6 +183,7 @@ private fun PlayerContent(
     duration: Long,
     downloadState: DownloadDialogState,
     player: Player,
+    syncTransition: androidx.compose.animation.core.InfiniteTransition,
     snackbarMessage: SharedFlow<String>,
     onToggleFavorite: (VideoItem?) -> Unit,
     onToggleSubscription: () -> Unit,
@@ -187,6 +197,7 @@ private fun PlayerContent(
     onSeekForward: () -> Unit,
     onSeekBackward: () -> Unit,
     onSeekTo: (Long) -> Unit,
+    onShareVideo: () -> Unit,
     onBack: () -> Unit,
     onVideoClick: (VideoItem) -> Unit,
     onChannelClick: (String) -> Unit
@@ -331,23 +342,44 @@ private fun PlayerContent(
         }
     }
 
+    LaunchedEffect(brightnessOverlayVisible) {
+        if (brightnessOverlayVisible) {
+            delay(3000)
+            brightnessOverlayVisible = false
+        }
+    }
+
+    LaunchedEffect(volumeOverlayVisible) {
+        if (volumeOverlayVisible) {
+            delay(3000)
+            volumeOverlayVisible = false
+        }
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
-                            MaterialTheme.colorScheme.surface
-                        ),
-                        startY = 0f,
-                        endY = 500f
-                    )
-                )
+                .background(MaterialTheme.colorScheme.background)
         ) {
+            // Dynamic Blurred Background
+            if (uiState is PlayerUiState.Success || initialThumbnail != null) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data((uiState as? PlayerUiState.Success)?.bundle?.thumbnailUrl ?: initialThumbnail)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = 0.15f } // Faded for text readability
+                        .blur(80.dp), // Strong blur for immersive feel
+                    contentScale = ContentScale.Crop
+                )
+            }
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -419,9 +451,46 @@ private fun PlayerContent(
                             ) {
                                 VideoPlayerView(
                                     player = player,
+                                    controlsVisible = controlsVisible,
                                     modifier = Modifier.fillMaxSize()
                                 )
+
+                                if (isRecovering) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color.Black.copy(alpha = 0.5f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            CircularProgressIndicator(color = Color.White)
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = stringResource(R.string.waiting_for_connection),
+                                                color = Color.White,
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                        }
+                                    }
+                                }
                             }
+
+                            // Vertical HUDs (Left: Brightness, Right: Volume)
+                            VerticalGestureHUD(
+                                visible = brightnessOverlayVisible,
+                                progress = brightnessLevel,
+                                icon = Icons.Default.BrightnessLow,
+                                isRightSide = false,
+                                modifier = Modifier.align(Alignment.CenterStart)
+                            )
+                            
+                            VerticalGestureHUD(
+                                visible = volumeOverlayVisible,
+                                progress = volumeLevel,
+                                icon = Icons.Default.VolumeUp,
+                                isRightSide = true,
+                                modifier = Modifier.align(Alignment.CenterEnd)
+                            )
 
                             // Persistent Progress Bar (Always visible at the very bottom)
                             PersistentProgressBar(
@@ -430,7 +499,7 @@ private fun PlayerContent(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
                                     .fillMaxWidth()
-                                    .height(2.dp)
+                                    .height(1.5.dp)
                             )
 
                             // Custom Controls Overlay
@@ -466,32 +535,6 @@ private fun PlayerContent(
                                 isForward = isSeekForward
                             )
 
-                            GestureOverlay(
-                                visible = brightnessOverlayVisible,
-                                icon = Icons.Default.BrightnessLow,
-                                text = "${(brightnessLevel * 100).toInt()}%"
-                            )
-                            
-                            GestureOverlay(
-                                visible = volumeOverlayVisible,
-                                icon = Icons.Default.VolumeUp,
-                                text = "${(volumeLevel * 100).toInt()}%"
-                            )
-
-                            LaunchedEffect(brightnessOverlayVisible, isDragging) {
-                                if (brightnessOverlayVisible && !isDragging) {
-                                    delay(1500)
-                                    brightnessOverlayVisible = false
-                                }
-                            }
-
-                            LaunchedEffect(volumeOverlayVisible, isDragging) {
-                                if (volumeOverlayVisible && !isDragging) {
-                                    delay(1500)
-                                    volumeOverlayVisible = false
-                                }
-                            }
-
                             if (isBuffering) {
                                 CircularProgressIndicator(
                                     modifier = Modifier
@@ -513,61 +556,35 @@ private fun PlayerContent(
                     when (uiState) {
                         is PlayerUiState.Loading -> {
                             item {
-                                Column(modifier = Modifier.padding(16.dp)) {
-                                    Text(
-                                        text = initialTitle ?: stringResource(R.string.loading),
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                com.arslandaim.playtube.ui.components.PlayerMetadataSkeleton(syncTransition)
+                            }
+                            
+                            items(3) {
+                                Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                    com.arslandaim.playtube.ui.components.VideoCardSkeleton(syncTransition)
                                 }
                             }
                         }
                         is PlayerUiState.Success -> {
                             item {
-                                VideoHeaderSection(
+                                UnifiedMetadataHub(
                                     title = uiState.title,
                                     viewCount = uiState.bundle.viewCount,
                                     uploadDate = uiState.bundle.uploadDate,
-                                    onShowDescription = { showDescriptionSheet = true }
+                                    description = uiState.bundle.description,
+                                    uploaderName = uiState.uploader,
+                                    uploaderThumbnailUrl = uiState.bundle.uploaderThumbnailUrl,
+                                    uploaderUrl = uiState.bundle.uploaderUrl,
+                                    subscriberCount = uiState.bundle.uploaderSubscriberCount,
+                                    isSubscribed = isSubscribed,
+                                    isFavorite = isFavorite,
+                                    isDownloaded = downloadedIds.contains(videoId),
+                                    onToggleSubscription = onToggleSubscription,
+                                    onToggleFavorite = { onToggleFavorite(null) },
+                                    onDownloadClick = { if (!downloadedIds.contains(videoId)) onDownloadClick(null) },
+                                    onShareClick = onShareVideo,
+                                    onChannelClick = onChannelClick
                                 )
-                            }
-                            
-                            item {
-                                Box(modifier = Modifier.padding(horizontal = 16.dp)) {
-                                    Surface(
-                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                        shape = RoundedCornerShape(16.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            ChannelInfoSection(
-                                                uploaderName = uiState.uploader,
-                                                uploaderThumbnailUrl = uiState.bundle.uploaderThumbnailUrl,
-                                                uploaderUrl = uiState.bundle.uploaderUrl,
-                                                subscriberCount = uiState.bundle.uploaderSubscriberCount,
-                                                isSubscribed = isSubscribed,
-                                                onToggleSubscription = onToggleSubscription,
-                                                onChannelClick = onChannelClick
-                                            )
-                                            
-                                            Spacer(modifier = Modifier.height(12.dp))
-                                            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                            Spacer(modifier = Modifier.height(12.dp))
-                                            
-                                            PlayerActionRow(
-                                                isFavorite = isFavorite,
-                                                isDownloaded = downloadedIds.contains(videoId),
-                                                onToggleFavorite = { onToggleFavorite(null) },
-                                                onDownloadClick = { if (!downloadedIds.contains(videoId)) onDownloadClick(null) },
-                                                onShowDescription = { showDescriptionSheet = true }
-                                            )
-                                        }
-                                    }
-                                }
                             }
 
                             relatedVideosSection(
@@ -657,6 +674,7 @@ private fun PlayerContent(
 @Composable
 private fun VideoPlayerView(
     player: Player,
+    controlsVisible: Boolean,
     modifier: Modifier = Modifier
 ) {
     AndroidView(
@@ -669,24 +687,33 @@ private fun VideoPlayerView(
                 
                 // Professional Subtitle Styling
                 subtitleView?.apply {
+                    // Force Canvas rendering for predictable padding behavior
+                    setViewType(SubtitleView.VIEW_TYPE_CANVAS)
+                    
+                    // Explicitly align to bottom to fix the "subtitles at top" issue
+                    val params = layoutParams as? android.widget.FrameLayout.LayoutParams
+                    params?.gravity = android.view.Gravity.BOTTOM
+                    layoutParams = params
+
                     setApplyEmbeddedStyles(false)
                     setStyle(
                         CaptionStyleCompat(
                             Color.White.toArgb(),
-                            0x80000000.toInt(), // Semi-transparent black background
+                            0x66000000.toInt(), // Reduced background opacity (40%)
                             Color.Transparent.toArgb(),
-                            CaptionStyleCompat.EDGE_TYPE_NONE,
+                            CaptionStyleCompat.EDGE_TYPE_OUTLINE, // Better contrast
                             Color.Black.toArgb(),
-                            android.graphics.Typeface.DEFAULT_BOLD
+                            android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
                         )
                     )
-                    setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * 0.9f)
-                    setBottomPaddingFraction(0.18f) // Positioned at lower third, above progress bar
+                    setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * 1.05f)
                 }
             }
         },
-        update = {
-            // State Updates
+        update = { playerView ->
+            playerView.subtitleView?.setBottomPaddingFraction(
+                if (controlsVisible) 0.18f else 0.08f
+            )
         },
         modifier = modifier
     )
@@ -700,14 +727,14 @@ private fun PersistentProgressBar(
 ) {
     Box(
         modifier = modifier
-            .background(Color.White.copy(alpha = 0.1f))
+            .background(Color.White.copy(alpha = 0.05f))
     ) {
         // Buffered (Preloaded) line
         Box(
             modifier = Modifier
                 .fillMaxHeight()
                 .fillMaxWidth(bufferedProgress.coerceIn(0f, 1f))
-                .background(Color.White.copy(alpha = 0.4f))
+                .background(Color.White.copy(alpha = 0.25f))
         )
         // Playback progress line
         Box(
@@ -735,9 +762,9 @@ private fun PlayerControlsOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.45f))
+            .background(Color.Black.copy(alpha = 0.4f))
     ) {
-        // Center Controls
+        // Center Play/Pause with Scale Animation
         Box(
             modifier = Modifier.align(Alignment.Center),
             contentAlignment = Alignment.Center
@@ -745,36 +772,43 @@ private fun PlayerControlsOverlay(
             Surface(
                 onClick = onPlayPause,
                 shape = CircleShape,
-                color = Color.Black.copy(alpha = 0.3f),
-                modifier = Modifier.size(72.dp)
+                color = Color.White.copy(alpha = 0.2f),
+                modifier = Modifier.size(76.dp)
             ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.padding(16.dp).fillMaxSize()
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(42.dp)
+                    )
+                }
             }
         }
 
-        // Bottom Controls
+        // Bottom Seek Section (Modern & Minimal)
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(bottom = 8.dp) // Leave room for persistent progress bar at the very bottom
+                .padding(bottom = 12.dp)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = 20.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "${VideoUtils.formatDuration(currentPosition / 1000)} / ${VideoUtils.formatDuration(duration / 1000)}",
+                    text = VideoUtils.formatDuration(currentPosition / 1000),
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                     color = Color.White
+                )
+                Text(
+                    text = VideoUtils.formatDuration(duration / 1000),
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White.copy(alpha = 0.7f)
                 )
             }
             
@@ -785,42 +819,52 @@ private fun PlayerControlsOverlay(
                 colors = SliderDefaults.colors(
                     thumbColor = Color.Red,
                     activeTrackColor = Color.Red,
-                    inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                    inactiveTrackColor = Color.White.copy(alpha = 0.25f),
+                    activeTickColor = Color.Transparent,
+                    inactiveTickColor = Color.Transparent
                 ),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                modifier = Modifier.fillMaxWidth().height(32.dp)
             )
         }
 
-        // Top Controls
+        // Top Navigation & Actions Pill
         Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
-                .padding(8.dp),
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
                 onClick = onBack,
-                modifier = Modifier.background(Color.Black.copy(alpha = 0.2f), CircleShape)
+                modifier = Modifier
+                    .background(Color.White.copy(alpha = 0.15f), CircleShape)
+                    .size(40.dp)
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White, modifier = Modifier.size(20.dp))
             }
             
             Spacer(modifier = Modifier.weight(1f))
 
-            Row(modifier = Modifier.background(Color.Black.copy(alpha = 0.2f), RoundedCornerShape(20.dp))) {
-                if (hasSubtitles) {
-                    IconButton(onClick = onToggleSubtitles) {
-                        Icon(
-                            imageVector = if (isCcEnabled) Icons.Default.ClosedCaption else Icons.Default.ClosedCaptionDisabled,
-                            contentDescription = null,
-                            tint = if (isCcEnabled) MaterialTheme.colorScheme.primary else Color.White
-                        )
+            Surface(
+                color = Color.White.copy(alpha = 0.15f),
+                shape = RoundedCornerShape(24.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (hasSubtitles) {
+                        IconButton(onClick = onToggleSubtitles, modifier = Modifier.size(40.dp)) {
+                            Icon(
+                                imageVector = if (isCcEnabled) Icons.Default.ClosedCaption else Icons.Default.ClosedCaptionDisabled,
+                                contentDescription = null,
+                                tint = if (isCcEnabled) MaterialTheme.colorScheme.primary else Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
-                }
 
-                IconButton(onClick = onShowSettings) {
-                    Icon(Icons.Default.Settings, null, tint = Color.White)
+                    IconButton(onClick = onShowSettings, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.Default.Settings, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                    }
                 }
             }
         }

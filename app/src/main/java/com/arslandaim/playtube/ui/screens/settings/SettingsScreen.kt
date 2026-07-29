@@ -73,11 +73,13 @@ import androidx.compose.ui.res.stringResource
 import com.arslandaim.playtube.R
 import androidx.core.net.toUri
 import com.arslandaim.playtube.BuildConfig
+import com.arslandaim.playtube.ui.screens.library.GlobalGlassAlpha
 
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onViewHistory: () -> Unit,
+    onDataManagement: () -> Unit,
     onBack: () -> Unit
 ) {
     val isSearchHistoryPaused by viewModel.isSearchHistoryPaused.collectAsState()
@@ -93,6 +95,7 @@ fun SettingsScreen(
         onSetBackgroundPlayEnabled = viewModel::setBackgroundPlayEnabled,
         onClearAllDownloads = viewModel::clearAllDownloads,
         onViewHistory = onViewHistory,
+        onDataManagement = onDataManagement,
         onBack = onBack
     )
 }
@@ -108,6 +111,7 @@ private fun SettingsContent(
     onSetBackgroundPlayEnabled: (Boolean) -> Unit,
     onClearAllDownloads: () -> Unit,
     onViewHistory: () -> Unit,
+    onDataManagement: () -> Unit,
     onBack: () -> Unit
 ) {
     var showClearDownloadsDialog by remember { mutableStateOf(false) }
@@ -148,16 +152,26 @@ private fun SettingsContent(
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            LargeTopAppBar(
-                title = { Text("Settings", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                scrollBehavior = scrollBehavior,
-                windowInsets = WindowInsets(0, 0, 0, 0)
-            )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = GlobalGlassAlpha),
+                tonalElevation = 0.dp
+            ) {
+                LargeTopAppBar(
+                    title = { Text("Settings", fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    scrollBehavior = scrollBehavior,
+                    colors = TopAppBarDefaults.largeTopAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent
+                    ),
+                    windowInsets = WindowInsets(0, 0, 0, 0)
+                )
+            }
         }
     ) { padding ->
         LazyColumn(
@@ -202,6 +216,14 @@ private fun SettingsContent(
                         icon = Icons.Default.PlayArrow,
                         checked = isBackgroundPlayEnabled,
                         onCheckedChange = onSetBackgroundPlayEnabled
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    SettingsItem(
+                        title = "Data & Backup",
+                        subtitle = "Import Takeout and native backups",
+                        icon = Icons.Default.Info,
+                        onClick = onDataManagement,
+                        trailingIcon = Icons.AutoMirrored.Filled.KeyboardArrowRight
                     )
                 }
             }
@@ -269,11 +291,11 @@ fun SettingsGroup(
         )
         ElevatedCard(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(20.dp), // Consistent 20dp corners
             colors = CardDefaults.elevatedCardColors(
                 containerColor = MaterialTheme.colorScheme.surface
             ),
-            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
+            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp)
         ) {
             Column(content = content)
         }

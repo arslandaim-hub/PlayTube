@@ -51,6 +51,7 @@ import com.arslandaim.playtube.ui.navigation.Screen
 import com.arslandaim.playtube.ui.theme.PlayTubeTheme
 import dagger.hilt.android.AndroidEntryPoint
 import android.app.PictureInPictureParams
+import android.content.Intent
 import android.util.Rational
 import androidx.core.util.Consumer
 import android.content.res.Configuration
@@ -141,6 +142,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             val darkTheme = isSystemInDarkTheme()
             val isBackgroundPlayEnabled by mainViewModel.isBackgroundPlayEnabled.collectAsState()
+            val isOnboardingCompleted by mainViewModel.isOnboardingCompleted.collectAsState()
+
+            if (isOnboardingCompleted == null) return@setContent
+            
+            val startDestination = if (isOnboardingCompleted == true) Screen.Home.route else Screen.Onboarding.route
 
             // Connect to MediaSession ONLY if background play is enabled
             if (isBackgroundPlayEnabled) {
@@ -186,14 +192,17 @@ class MainActivity : ComponentActivity() {
 
                 val mainRoutes = remember { listOf(Screen.Home.route, Screen.Subscriptions.route, Screen.Library.route) }
                 val isMainRoute = currentRoute in mainRoutes
+                val isOnboarding = currentRoute == Screen.Onboarding.route
                 
                 LaunchedEffect(currentRoute) {
                     if (isMainRoute) {
                         isBarsVisible = true
+                    } else if (isOnboarding) {
+                        isBarsVisible = false
                     }
                 }
 
-                val showBars = isMainRoute && !isInPipModeState.value
+                val showBars = isMainRoute && !isInPipModeState.value && !isOnboarding
                 
                 // Animate visibility with a natural spring
                 val barsVisibilityProgress by animateFloatAsState(
@@ -328,6 +337,7 @@ class MainActivity : ComponentActivity() {
                             Box(modifier = Modifier.padding(top = innerPadding.calculateTopPadding())) {
                                 NavGraph(
                                     navController = navController,
+                                    startDestination = startDestination,
                                     onBarsVisibilityChange = { isBarsVisible = it }
                                 )
                             }
@@ -368,7 +378,7 @@ class MainActivity : ComponentActivity() {
                 PlayerOverlay(
                     isExpanded = isExpanded,
                     currentVideo = currentVideo,
-                    bottomBarHeight = BOTTOM_BAR_HEIGHT * barsVisibilityProgress,
+                    bottomBarHeight = if (showBars) BOTTOM_BAR_HEIGHT * barsVisibilityProgress else 0.dp,
                     viewModel = playerViewModel,
                     onClose = {
                         miniPlayerManager.close {
@@ -410,12 +420,11 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         // If the activity is finishing, stop the player and clear media.
-        // We removed the !isInPictureInPictureMode check here because it was too aggressive,
-        // causing playback to reset when the app was simply minimized.
         if (isFinishing) {
             playerViewModel.player.stop()
             playerViewModel.player.clearMediaItems()
             miniPlayerManager.clear()
+            stopService(Intent(this, PlaybackService::class.java))
         }
     }
 

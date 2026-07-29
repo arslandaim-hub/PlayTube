@@ -66,7 +66,7 @@ object VideoUtils {
     }
 
     fun formatViewCount(views: Long): String {
-        return "${formatNumber(views)} views"
+        return formatNumber(views)
     }
 
     fun formatUploadDate(date: String?): String {

@@ -10,11 +10,13 @@ import com.arslandaim.playtube.data.local.HistoryEntity
 import com.arslandaim.playtube.data.local.PlaylistFavoriteEntity
 import com.arslandaim.playtube.data.local.SearchHistoryEntity
 import com.arslandaim.playtube.data.local.SubscriptionEntity
+import com.arslandaim.playtube.data.local.UserInterestEntity
 import kotlinx.coroutines.flow.Flow
 
 interface LibraryRepository {
     // History
     fun getHistory(): Flow<List<HistoryEntity>>
+    suspend fun getRecentHistory(limit: Int): List<HistoryEntity>
     suspend fun addToHistory(history: HistoryEntity)
     suspend fun updateWatchProgress(videoId: String, progressMs: Long, durationMs: Long)
     suspend fun removeFromHistory(videoId: String)
@@ -44,4 +46,10 @@ interface LibraryRepository {
     suspend fun addSearchQuery(query: String)
     suspend fun deleteSearchQuery(query: String)
     suspend fun clearSearchHistory()
+
+    // User Interests
+    suspend fun getTopInterests(limit: Int): List<UserInterestEntity>
+    suspend fun updateInterest(keyword: String, weightDelta: Float)
+    suspend fun applyInterestDecay(decayFactor: Float)
+    suspend fun hasInterests(): Boolean
 }

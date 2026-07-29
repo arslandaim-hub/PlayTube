@@ -5,14 +5,8 @@
 */
 package com.arslandaim.playtube.di
 
-import com.arslandaim.playtube.data.repository.DownloadRepositoryImpl
-import com.arslandaim.playtube.data.repository.LibraryRepositoryImpl
-import com.arslandaim.playtube.data.repository.SearchRepositoryImpl
-import com.arslandaim.playtube.data.repository.VideoRepositoryImpl
-import com.arslandaim.playtube.domain.repository.DownloadRepository
-import com.arslandaim.playtube.domain.repository.LibraryRepository
-import com.arslandaim.playtube.domain.repository.SearchRepository
-import com.arslandaim.playtube.domain.repository.VideoRepository
+import com.arslandaim.playtube.data.repository.*
+import com.arslandaim.playtube.domain.repository.*
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -46,4 +40,10 @@ abstract class RepositoryModule {
     abstract fun bindLibraryRepository(
         libraryRepositoryImpl: LibraryRepositoryImpl
     ): LibraryRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindDataManagerRepository(
+        dataManagerRepositoryImpl: DataManagerRepositoryImpl
+    ): DataManagerRepository
 }

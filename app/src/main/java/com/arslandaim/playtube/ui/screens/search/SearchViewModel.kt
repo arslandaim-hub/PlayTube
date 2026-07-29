@@ -58,6 +58,9 @@ class SearchViewModel @Inject constructor(
     private val _searchSort = MutableStateFlow(SearchSort.RELEVANCE)
     val searchSort: StateFlow<SearchSort> = _searchSort.asStateFlow()
 
+    val isGridView: StateFlow<Boolean> = preferencesManager.isSearchGridView
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     private var isFetchingNextPage by mutableStateOf(false)
 
     val uiState: StateFlow<SearchUiState> = combine(
@@ -85,28 +88,32 @@ class SearchViewModel @Inject constructor(
                 }
             }
 
-            // Step 2: Apply Local Sorting Fallback
-            val sortedItems = when (sort) {
-                SearchSort.UPLOAD_DATE -> {
-                    updatedItems.sortedWith(compareByDescending<SearchItem> { 
-                        (it as? SearchItem.Video)?.video?.rawUploadDate ?: 0L 
-                    }.thenByDescending {
-                        (it as? SearchItem.Video)?.video?.viewCount ?: 0L
-                    })
-                }
-                SearchSort.VIEW_COUNT -> {
-                    updatedItems.sortedByDescending { 
-                        (it as? SearchItem.Video)?.video?.viewCount ?: 0L 
+            // Step 2: Apply Local Sorting Fallback with Partitioning
+            // We separate videos from "static" items (Channels, Playlists) to ensure 
+            // unsortable items stay pinned to the top rather than being buried.
+            val sortedItems = if (sort == SearchSort.RELEVANCE) {
+                updatedItems // Use original mixed extractor order
+            } else {
+                val (videos, staticItems) = updatedItems.partition { it is SearchItem.Video }
+                
+                val sortedVideos = when (sort) {
+                    SearchSort.UPLOAD_DATE -> {
+                        videos.sortedWith(compareByDescending<SearchItem> { 
+                            (it as SearchItem.Video).video.rawUploadDate ?: 0L 
+                        }.thenByDescending {
+                            (it as SearchItem.Video).video.viewCount
+                        })
                     }
-                }
-                SearchSort.RATING -> {
-                    // NewPipe doesn't provide rating scores easily for search items, 
-                    // so we fallback to view count for "Top Rated" popularity.
-                    updatedItems.sortedByDescending { 
-                        (it as? SearchItem.Video)?.video?.viewCount ?: 0L 
+                    SearchSort.VIEW_COUNT -> {
+                        videos.sortedByDescending { (it as SearchItem.Video).video.viewCount }
                     }
+                    SearchSort.RATING -> {
+                        // Fallback to view count for popularity if rating is unavailable
+                        videos.sortedByDescending { (it as SearchItem.Video).video.viewCount }
+                    }
+                    else -> videos
                 }
-                SearchSort.RELEVANCE -> updatedItems // Use original extractor order
+                staticItems + sortedVideos
             }
 
             SearchUiState.Success(sortedItems, isLoadingMore)
@@ -160,6 +167,12 @@ class SearchViewModel @Inject constructor(
         }
     }
 
+    fun toggleGridView() {
+        viewModelScope.launch {
+            preferencesManager.setSearchGridView(!isGridView.value)
+        }
+    }
+
     fun search(query: String) {
         if (query.isBlank()) return
         _searchQuery.value = query
@@ -202,7 +215,14 @@ class SearchViewModel @Inject constructor(
                     val currentState = _internalUiState.value
                     if (currentState is SearchUiState.Success) {
                         nextPage = result.nextPage
-                        _internalUiState.value = SearchUiState.Success(currentState.items + result.items)
+                        
+                        // Strict de-duplication to prevent "accumulation" bugs
+                        val currentKeys = currentState.items.map { it.uniqueKey }.toSet()
+                        val filteredNewItems = result.items.filter { it.uniqueKey !in currentKeys }
+                        
+                        _internalUiState.value = SearchUiState.Success(
+                            items = currentState.items + filteredNewItems
+                        )
                     }
                 }
             isFetchingNextPage = false

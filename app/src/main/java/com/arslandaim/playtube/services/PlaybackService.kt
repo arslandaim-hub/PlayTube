@@ -8,9 +8,11 @@ package com.arslandaim.playtube.services
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.annotation.OptIn
+import androidx.core.app.NotificationCompat
 import androidx.core.app.TaskStackBuilder
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -25,6 +27,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -38,8 +41,11 @@ class PlaybackService : MediaSessionService() {
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.Main + serviceJob)
 
+    private var isBackgroundPlayEnabled = true
+
     companion object {
         const val CHANNEL_ID = "playback_channel"
+        const val NOTIFICATION_ID = 1001 // Standard ID for PlayTube media controls
     }
 
     @OptIn(UnstableApi::class)
@@ -64,26 +70,34 @@ class PlaybackService : MediaSessionService() {
             .setSessionActivity(pendingIntent!!)
             .build()
             
-        // Observe background play setting and stop if disabled
+        // Observe background play setting and update notification behavior dynamically
         serviceScope.launch {
             preferencesManager.isBackgroundPlayEnabled.collectLatest { enabled ->
+                isBackgroundPlayEnabled = enabled
+                
                 if (!enabled) {
-                    if (player.isPlaying) {
-                        player.pause()
-                    }
-                    stopSelf()
+                    // Explicitly remove notification and exit foreground status
+                    // This prevents the system "App is running" notification
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                    notificationManager.cancel(NOTIFICATION_ID)
                 }
             }
         }
     }
 
+    // Removed updateNotificationProvider dummy logic
+
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val name = getString(R.string.background_play)
             val descriptionText = getString(R.string.background_play_desc)
-            val importance = NotificationManager.IMPORTANCE_DEFAULT
+            val importance = NotificationManager.IMPORTANCE_LOW // Use LOW to ensure silent media controls
             val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
                 description = descriptionText
+                setShowBadge(false) // Media controls usually don't need badges
+                setSound(null, null) // Defensive: ensure no sound
+                enableVibration(false) // Defensive: ensure no vibration
             }
             val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)

@@ -16,6 +16,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.arslandaim.playtube.ui.screens.home.HomeScreen
 import com.arslandaim.playtube.ui.screens.home.HomeViewModel
+import com.arslandaim.playtube.ui.screens.onboarding.InterestsSelectionScreen
+import com.arslandaim.playtube.ui.screens.onboarding.OnboardingViewModel
 import com.arslandaim.playtube.ui.screens.library.LibraryScreen
 import com.arslandaim.playtube.ui.screens.library.LibraryViewModel
 import com.arslandaim.playtube.ui.screens.channel.ChannelScreen
@@ -29,11 +31,14 @@ import com.arslandaim.playtube.ui.screens.search.SearchScreen
 import com.arslandaim.playtube.ui.screens.search.SearchViewModel
 import com.arslandaim.playtube.ui.screens.settings.SettingsScreen
 import com.arslandaim.playtube.ui.screens.settings.SettingsViewModel
+import com.arslandaim.playtube.ui.screens.settings.DataManagementScreen
+import com.arslandaim.playtube.ui.screens.settings.DataManagementViewModel
 import com.arslandaim.playtube.ui.screens.subscriptions.SubscriptionsScreen
 
 @Composable
 fun NavGraph(
     navController: NavHostController,
+    startDestination: String = Screen.Home.route,
     onBarsVisibilityChange: (Boolean) -> Unit
 ) {
     val activity = LocalActivity.current as ComponentActivity
@@ -52,7 +57,7 @@ fun NavGraph(
 
     NavHost(
         navController = navController,
-        startDestination = Screen.Home.route,
+        startDestination = startDestination,
         enterTransition = {
             onBarsVisibilityChange(true)
             val isBottomTab = initialState.destination.route in listOf(Screen.Home.route, Screen.Subscriptions.route, Screen.Library.route) &&
@@ -144,7 +149,18 @@ fun NavGraph(
                     navController.navigate(Screen.Playlist.createRoute(playlistId))
                 },
                 onSeeAllHistory = { navController.navigate(Screen.History.route) { launchSingleTop = true } },
-                onSeeAllSubscriptions = { navController.navigate(Screen.SubscriptionsList.route) { launchSingleTop = true } }
+                onSeeAllSubscriptions = { navController.navigate(Screen.SubscriptionsList.route) { launchSingleTop = true } },
+                onSeeAllDownloads = { navController.navigate(Screen.Downloads.route) { launchSingleTop = true } }
+            )
+        }
+        composable(Screen.Downloads.route) {
+            com.arslandaim.playtube.ui.screens.library.DownloadsScreen(
+                viewModel = libraryViewModel,
+                onBarsVisibilityChange = onBarsVisibilityChange,
+                onBack = { navController.popBackStack() },
+                onVideoClick = { video ->
+                    playerViewModel.loadVideo(video)
+                }
             )
         }
         composable(Screen.Settings.route) {
@@ -152,6 +168,14 @@ fun NavGraph(
             SettingsScreen(
                 viewModel = viewModel,
                 onViewHistory = { navController.navigate(Screen.History.route) { launchSingleTop = true } },
+                onDataManagement = { navController.navigate(Screen.DataManagement.route) },
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Screen.DataManagement.route) {
+            val viewModel: DataManagementViewModel = hiltViewModel()
+            DataManagementScreen(
+                viewModel = viewModel,
                 onBack = { navController.popBackStack() }
             )
         }
@@ -218,6 +242,17 @@ fun NavGraph(
                     navController.navigate(Screen.Playlist.createRoute(playlistId))
                 },
                 onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Screen.Onboarding.route) {
+            val viewModel: OnboardingViewModel = hiltViewModel()
+            InterestsSelectionScreen(
+                viewModel = viewModel,
+                onComplete = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Onboarding.route) { inclusive = true }
+                    }
+                }
             )
         }
         // Removed separate Player composable as it's now a global overlay

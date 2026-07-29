@@ -14,6 +14,7 @@ import com.arslandaim.playtube.data.local.PlayTubeDatabase
 import com.arslandaim.playtube.data.local.PlaylistFavoriteDao
 import com.arslandaim.playtube.data.local.SearchHistoryDao
 import com.arslandaim.playtube.data.local.SubscriptionDao
+import com.arslandaim.playtube.data.local.UserInterestDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -33,7 +34,6 @@ object DatabaseModule {
             PlayTubeDatabase::class.java,
             "playtube_db"
         )
-        .fallbackToDestructiveMigration()
         .build()
     }
 
@@ -65,5 +65,10 @@ object DatabaseModule {
     @Provides
     fun provideSearchHistoryDao(database: PlayTubeDatabase): SearchHistoryDao {
         return database.searchHistoryDao()
+    }
+
+    @Provides
+    fun provideUserInterestDao(database: PlayTubeDatabase): UserInterestDao {
+        return database.userInterestDao()
     }
 }

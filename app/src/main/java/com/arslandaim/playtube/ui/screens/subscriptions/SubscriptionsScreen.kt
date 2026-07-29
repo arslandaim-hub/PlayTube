@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.arslandaim.playtube.ui.screens.library.LibraryViewModel
 import com.arslandaim.playtube.ui.screens.library.SubscriptionItemRow
+import com.arslandaim.playtube.ui.screens.library.GlobalGlassAlpha
 import com.arslandaim.playtube.ui.components.EmptyState
 import androidx.compose.material.icons.filled.People
 import androidx.compose.ui.res.stringResource
@@ -115,7 +116,7 @@ private fun SubscriptionsContent(
             if (showTopAppBar) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), // Glass Effect
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = GlobalGlassAlpha), // Unified Glass Effect
                     tonalElevation = 0.dp
                 ) {
                     TopAppBar(

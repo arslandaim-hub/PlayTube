@@ -31,7 +31,7 @@ class SearchRepositoryImpl @Inject constructor() : SearchRepository {
                 
                 val extractor = youtubeService.getSearchExtractor(
                     query,
-                    listOf("videos", "channels", "playlists"),
+                    listOf("all"),
                     sortToken
                 )
                 extractor.fetchPage()
@@ -78,7 +78,7 @@ class SearchRepositoryImpl @Inject constructor() : SearchRepository {
                 
                 val extractor = youtubeService.getSearchExtractor(
                     query,
-                    listOf("videos", "channels", "playlists"),
+                    listOf("all"),
                     sortToken
                 )
                 val nextPage = extractor.getPage(page)

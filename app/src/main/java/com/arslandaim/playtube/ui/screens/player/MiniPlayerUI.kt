@@ -62,9 +62,9 @@ fun MiniPlayerUI(
             ),
         color = MaterialTheme.colorScheme.surface.copy(alpha = com.arslandaim.playtube.ui.theme.GlassAlpha),
         contentColor = MaterialTheme.colorScheme.onSurface,
-        shape = RoundedCornerShape(16.dp),
-        tonalElevation = 0.dp, // Reduced for transparency purity
-        shadowElevation = 8.dp,
+        shape = RoundedCornerShape(20.dp), // Increased for v2 consistency
+        tonalElevation = 0.dp,
+        shadowElevation = 12.dp,
         border = androidx.compose.foundation.BorderStroke(
             width = 0.5.dp,
             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
@@ -81,27 +81,27 @@ fun MiniPlayerUI(
                     videoId = video.id,
                     thumbnailUrl = video.thumbnailUrl,
                     modifier = Modifier
-                        .height(44.dp)
+                        .height(48.dp) // Slightly larger
                         .aspectRatio(16f / 9f)
-                        .clip(RoundedCornerShape(8.dp)),
+                        .clip(RoundedCornerShape(10.dp)),
                     contentScale = ContentScale.Crop,
                     filterQuality = FilterQuality.High
                 )
                 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(14.dp))
                 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = video.title,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelLarge, // Refined font
+                        fontWeight = FontWeight.ExtraBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = video.uploaderName,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -111,25 +111,25 @@ fun MiniPlayerUI(
                     onClick = {
                         if (isPlaying) player.pause() else player.play()
                     },
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
-                        modifier = Modifier.size(24.dp)
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp),
+                        tint = MaterialTheme.colorScheme.primary
                     )
                 }
                 
-                Spacer(modifier = Modifier.width(4.dp))
-                
                 IconButton(
                     onClick = onClose,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Close",
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -152,8 +152,7 @@ private fun MiniPlayerProgress(player: Player) {
                     progress = player.currentPosition.toFloat() / duration
                 }
             }
-            // Increase delay when not playing or use a more reactive approach if possible
-            kotlinx.coroutines.delay(if (player.isPlaying) 500 else 2000)
+            kotlinx.coroutines.delay(500)
         }
     }
     
@@ -161,7 +160,7 @@ private fun MiniPlayerProgress(player: Player) {
         progress = { progress },
         modifier = Modifier
             .fillMaxWidth()
-            .height(2.dp),
+            .height(1.5.dp), // Thinner for v2
         color = MaterialTheme.colorScheme.primary,
         trackColor = Color.Transparent,
     )

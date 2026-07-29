@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.arslandaim.playtube.ui.screens.library.HistoryItemRow
+import com.arslandaim.playtube.ui.screens.library.GlobalGlassAlpha
 import com.arslandaim.playtube.ui.screens.settings.SettingsViewModel
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.ui.components.EmptyState
@@ -76,7 +77,7 @@ private fun HistoryContent(
         topBar = {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), // Glass Effect
+                color = MaterialTheme.colorScheme.surface.copy(alpha = GlobalGlassAlpha), // Unified Glass Effect
                 tonalElevation = 0.dp
             ) {
                 TopAppBar(

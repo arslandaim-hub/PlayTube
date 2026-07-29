@@ -24,4 +24,7 @@ class MainViewModel @Inject constructor(
 
     val isBackgroundPlayEnabled: StateFlow<Boolean> = preferencesManager.isBackgroundPlayEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val isOnboardingCompleted: StateFlow<Boolean?> = preferencesManager.isOnboardingCompleted
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 }

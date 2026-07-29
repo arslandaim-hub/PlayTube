@@ -38,6 +38,9 @@ fun PlayerOverlay(
 ) {
     if (currentVideo == null) return
 
+    // CRITICAL: Ensure BackHandler is only active when expanded
+    // to prevent it from intercepting back presses meant for the navigation stack 
+    // when the player is minimized or hidden.
     BackHandler(enabled = isExpanded) {
         onMinimize()
     }

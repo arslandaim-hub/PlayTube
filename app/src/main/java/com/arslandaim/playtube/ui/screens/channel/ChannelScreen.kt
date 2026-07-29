@@ -5,6 +5,7 @@
 */
 package com.arslandaim.playtube.ui.screens.channel
 
+import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,10 +25,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
 import com.arslandaim.playtube.R
 import coil3.compose.AsyncImage
@@ -43,9 +47,9 @@ import com.arslandaim.playtube.ui.components.DownloadDialogState
 import com.arslandaim.playtube.ui.screens.library.LibraryViewModel
 import com.arslandaim.playtube.utils.VideoUtils
 import kotlinx.coroutines.flow.SharedFlow
-
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
+import com.arslandaim.playtube.ui.theme.GlassAlpha
 
 @Composable
 fun ChannelScreen(
@@ -126,21 +130,23 @@ private fun ChannelContent(
     }
 
     val listState = rememberLazyListState()
-    val shouldLoadMore = remember {
-        derivedStateOf {
-            val totalItemsCount = listState.layoutInfo.totalItemsCount
-            val lastVisibleItemIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            lastVisibleItemIndex >= totalItemsCount - 5
-        }
-    }
-
-    LaunchedEffect(shouldLoadMore.value) {
-        if (shouldLoadMore.value && selectedTabIndex == 0) {
-            onLoadMore()
-        }
-    }
-
     val scrollVisibilityConnection = rememberScrollVisibilityConnection(onBarsVisibilityChange)
+
+    // Parallax Calculation
+    val bannerHeight = 200.dp
+    val bannerHeightPx = with(androidx.compose.ui.platform.LocalDensity.current) { bannerHeight.toPx() }
+    
+    val scrollOffset by remember {
+        derivedStateOf {
+            if (listState.firstVisibleItemIndex == 0) {
+                listState.firstVisibleItemScrollOffset.toFloat()
+            } else {
+                bannerHeightPx
+            }
+        }
+    }
+
+    val bannerProgress = (1f - (scrollOffset / bannerHeightPx)).coerceIn(0f, 1f)
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollVisibilityConnection),
@@ -153,136 +159,167 @@ private fun ChannelContent(
                 }
                 is ChannelUiState.Success -> {
                     val details = uiState.details
+                    
+                    // Immersive Banner
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(bannerHeight)
+                            .graphicsLayer {
+                                translationY = -scrollOffset * 0.5f
+                                alpha = bannerProgress
+                                scaleX = 1f + (1f - bannerProgress) * 0.2f
+                                scaleY = 1f + (1f - bannerProgress) * 0.2f
+                            }
+                    ) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(details.bannerUrl)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                        // Gradient Overlay for better contrast
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                                        listOf(Color.Black.copy(alpha = 0.4f), Color.Transparent, Color.Black.copy(alpha = 0.4f))
+                                    )
+                                )
+                        )
+                    }
+
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize()
                     ) {
                         item {
-                            // Banner with Back Button Overlay
-                            Box(modifier = Modifier.fillMaxWidth().height(140.dp)) {
-                                AsyncImage(
-                                    model = ImageRequest.Builder(LocalContext.current)
-                                        .data(details.bannerUrl)
-                                        .crossfade(true)
-                                        .build(),
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop,
-                                    filterQuality = FilterQuality.High
-                                )
-                                // Back Button Overlay
-                                IconButton(
-                                    onClick = onBack,
-                                    modifier = Modifier
-                                        .padding(8.dp)
-                                        .align(Alignment.TopStart)
-                                        .background(Color.Black.copy(alpha = 0.3f), CircleShape)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = "Back",
-                                        tint = Color.White
-                                    )
-                                }
-                            }
+                            Spacer(modifier = Modifier.height(bannerHeight - 60.dp))
                             
-                            // Header
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                AsyncImage(
-                                    model = ImageRequest.Builder(LocalContext.current)
-                                        .data(details.avatarUrl)
-                                        .crossfade(true)
-                                        .build(),
-                                    contentDescription = null,
+                            // Modern Channel Header with Overlapping Avatar
+                            Box(contentAlignment = Alignment.TopCenter) {
+                                // Content Surface
+                                Surface(
                                     modifier = Modifier
-                                        .size(80.dp)
-                                        .clip(CircleShape),
-                                    filterQuality = FilterQuality.High
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                                
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
+                                        .padding(top = 50.dp) // Room for top half of avatar
+                                        .fillMaxWidth(),
+                                    shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    tonalElevation = 2.dp
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 20.dp, vertical = 24.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Spacer(modifier = Modifier.height(40.dp)) // Offset for bottom half of avatar
+
                                         Text(
                                             text = details.name,
-                                            style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
+                                            style = MaterialTheme.typography.headlineSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                                         )
                                         
-                                        val subCountText = if (details.subscriberCount != null && details.subscriberCount < 0) {
-                                            stringResource(R.string.subscribers_hidden)
-                                        } else if (details.subscriberCount != null) {
-                                            stringResource(R.string.subscribers_count, VideoUtils.formatNumber(details.subscriberCount))
-                                        } else null
-                                        
-                                        if (subCountText != null) {
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        // Stats Row
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            details.subscriberCount?.let { count ->
+                                                Text(
+                                                    text = if (count < 0) "Subscribers hidden" else "${VideoUtils.formatNumber(count)} Subscribers",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Text(
+                                                    text = " • ",
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
                                             Text(
-                                                text = subCountText,
+                                                text = "${details.videos.size}+ Videos",
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
-                                    }
-                                    
-                                    // Subscribe Button (Only show once the state is known to prevent flicker)
-                                    if (isSubscribed != null) {
-                                        Button(
-                                            onClick = onToggleSubscription,
-                                            colors = if (isSubscribed == true) {
-                                                ButtonDefaults.buttonColors(
-                                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+                                        Spacer(modifier = Modifier.height(20.dp))
+
+                                        // Subscribe Button
+                                        if (isSubscribed != null) {
+                                            Button(
+                                                onClick = onToggleSubscription,
+                                                colors = if (isSubscribed == true) {
+                                                    ButtonDefaults.buttonColors(
+                                                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                } else {
+                                                    ButtonDefaults.buttonColors(
+                                                        containerColor = MaterialTheme.colorScheme.primary,
+                                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                                    )
+                                                },
+                                                shape = RoundedCornerShape(12.dp),
+                                                modifier = Modifier.fillMaxWidth().height(48.dp)
+                                            ) {
+                                                Text(
+                                                    text = if (isSubscribed == true) stringResource(R.string.subscribed) else stringResource(R.string.subscribe),
+                                                    fontWeight = FontWeight.Bold,
+                                                    letterSpacing = 0.5.sp
                                                 )
-                                            } else {
-                                                ButtonDefaults.buttonColors(
-                                                    containerColor = MaterialTheme.colorScheme.onSurface,
-                                                    contentColor = MaterialTheme.colorScheme.surface
-                                                )
-                                            },
-                                            shape = CircleShape,
-                                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
-                                        ) {
+                                            }
+                                        }
+
+                                        details.description?.let { desc ->
                                             Text(
-                                                text = if (isSubscribed == true) stringResource(R.string.subscribed) else stringResource(R.string.subscribe),
-                                                fontWeight = FontWeight.SemiBold
+                                                text = desc,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 3,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.padding(top = 16.dp),
+                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
                                             )
                                         }
                                     }
                                 }
-                                
-                                details.description?.let { desc ->
-                                    Text(
-                                        text = desc,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(top = 12.dp)
+
+                                // Floating Avatar
+                                Surface(
+                                    modifier = Modifier.size(100.dp),
+                                    shape = CircleShape,
+                                    border = androidx.compose.foundation.BorderStroke(4.dp, MaterialTheme.colorScheme.surface),
+                                    tonalElevation = 8.dp
+                                ) {
+                                    AsyncImage(
+                                        model = details.avatarUrl,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                        contentScale = ContentScale.Crop
                                     )
                                 }
                             }
                         }
                         
-                        // Sticky Tabs
+                        // Sticky Tabs with Glass Effect
                         stickyHeader {
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
-                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), // Glass Effect
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = GlassAlpha),
                                 tonalElevation = 0.dp
                             ) {
                                 PrimaryTabRow(
                                     selectedTabIndex = selectedTabIndex,
-                                    containerColor = Color.Transparent, // Let Surface handle background
+                                    containerColor = Color.Transparent,
                                     divider = {}
                                 ) {
                                     tabs.forEachIndexed { index, title ->
@@ -292,7 +329,7 @@ private fun ChannelContent(
                                             text = { 
                                                 Text(
                                                     text = title,
-                                                    fontWeight = FontWeight.Bold,
+                                                    fontWeight = FontWeight.ExtraBold,
                                                     color = if (selectedTabIndex == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             }
@@ -304,7 +341,7 @@ private fun ChannelContent(
 
                         if (selectedTabIndex == 0) {
                             items(details.videos, key = { it.id }) { video ->
-                                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                                     VideoItemRow(
                                         video = video,
                                         isDownloaded = downloadedIds.contains(video.id),
@@ -315,8 +352,11 @@ private fun ChannelContent(
                                     )
                                 }
                             }
+                            
+                            // Load More Indicator
                             if (details.nextVideosPage != null) {
                                 item {
+                                    LaunchedEffect(Unit) { onLoadMore() }
                                     Box(
                                         modifier = Modifier.fillMaxWidth().padding(24.dp),
                                         contentAlignment = Alignment.Center
@@ -325,36 +365,41 @@ private fun ChannelContent(
                                     }
                                 }
                             }
-                            if (details.videos.isEmpty()) {
-                                item {
-                                    EmptyChannelPlaceholder("No videos found")
-                                }
-                            }
                         } else {
                             items(details.playlists, key = { it.id }) { playlist ->
-                                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                                    PlaylistItemRow(playlist = playlist, onClick = { onPlaylistClick(playlist.id) })
-                                }
-                            }
-                            if (details.playlists.isEmpty()) {
-                                item {
-                                    EmptyChannelPlaceholder("No playlists found")
+                                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                                    ModernPlaylistItem(playlist = playlist, onClick = { onPlaylistClick(playlist.id) })
                                 }
                             }
                         }
                     }
                 }
                 is ChannelUiState.Error -> {
-                    Column(
-                        modifier = Modifier.align(Alignment.Center),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(text = "Error: ${uiState.message}", color = MaterialTheme.colorScheme.error)
-                        Button(onClick = { onLoadChannel(channelUrl) }, modifier = Modifier.padding(top = 16.dp)) {
-                            Text("Retry")
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(text = uiState.message, color = MaterialTheme.colorScheme.error)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(onClick = { onLoadChannel(channelUrl) }) {
+                                Text("Retry")
+                            }
                         }
                     }
                 }
+            }
+
+            // Floating Back Button
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .padding(16.dp)
+                    .align(Alignment.TopStart)
+                    .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = Color.White
+                )
             }
 
             // Download Dialogs
@@ -395,26 +440,26 @@ private fun ChannelContent(
 }
 
 @Composable
-fun PlaylistItemRow(
+fun ModernPlaylistItem(
     playlist: PlaylistItem,
     onClick: () -> Unit
 ) {
-    Card(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp)
     ) {
         Row(
-            modifier = Modifier.padding(vertical = 4.dp),
+            modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .width(160.dp)
+                    .width(140.dp)
                     .aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(12.dp))
             ) {
                 ThumbnailImage(
                     videoId = VideoUtils.extractPlaylistId(playlist.id),
@@ -424,53 +469,39 @@ fun PlaylistItemRow(
                 // Playlist Overlay
                 Surface(
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(8.dp),
-                    color = Color.Black.copy(alpha = 0.7f),
-                    shape = RoundedCornerShape(4.dp)
+                        .fillMaxHeight()
+                        .fillMaxWidth(0.35f)
+                        .align(Alignment.CenterEnd),
+                    color = Color.Black.copy(alpha = 0.7f)
                 ) {
-                    Text(
-                        text = "${playlist.streamCount} videos",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.PlaylistPlay,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
             }
             
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(16.dp))
             
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = playlist.title,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.Bold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = playlist.uploaderName,
+                    text = "${playlist.streamCount} videos",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
-    }
-}
-
-@Composable
-fun EmptyChannelPlaceholder(text: String) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(32.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }

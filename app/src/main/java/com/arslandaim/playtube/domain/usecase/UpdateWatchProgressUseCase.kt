@@ -12,6 +12,19 @@ class UpdateWatchProgressUseCase @Inject constructor(
     private val repository: LibraryRepository
 ) {
     suspend operator fun invoke(videoId: String, progressMs: Long, durationMs: Long) {
-        repository.updateWatchProgress(videoId, progressMs, durationMs)
+        if (durationMs <= 0) return
+
+        val ratio = progressMs.toFloat() / durationMs
+        
+        // Threshold Logic:
+        // 1. If watched less than 5%, don't save progress (don't clutter history with misclicks)
+        // 2. If watched more than 95%, mark as fully completed
+        val finalProgress = when {
+            ratio < 0.05f -> return 
+            ratio > 0.95f -> durationMs
+            else -> progressMs
+        }
+
+        repository.updateWatchProgress(videoId, finalProgress, durationMs)
     }
 }

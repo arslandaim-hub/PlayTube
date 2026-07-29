@@ -6,6 +6,8 @@
 package com.arslandaim.playtube.di
 
 import android.content.Context
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -24,13 +26,13 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideOkHttpClient(@ApplicationContext context: Context): OkHttpClient {
-        val cacheSize = 50L * 1024L * 1024L // 50MB (Increased from 10MB)
+        val cacheSize = 50L * 1024L * 1024L // 50MB
         val cacheDirectory = File(context.cacheDir, "http_cache")
         val cache = Cache(cacheDirectory, cacheSize)
 
         val dispatcher = okhttp3.Dispatcher().apply {
-            maxRequests = 128 // Increased from 64 for better background download concurrency
-            maxRequestsPerHost = 40 // Increased from 20 to allow more parallel chunks per server
+            maxRequests = 128
+            maxRequestsPerHost = 40
         }
 
         return OkHttpClient.Builder()
@@ -42,10 +44,17 @@ object NetworkModule {
                     .build()
                 chain.proceed(request)
             }
-            .connectTimeout(30, TimeUnit.SECONDS) // Increased for slow networks
-            .readTimeout(30, TimeUnit.SECONDS)    // Increased for slow networks
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideGson(): Gson {
+        return GsonBuilder()
+            .create()
     }
 }

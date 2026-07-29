@@ -473,7 +473,7 @@ fun VideoItemRow(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(20.dp)) // Unified corners
         ) {
             ThumbnailImage(
                 videoId = video.id,
@@ -487,16 +487,16 @@ fun VideoItemRow(
             if (video.duration > 0) {
                 Surface(
                     color = Color.Black.copy(alpha = 0.8f),
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(8.dp),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(8.dp)
+                        .padding(10.dp)
                 ) {
                     Text(
                         text = VideoUtils.formatDuration(video.duration),
                         color = Color.White,
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
             }
@@ -505,13 +505,13 @@ fun VideoItemRow(
             if (isDownloaded) {
                 Surface(
                     color = MaterialTheme.colorScheme.primary,
-                    shape = RoundedCornerShape(bottomStart = 12.dp),
+                    shape = RoundedCornerShape(bottomStart = 16.dp),
                     modifier = Modifier.align(Alignment.TopEnd)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Check,
                         contentDescription = "Downloaded",
-                        modifier = Modifier.padding(6.dp).size(16.dp),
+                        modifier = Modifier.padding(8.dp).size(18.dp),
                         tint = MaterialTheme.colorScheme.onPrimary
                     )
                 }

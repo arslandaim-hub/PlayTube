@@ -15,10 +15,14 @@ class LibraryRepositoryImpl @Inject constructor(
     private val favoriteDao: FavoriteDao,
     private val playlistFavoriteDao: PlaylistFavoriteDao,
     private val subscriptionDao: SubscriptionDao,
-    private val searchHistoryDao: SearchHistoryDao
+    private val searchHistoryDao: SearchHistoryDao,
+    private val userInterestDao: UserInterestDao
 ) : LibraryRepository {
 
     override fun getHistory(): Flow<List<HistoryEntity>> = historyDao.getAllHistory()
+
+    override suspend fun getRecentHistory(limit: Int): List<HistoryEntity> = 
+        historyDao.getRecentHistory(limit)
 
     override suspend fun addToHistory(history: HistoryEntity) {
         historyDao.insertHistory(history)
@@ -91,4 +95,20 @@ class LibraryRepositoryImpl @Inject constructor(
     override suspend fun clearSearchHistory() {
         searchHistoryDao.clearAllSearchHistory()
     }
+
+    override suspend fun getTopInterests(limit: Int): List<UserInterestEntity> = 
+        userInterestDao.getTopInterests(limit)
+
+    override suspend fun updateInterest(keyword: String, weightDelta: Float) {
+        val existing = userInterestDao.getInterest(keyword)
+        val newWeight = (existing?.weight ?: 0f) + weightDelta
+        userInterestDao.insertOrUpdate(UserInterestEntity(keyword, newWeight))
+    }
+
+    override suspend fun applyInterestDecay(decayFactor: Float) {
+        userInterestDao.applyDecay(decayFactor)
+        userInterestDao.purgeLowInterests()
+    }
+
+    override suspend fun hasInterests(): Boolean = userInterestDao.getInterestsCount() > 0
 }

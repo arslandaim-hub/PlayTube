@@ -5,10 +5,12 @@
 */
 package com.arslandaim.playtube.ui.screens.playlist
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
@@ -19,13 +21,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import com.arslandaim.playtube.R
 import com.arslandaim.playtube.domain.model.VideoItem
-import com.arslandaim.playtube.ui.components.VideoItemRow
+import com.arslandaim.playtube.ui.screens.library.VideoRow
+import com.arslandaim.playtube.ui.screens.library.GlobalGlassAlpha
 
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
@@ -98,7 +102,7 @@ private fun PlaylistContent(
         topBar = {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), // Glass Effect
+                color = MaterialTheme.colorScheme.surface.copy(alpha = GlobalGlassAlpha), // Unified Glass Effect
                 tonalElevation = 0.dp
             ) {
                 TopAppBar(
@@ -125,83 +129,104 @@ private fun PlaylistContent(
                     val details = uiState.details
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         item {
-                            Column(
+                            Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp)
+                                    .padding(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp).copy(alpha = 0.7f),
+                                shape = RoundedCornerShape(24.dp),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    width = 0.5.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                )
                             ) {
-                                Text(
-                                    text = details.title,
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = stringResource(R.string.by_author, details.uploaderName),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                
-                                Spacer(modifier = Modifier.height(16.dp))
-                                
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                Column(
+                                    modifier = Modifier.padding(20.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    Button(
-                                        onClick = { if (!isPlaylistDownloaded) onDownloadPlaylist() },
-                                        modifier = Modifier.weight(1f),
-                                        shape = CircleShape,
-                                        contentPadding = PaddingValues(horizontal = 16.dp),
-                                        colors = if (isPlaylistDownloaded) {
-                                            ButtonDefaults.buttonColors(
-                                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                                contentColor = MaterialTheme.colorScheme.primary
-                                            )
-                                        } else ButtonDefaults.buttonColors()
-                                    ) {
-                                        Icon(
-                                            imageVector = if (isPlaylistDownloaded) Icons.Default.CheckCircle else Icons.Default.Download,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(if (isPlaylistDownloaded) stringResource(R.string.downloaded) else stringResource(R.string.download_all))
-                                    }
+                                    Text(
+                                        text = details.title,
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = stringResource(R.string.by_author, details.uploaderName),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = FontWeight.Medium
+                                    )
                                     
-                                    OutlinedButton(
-                                        onClick = onToggleFavorite,
-                                        modifier = Modifier.weight(1f),
-                                        shape = CircleShape,
-                                        contentPadding = PaddingValues(horizontal = 16.dp),
-                                        colors = if (isFavorite) {
-                                            ButtonDefaults.outlinedButtonColors(
-                                                contentColor = MaterialTheme.colorScheme.primary
-                                            )
-                                        } else ButtonDefaults.outlinedButtonColors()
+                                    Spacer(modifier = Modifier.height(24.dp))
+                                    
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(if (isFavorite) stringResource(R.string.liked) else stringResource(R.string.like))
+                                        Button(
+                                            onClick = { if (!isPlaylistDownloaded) onDownloadPlaylist() },
+                                            modifier = Modifier.weight(1f).height(44.dp),
+                                            shape = CircleShape,
+                                            colors = if (isPlaylistDownloaded) {
+                                                ButtonDefaults.buttonColors(
+                                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                                    contentColor = MaterialTheme.colorScheme.primary
+                                                )
+                                            } else ButtonDefaults.buttonColors()
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isPlaylistDownloaded) Icons.Default.CheckCircle else Icons.Default.Download,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = if (isPlaylistDownloaded) stringResource(R.string.downloaded) else stringResource(R.string.download_all),
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.labelLarge
+                                            )
+                                        }
+                                        
+                                        OutlinedButton(
+                                            onClick = onToggleFavorite,
+                                            modifier = Modifier.weight(1f).height(44.dp),
+                                            shape = CircleShape,
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
+                                            colors = if (isFavorite) {
+                                                ButtonDefaults.outlinedButtonColors(
+                                                    contentColor = MaterialTheme.colorScheme.primary
+                                                )
+                                            } else ButtonDefaults.outlinedButtonColors()
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp),
+                                                tint = if (isFavorite) Color.Red else LocalContentColor.current
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = if (isFavorite) stringResource(R.string.liked) else stringResource(R.string.like),
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.labelLarge
+                                            )
+                                        }
                                     }
                                 }
-                                
-                                Spacer(modifier = Modifier.height(24.dp))
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                Spacer(modifier = Modifier.height(8.dp))
                             }
                         }
 
                         items(details.videos, key = { it.id }) { video ->
-                            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                                VideoItemRow(
-                                    video = video,
+                            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
+                                VideoRow(
+                                    videoId = video.id,
+                                    title = video.title,
+                                    uploader = video.uploaderName,
+                                    thumbnailUrl = video.thumbnailUrl,
+                                    watchProgress = video.watchProgress,
                                     isDownloaded = downloadedIds.contains(video.id),
                                     onClick = { onVideoClick(video) }
                                 )

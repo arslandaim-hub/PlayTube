@@ -16,6 +16,7 @@ sealed class Screen(val route: String) {
     object Settings : Screen("settings")
     object History : Screen("history")
     object SubscriptionsList : Screen("subscriptions_list")
+    object Downloads : Screen("downloads")
     object Channel : Screen("channel/{channelUrl}") {
         fun createRoute(channelUrl: String) = "channel/${URLEncoder.encode(channelUrl, StandardCharsets.UTF_8.toString())}"
     }
@@ -29,4 +30,6 @@ sealed class Screen(val route: String) {
     object Playlist : Screen("playlist/{playlistId}") {
         fun createRoute(playlistId: String) = "playlist/$playlistId"
     }
+    object Onboarding : Screen("onboarding")
+    object DataManagement : Screen("data_management")
 }

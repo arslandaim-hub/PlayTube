@@ -19,6 +19,18 @@ interface PlaylistFavoriteDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPlaylistFavorite(favorite: PlaylistFavoriteEntity)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAllIgnore(favorites: List<PlaylistFavoriteEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    fun insertAllIgnoreSync(favorites: List<PlaylistFavoriteEntity>)
+
+    @Query("SELECT * FROM playlist_favorites ORDER BY timestamp DESC")
+    suspend fun getAllPlaylistFavoritesStatic(): List<PlaylistFavoriteEntity>
+
+    @Query("DELETE FROM playlist_favorites")
+    fun clearPlaylistFavorites()
+
     @Delete
     suspend fun deletePlaylistFavorite(favorite: PlaylistFavoriteEntity)
 }

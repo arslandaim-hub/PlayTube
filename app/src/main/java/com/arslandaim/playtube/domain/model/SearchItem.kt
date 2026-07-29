@@ -10,8 +10,13 @@ import androidx.compose.runtime.Stable
 
 @Stable
 sealed interface SearchItem {
+    val uniqueKey: String
+
     @Immutable
-    data class Video(val video: VideoItem) : SearchItem
+    data class Video(val video: VideoItem) : SearchItem {
+        override val uniqueKey: String get() = "video_${video.id}"
+    }
+
     @Immutable
     data class Channel(
         val id: String,
@@ -20,7 +25,12 @@ sealed interface SearchItem {
         val subscriberCount: Long?,
         val description: String?,
         val isSubscribed: Boolean = false
-    ) : SearchItem
+    ) : SearchItem {
+        override val uniqueKey: String get() = "channel_$id"
+    }
+
     @Immutable
-    data class Playlist(val playlist: PlaylistItem) : SearchItem
+    data class Playlist(val playlist: PlaylistItem) : SearchItem {
+        override val uniqueKey: String get() = "playlist_${playlist.id}"
+    }
 }

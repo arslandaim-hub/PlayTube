@@ -6,6 +6,9 @@
 package com.arslandaim.playtube.ui.screens.home
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
@@ -37,10 +40,12 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arslandaim.playtube.ui.theme.GlassAlpha
 import com.arslandaim.playtube.R
+import kotlin.math.roundToInt
 
 @Composable
 fun HomeScreen(
@@ -267,60 +272,17 @@ private fun HomeContent(
                     }
                 }
                 .graphicsLayer { translationY = headerOffsetPx }
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = GlassAlpha))
         ) {
-            SecondaryTabRow(
+            Spacer(modifier = Modifier.height(12.dp))
+            ModernPillTabRow(
                 selectedTabIndex = selectedTab,
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = GlassAlpha),
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                divider = {},
-                indicator = {
-                    TabRowDefaults.SecondaryIndicator(
-                        modifier = Modifier.tabIndicatorOffset(selectedTab),
-                        color = MaterialTheme.colorScheme.primary,
-                        height = 2.dp
-                    )
-                }
-            ) {
-                tabs.forEachIndexed { index, title ->
-                    val icon = if (index == 0) Icons.Default.AutoAwesome else Icons.Default.Subscriptions
-                    val isTabLoading = if (index == 0) state.isTrendingLoading else state.isSubscriptionsLoading
-
-                    Tab(
-                        selected = selectedTab == index,
-                        onClick = { onTabSelected(index) },
-                        text = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(vertical = 8.dp)
-                            ) {
-                                Box(modifier = Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-                                    if (isTabLoading) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(16.dp),
-                                            strokeWidth = 2.dp,
-                                            color = if (selectedTab == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    } else {
-                                        Icon(
-                                            imageVector = icon,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(20.dp),
-                                            tint = if (selectedTab == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = title,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = if (selectedTab == index) FontWeight.ExtraBold else FontWeight.SemiBold,
-                                    color = if (selectedTab == index) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
-                    )
-                }
-            }
+                tabs = tabs,
+                isTrendingLoading = state.isTrendingLoading,
+                isSubscriptionsLoading = state.isSubscriptionsLoading,
+                onTabSelected = onTabSelected
+            )
+            Spacer(modifier = Modifier.height(12.dp))
         }
 
         // Quick Action Dialogs
@@ -420,5 +382,99 @@ private fun HomeContent(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp)
         )
+    }
+}
+
+@Composable
+fun ModernPillTabRow(
+    selectedTabIndex: Int,
+    tabs: List<String>,
+    isTrendingLoading: Boolean,
+    isSubscriptionsLoading: Boolean,
+    onTabSelected: (Int) -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .padding(horizontal = 24.dp)
+            .fillMaxWidth()
+            .height(48.dp),
+        color = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp),
+        shape = CircleShape,
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+        )
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Sliding Indicator
+            val density = LocalDensity.current
+            var rowWidth by remember { mutableFloatStateOf(0f) }
+            val tabWidth = if (rowWidth > 0) rowWidth / tabs.size else 0f
+            
+            val indicatorOffset by animateFloatAsState(
+                targetValue = selectedTabIndex * tabWidth,
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy),
+                label = "IndicatorOffset"
+            )
+
+            if (rowWidth > 0) {
+                Box(
+                    modifier = Modifier
+                        .offset { IntOffset(indicatorOffset.roundToInt(), 0) }
+                        .width(with(density) { tabWidth.toDp() })
+                        .fillMaxHeight()
+                        .padding(4.dp)
+                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                )
+            }
+
+            // Tab Content
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onGloballyPositioned { rowWidth = it.size.width.toFloat() },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                tabs.forEachIndexed { index, title ->
+                    val isSelected = selectedTabIndex == index
+                    val isLoading = if (index == 0) isTrendingLoading else isSubscriptionsLoading
+                    
+                    val contentColor by animateColorAsState(
+                        targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimary 
+                                     else MaterialTheme.colorScheme.onSurfaceVariant,
+                        label = "TabContentColor"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable(
+                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                indication = null,
+                                onClick = { onTabSelected(index) }
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = contentColor
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Text(
+                                text = title,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
+                                color = contentColor
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }

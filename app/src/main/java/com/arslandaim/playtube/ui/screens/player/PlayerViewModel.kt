@@ -41,6 +41,7 @@ import com.arslandaim.playtube.domain.usecase.ToggleFavoriteUseCase
 import com.arslandaim.playtube.domain.usecase.ToggleSubscriptionUseCase
 import com.arslandaim.playtube.ui.components.DownloadDialogState
 import com.arslandaim.playtube.utils.VideoUtils
+import com.arslandaim.playtube.utils.ConnectivityObserver
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
@@ -65,8 +66,11 @@ class PlayerViewModel @Inject constructor(
     private val isFavoriteUseCase: IsFavoriteUseCase,
     private val toggleSubscriptionUseCase: ToggleSubscriptionUseCase,
     private val isSubscribedUseCase: IsSubscribedUseCase,
+    private val updateWatchProgressUseCase: com.arslandaim.playtube.domain.usecase.UpdateWatchProgressUseCase,
+    private val updateUserInterestsUseCase: com.arslandaim.playtube.domain.usecase.UpdateUserInterestsUseCase,
     private val preferencesManager: PreferencesManager,
     private val dataSourceFactory: DataSource.Factory,
+    private val connectivityObserver: ConnectivityObserver,
     val miniPlayerManager: MiniPlayerManager,
     val player: ExoPlayer
 ) : ViewModel() {
@@ -85,6 +89,9 @@ class PlayerViewModel @Inject constructor(
 
     private val _isCcEnabled = MutableStateFlow(false)
     val isCcEnabled: StateFlow<Boolean> = _isCcEnabled.asStateFlow()
+
+    private val _isRecovering = MutableStateFlow(false)
+    val isRecovering: StateFlow<Boolean> = _isRecovering.asStateFlow()
 
     // Playback Progress
     private val _currentPosition = MutableStateFlow(0L)
@@ -135,6 +142,8 @@ class PlayerViewModel @Inject constructor(
     private var nextRelatedPage: Page? = null
     private var isFetchingNextRelatedPage = false
     private var lastSavedPosition = 0L
+    private var isStalledDueToNetwork = false
+    private var lastFailedPosition = 0L
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -144,6 +153,8 @@ class PlayerViewModel @Inject constructor(
             
             if (playbackState == Player.STATE_READY) {
                 startProgressUpdate()
+                isStalledDueToNetwork = false
+                _isRecovering.value = false
             } else {
                 stopProgressUpdate()
             }
@@ -155,16 +166,42 @@ class PlayerViewModel @Inject constructor(
 
         override fun onPlayerError(error: PlaybackException) {
             android.util.Log.e("PlayerLifecycle", "onPlayerError: ${error.message}", error)
+            
             if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
                 player.seekToDefaultPosition()
                 player.prepare()
                 player.play()
+                return
+            }
+
+            if (isNetworkError(error)) {
+                if (isStalledDueToNetwork && error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS) {
+                    // Possible expired URL after network restoration
+                    recoverExpiredUrl()
+                } else {
+                    lastFailedPosition = player.currentPosition
+                    isStalledDueToNetwork = player.playWhenReady
+                    _isRecovering.value = isStalledDueToNetwork
+                    
+                    if (_uiState.value !is PlayerUiState.Success) {
+                        _uiState.value = PlayerUiState.Error("Network interrupted. Waiting for connection...")
+                    } else {
+                        viewModelScope.launch {
+                            _snackbarMessage.emit("Connection lost. Waiting to resume...")
+                        }
+                    }
+                }
+            } else {
+                _uiState.value = PlayerUiState.Error(error.message ?: "Playback error")
             }
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             android.util.Log.d("PlayerLifecycle", "onIsPlayingChanged: $isPlaying")
-            if (!isPlaying) {
+            if (isPlaying) {
+                isStalledDueToNetwork = false
+                _isRecovering.value = false
+            } else {
                 saveWatchProgress()
             }
         }
@@ -200,6 +237,15 @@ class PlayerViewModel @Inject constructor(
             preferencesManager.isSubtitlesEnabled.collectLatest { enabled ->
                 _isCcEnabled.value = enabled
                 updateCcState(enabled)
+            }
+        }
+
+        // Observe network for auto-recovery
+        viewModelScope.launch {
+            connectivityObserver.observe().collectLatest { status ->
+                if (status == ConnectivityObserver.Status.Available && isStalledDueToNetwork) {
+                    retryPlayback()
+                }
             }
         }
     }
@@ -241,6 +287,8 @@ class PlayerViewModel @Inject constructor(
         currentVideoId = videoId
         nextRelatedPage = null
         lastSavedPosition = 0L
+        isStalledDueToNetwork = false
+        _isRecovering.value = false
         
         // Reset player for new content
         player.stop()
@@ -631,8 +679,8 @@ class PlayerViewModel @Inject constructor(
                 _duration.value = dur
                 _bufferedPosition.value = player.bufferedPosition
                 
-                // Debounced save (every 15 seconds or significant jump)
-                if (abs(pos - lastSavedPosition) >= 15000) {
+                // Debounced save (every 5 seconds or significant jump)
+                if (abs(pos - lastSavedPosition) >= 5000) {
                     saveWatchProgress()
                 }
                 
@@ -645,13 +693,22 @@ class PlayerViewModel @Inject constructor(
         val videoId = currentVideoId ?: return
         val position = player.currentPosition
         val duration = player.duration
+        val bundle = currentBundle
         
         if (duration <= 0) return
         
         lastSavedPosition = position
+        val watchRatio = position.toFloat() / duration
+
         viewModelScope.launch(Dispatchers.IO) {
             if (preferencesManager.isHistoryEnabled.first()) {
-                libraryRepository.updateWatchProgress(videoId, position, duration)
+                updateWatchProgressUseCase(videoId, position, duration)
+                
+                // Reinforce interests based on actual watch time
+                bundle?.let {
+                    updateUserInterestsUseCase(it.title, 0.5f, watchRatio)
+                    updateUserInterestsUseCase(it.uploaderName, 1.0f, watchRatio)
+                }
             }
         }
     }
@@ -709,6 +766,23 @@ class PlayerViewModel @Inject constructor(
         performSeek(false)
     }
 
+    fun shareVideo() {
+        val videoId = currentVideoId ?: return
+        val title = currentBundle?.title ?: "Video"
+        val url = "https://www.youtube.com/watch?v=$videoId"
+        
+        val sendIntent: Intent = Intent().apply {
+            action = Intent.ACTION_SEND
+            putExtra(Intent.EXTRA_TEXT, "$title\n\n$url")
+            type = "text/plain"
+        }
+        
+        val shareIntent = Intent.createChooser(sendIntent, null).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(shareIntent)
+    }
+
     fun minimize() {
         if (miniPlayerManager.isMinimized.value) return
         val bundle = currentBundle ?: return
@@ -726,6 +800,48 @@ class PlayerViewModel @Inject constructor(
             watchProgress = if (player.duration > 0) player.currentPosition.toFloat() / player.duration else null
         )
         miniPlayerManager.minimize(videoItem)
+    }
+
+    private fun isNetworkError(error: PlaybackException): Boolean {
+        return when (error.errorCode) {
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+            PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> true
+            else -> error.cause is java.net.UnknownHostException || 
+                    error.cause is java.net.ConnectException || 
+                    error.cause is java.net.SocketTimeoutException
+        }
+    }
+
+    private fun retryPlayback() {
+        android.util.Log.d("PlayerRecovery", "Retrying playback at $lastFailedPosition")
+        player.seekTo(lastFailedPosition)
+        player.prepare()
+        player.play()
+    }
+
+    private fun recoverExpiredUrl() {
+        val videoId = currentVideoId ?: return
+        android.util.Log.d("PlayerRecovery", "URL might be expired, re-fetching stream for $videoId")
+        
+        viewModelScope.launch {
+            getVideoStreamsUseCase(videoId)
+                .onSuccess { bundle ->
+                    currentBundle = bundle
+                    val initialStream = bundle.videoStreams.find { it.quality.contains("360") }
+                        ?: bundle.videoStreams.find { it.quality.contains("480") }
+                        ?: bundle.videoStreams.firstOrNull()
+                    
+                    initialStream?.let {
+                        setMediaSource(it, lastFailedPosition, bundle.isLive)
+                        isStalledDueToNetwork = false
+                    }
+                }
+                .onFailure {
+                    _uiState.value = PlayerUiState.Error("Failed to recover stream")
+                }
+        }
     }
 
     fun stopPlayback() {

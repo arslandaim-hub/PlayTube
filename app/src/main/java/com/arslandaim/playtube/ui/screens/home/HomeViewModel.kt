@@ -144,18 +144,20 @@ class HomeViewModel @Inject constructor(
             }
 
             val allVideos = mutableListOf<VideoItem>()
-            // Increase fetch count to 25 channels for a richer feed
-            coroutineScope {
-                val deferredVideos = subscriptions.take(25).map { sub ->
-                    async {
-                        try {
-                            videoRepository.getChannelDetails(sub.channelId).videos
-                        } catch (e: Exception) {
-                            emptyList<VideoItem>()
+            // Fetch channel updates in small chunks (5 at a time) to prevent network saturation and throttling
+            subscriptions.take(30).chunked(5).forEach { chunk ->
+                coroutineScope {
+                    val deferredVideos = chunk.map { sub ->
+                        async {
+                            try {
+                                videoRepository.getChannelDetails(sub.channelId).videos
+                            } catch (e: Exception) {
+                                emptyList<VideoItem>()
+                            }
                         }
                     }
+                    allVideos.addAll(deferredVideos.awaitAll().flatten())
                 }
-                allVideos.addAll(deferredVideos.awaitAll().flatten())
             }
             
             // Sort by rawUploadDate (newest first)

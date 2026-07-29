@@ -23,78 +23,62 @@ class GetRecommendationsUseCase @Inject constructor(
 ) {
     suspend operator fun invoke(): Result<List<VideoItem>> = coroutineScope {
         try {
+            // 1. Get Top Interests from Local Intelligence Engine
+            val topInterests = libraryRepository.getTopInterests(20)
+            
             val isHistoryEnabled = preferencesManager.isHistoryEnabled.first()
-            val isSearchHistoryPaused = preferencesManager.isSearchHistoryPaused.first()
-
-            val watchHistory = if (isHistoryEnabled) libraryRepository.getHistory().first().take(10) else emptyList()
-            val searchHistory = if (!isSearchHistoryPaused) libraryRepository.getSearchHistory().first().take(10) else emptyList()
-            val subscriptions = libraryRepository.getSubscriptions().first().take(10)
-
-            // 1. Extract Keywords & Channel Affinity
-            val keywords = mutableMapOf<String, Float>()
-            val channelAffinity = mutableMapOf<String, Float>()
-
-            // Process Watch History
-            watchHistory.forEachIndexed { index, item ->
-                val weight = 1.0f / (index + 1)
-                extractKeywords(item.title).forEach { kw ->
-                    keywords[kw] = (keywords[kw] ?: 0f) + (weight * 2.0f) // Higher weight for watched
-                }
-                channelAffinity[item.uploaderName] = (channelAffinity[item.uploaderName] ?: 0f) + (weight * 3.0f)
+            // Optimized: Fetch a fixed recent set directly from DB instead of full Flow collection
+            val watchHistory = if (isHistoryEnabled) libraryRepository.getRecentHistory(100) else emptyList()
+            
+            val seedKeywords = mutableListOf<String>()
+            
+            // Use top interests as primary seeds
+            if (topInterests.isNotEmpty()) {
+                seedKeywords.addAll(topInterests.take(8).map { it.keyword })
             }
-
-            // Process Search History
-            searchHistory.forEachIndexed { index, item ->
-                val weight = 1.0f / (index + 1)
-                extractKeywords(item.query).forEach { kw ->
-                    keywords[kw] = (keywords[kw] ?: 0f) + (weight * 1.5f)
+            
+            // Supplemental seeds from recent history if profile is sparse
+            if (seedKeywords.size < 4 && watchHistory.isNotEmpty()) {
+                watchHistory.take(5).forEach { video ->
+                    seedKeywords.addAll(extractKeywords(video.title).take(2))
                 }
             }
+            
+            // Fallback to defaults if profile is empty
+            if (seedKeywords.isEmpty()) {
+                seedKeywords.addAll(listOf("Technology", "Science", "Nature", "News", "Music", "Education"))
+            }
 
-            // 2. Fetch Candidate Videos
-            val topics = (searchHistory.map { it.query } + keywords.entries.sortedByDescending { it.value }.take(3).map { it.key } + listOf("trending"))
-                .distinct()
-                .take(5)
-
-            val candidates = topics.map { topic ->
-                async {
-                    try {
-                        searchRepository.search(topic).items
-                            .filterIsInstance<SearchItem.Video>()
-                            .map { it.video }
-                    } catch (e: Exception) {
-                        emptyList<VideoItem>()
+            // 2. Fetch Candidate Videos with Throttling (3 at a time)
+            val topics = seedKeywords.distinct().take(12) // Get more candidates
+            val candidates = mutableListOf<VideoItem>()
+            
+            topics.chunked(3).forEach { chunk ->
+                val deferred = chunk.map { topic ->
+                    async {
+                        try {
+                            searchRepository.search(topic).items
+                                .filterIsInstance<SearchItem.Video>()
+                                .map { it.video }
+                        } catch (e: Exception) {
+                            emptyList<VideoItem>()
+                        }
                     }
                 }
-            }.awaitAll().flatten().distinctBy { it.id }
-
-            // 3. Scoring Logic
-            val scoredVideos = candidates.map { video ->
-                var score = 0f
-                
-                // Keyword Matching
-                val videoKeywords = extractKeywords(video.title)
-                videoKeywords.forEach { kw ->
-                    score += keywords[kw] ?: 0f
-                }
-
-                // Channel Affinity
-                score += (channelAffinity[video.uploaderName] ?: 0f) * 5.0f
-
-                // Subscribed Channel Boost
-                if (subscriptions.any { it.name == video.uploaderName }) {
-                    score += 10.0f
-                }
-
-                Pair(video, score)
+                candidates.addAll(deferred.awaitAll().flatten())
             }
 
-            val finalRecommendations = scoredVideos
-                .sortedByDescending { it.second }
-                .map { it.first }
-                .take(60)
+            // 3. Filtering & Diversification
+            // Filter out ANY video the user has already watched (global filtering)
+            val watchedIds = watchHistory.map { it.videoId }.toSet()
+            val filteredCandidates = candidates
+                .distinctBy { it.id }
+                .filter { it.id !in watchedIds }
+            
+            // Interleave results from different topics to ensure diversity
+            val shuffledRecommendations = filteredCandidates.shuffled().take(60)
 
-            Result.success(finalRecommendations)
+            Result.success(shuffledRecommendations)
         } catch (e: Exception) {
             Result.failure(e)
         }
