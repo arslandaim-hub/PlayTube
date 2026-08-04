@@ -5,11 +5,14 @@
 */
 package com.arslandaim.playtube.domain.usecase
 
+import com.arslandaim.playtube.data.local.PreferencesManager
 import com.arslandaim.playtube.domain.repository.LibraryRepository
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 class UpdateUserInterestsUseCase @Inject constructor(
-    private val libraryRepository: LibraryRepository
+    private val libraryRepository: LibraryRepository,
+    private val preferencesManager: PreferencesManager
 ) {
     /**
      * Updates user interests based on video metadata.
@@ -19,6 +22,9 @@ class UpdateUserInterestsUseCase @Inject constructor(
      *                   If null, it's treated as a neutral interaction (1.0).
      */
     suspend operator fun invoke(text: String, baseWeight: Float = 1.0f, watchRatio: Float? = null) {
+        if (preferencesManager.isRecommendationsPaused.first() || 
+            preferencesManager.isIncognitoMode.first()) return
+
         val watchWeightFactor = when {
             watchRatio == null -> 1.0f
             watchRatio < 0.1f -> 0.1f // Very low weight for misclicks
@@ -47,10 +53,12 @@ class UpdateUserInterestsUseCase @Inject constructor(
             "with", "from", "their", "they", "them", "then", "there", "than", "that", "this", "these", "those",
             "will", "would", "shall", "should", "could", "must", "might", "video", "youtube", "play", "tube", "official",
             "today", "yesterday", "tomorrow", "very", "really", "just", "only", "about", "above", "after", "again", "against",
-            "full", "hd", "4k", "2024", "2025", "2026", "episode", "part", "season", "new", "latest", "best", "top", "viral"
+            "full", "hd", "4k", "2024", "2025", "2026", "episode", "part", "season", "new", "latest", "best", "top", "viral",
+            "mv", "music", "lyrics", "audio", "video", "1080p", "720p", "high", "quality", "standard", "definition"
         )
         return text.lowercase()
             .split(Regex("[^a-zA-Z0-9]+"))
             .filter { it.length > 3 && it !in stopWords }
+            .distinct()
     }
 }

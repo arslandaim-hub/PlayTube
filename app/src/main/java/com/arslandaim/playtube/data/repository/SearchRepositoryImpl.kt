@@ -26,13 +26,24 @@ class SearchRepositoryImpl @Inject constructor() : SearchRepository {
         return withContext(Dispatchers.IO) {
             try {
                 val youtubeService = ServiceList.YouTube
-                val sortToken = sort.value.ifBlank { "relevance" }
-                android.util.Log.d("SearchRepository", "Searching for: $query with sort: $sortToken")
+
+                // NewPipe YouTube extractor expects specific string labels for sort filters.
+                // These are case-sensitive and must match the service's available sort filters.
+                val sortFilter = when (sort) {
+                    SearchSort.RELEVANCE -> "relevance"
+                    SearchSort.UPLOAD_DATE -> "upload_date"
+                    SearchSort.VIEW_COUNT -> "view_count"
+                    SearchSort.RATING -> "rating"
+                }
+
+                val contentFilter = if (sort == SearchSort.UPLOAD_DATE) listOf("videos") else listOf("all")
+                
+                android.util.Log.d("SearchRepository", "Searching for: $query with sort filter: $sortFilter and content filter: $contentFilter")
                 
                 val extractor = youtubeService.getSearchExtractor(
                     query,
-                    listOf("all"),
-                    sortToken
+                    contentFilter,
+                    sortFilter
                 )
                 extractor.fetchPage()
 
@@ -73,13 +84,22 @@ class SearchRepositoryImpl @Inject constructor() : SearchRepository {
         return withContext(Dispatchers.IO) {
             try {
                 val youtubeService = ServiceList.YouTube
-                val sortToken = sort.value.ifBlank { "relevance" }
-                android.util.Log.d("SearchRepository", "Fetching next page for: $query with sort: $sortToken")
+
+                val sortFilter = when (sort) {
+                    SearchSort.RELEVANCE -> "relevance"
+                    SearchSort.UPLOAD_DATE -> "upload_date"
+                    SearchSort.VIEW_COUNT -> "view_count"
+                    SearchSort.RATING -> "rating"
+                }
+
+                val contentFilter = if (sort == SearchSort.UPLOAD_DATE) listOf("videos") else listOf("all")
+                
+                android.util.Log.d("SearchRepository", "Fetching next page for: $query with sort filter: $sortFilter and content filter: $contentFilter")
                 
                 val extractor = youtubeService.getSearchExtractor(
                     query,
-                    listOf("all"),
-                    sortToken
+                    contentFilter,
+                    sortFilter
                 )
                 val nextPage = extractor.getPage(page)
                 
@@ -117,6 +137,9 @@ class SearchRepositoryImpl @Inject constructor() : SearchRepository {
 
     private fun mapToVideoItem(item: StreamInfoItem): VideoItem {
         val videoId = VideoUtils.extractVideoId(item.url)
+        val uploadDate = item.textualUploadDate ?: item.uploadDate?.offsetDateTime()?.toLocalDate()?.toString() ?: ""
+        val rawUploadDate = item.uploadDate?.instant?.toEpochMilli() ?: VideoUtils.parseTextualUploadDate(item.textualUploadDate)
+        
         return VideoItem(
             id = videoId,
             title = item.name ?: "Unknown Title",
@@ -127,8 +150,8 @@ class SearchRepositoryImpl @Inject constructor() : SearchRepository {
             viewCount = item.viewCount,
             subscriberCount = null,
             duration = item.duration,
-            uploadDate = item.textualUploadDate ?: item.uploadDate?.offsetDateTime()?.toLocalDate()?.toString() ?: "",
-            rawUploadDate = item.uploadDate?.instant?.toEpochMilli()
+            uploadDate = uploadDate,
+            rawUploadDate = rawUploadDate
         )
     }
 

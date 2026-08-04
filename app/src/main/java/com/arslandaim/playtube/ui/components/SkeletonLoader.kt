@@ -71,21 +71,21 @@ fun VideoCardSkeleton(transition: InfiniteTransition? = null) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 12.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         // Thumbnail placeholder
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(20.dp))
+                .clip(RoundedCornerShape(12.dp))
                 .shimmerEffect(transition)
         )
         
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp)
+                .padding(top = 12.dp)
         ) {
             // Avatar placeholder
             Box(
@@ -130,6 +130,55 @@ fun VideoListSkeleton() {
     ) {
         items(5) {
             VideoCardSkeleton(transition)
+        }
+    }
+}
+
+@Composable
+fun SubscriptionFeedSkeleton() {
+    val transition = rememberSyncShimmerTransition()
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Channel bubbles skeleton
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp, horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            repeat(6) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .shimmerEffect(transition)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .width(36.dp)
+                            .height(10.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .shimmerEffect(transition)
+                    )
+                }
+            }
+        }
+        
+        HorizontalDivider(
+            thickness = 0.5.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+        )
+        
+        // Video list skeleton
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            items(3) {
+                VideoCardSkeleton(transition)
+            }
         }
     }
 }

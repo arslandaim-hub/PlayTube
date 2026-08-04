@@ -51,6 +51,7 @@ class DownloadWorker @AssistedInject constructor(
         var audioUrl = inputData.getString("audioUrl")
         val title = inputData.getString("title") ?: "video"
         var format = inputData.getString("format") ?: "mp4"
+        val preferredQuality = inputData.getString("quality")
 
         // Wait for turn in queue
         downloadMutex.withLock {
@@ -62,14 +63,28 @@ class DownloadWorker @AssistedInject constructor(
                 return@withContext Result.success()
             }
 
-            // Fetch metadata if missing
+            // Fetch metadata if missing (typically for playlists)
             if (videoUrl == null) {
                 try {
-                    android.util.Log.d("DownloadWorker", "Fetching metadata for $videoId")
+                    android.util.Log.d("DownloadWorker", "Fetching metadata for $videoId (Preferred: $preferredQuality)")
                     val bundle = videoRepository.getStreamBundle(videoId)
-                    val videoStream = bundle.videoStreams.find { it.quality.contains("360") }
-                        ?: bundle.videoStreams.find { it.quality.contains("480") }
-                        ?: bundle.videoStreams.firstOrNull()
+                    
+                    // Match preferred quality if provided, else fallback to standard selection
+                    val videoStream = if (!preferredQuality.isNullOrBlank()) {
+                        // Priority 1: Exact match
+                        // Priority 2: Closest lower resolution
+                        // Priority 3: Any available
+                        bundle.videoStreams.find { it.quality.contains(preferredQuality, ignoreCase = true) }
+                            ?: bundle.videoStreams.find { 
+                                val res = it.quality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0
+                                val prefRes = preferredQuality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0
+                                res <= prefRes 
+                            } ?: bundle.videoStreams.firstOrNull()
+                    } else {
+                        bundle.videoStreams.find { it.quality.contains("360") }
+                            ?: bundle.videoStreams.find { it.quality.contains("480") }
+                            ?: bundle.videoStreams.firstOrNull()
+                    }
 
                     if (videoStream == null) {
                         downloadDao.updateProgress(videoId, DownloadStatus.FAILED, 0, 0)
@@ -240,14 +255,13 @@ class DownloadWorker @AssistedInject constructor(
         isPart: Boolean,
         combinedTotalSize: Long
     ): Long = withContext(Dispatchers.IO) {
-        // Dynamically scale chunks based on file size: 
-        // Small parts (like Audio, 2-10MB) get 2 chunks to bypass single-conn throttle.
-        // Large parts (Video) get up to 8.
+        // Aggressive chunk scaling to bypass YouTube's per-connection speed limits
         val numChunks = when {
-            totalSize < 2 * 1024 * 1024 -> 1 
-            totalSize < 10 * 1024 * 1024 -> 2 
-            totalSize < 50 * 1024 * 1024 -> 4
-            else -> 8 
+            totalSize < 512 * 1024 -> 1 
+            totalSize < 5 * 1024 * 1024 -> 4 // 4 chunks for audio or small videos
+            totalSize < 20 * 1024 * 1024 -> 8 
+            totalSize < 100 * 1024 * 1024 -> 12
+            else -> 16 // Max 16 chunks for high-res videos to maximize throughput
         }
         
         if (numChunks == 1) return@withContext -1 

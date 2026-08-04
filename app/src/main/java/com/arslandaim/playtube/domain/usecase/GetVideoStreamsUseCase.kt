@@ -13,9 +13,9 @@ import javax.inject.Inject
 class GetVideoStreamsUseCase @Inject constructor(
     private val repository: VideoRepository
 ) {
-    suspend operator fun invoke(videoId: String): Result<StreamBundle> {
+    suspend operator fun invoke(videoId: String, forceRefresh: Boolean = false): Result<StreamBundle> {
         return try {
-            Result.success(repository.getStreamBundle(videoId))
+            Result.success(repository.getStreamBundle(videoId, forceRefresh))
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             Result.failure(e)

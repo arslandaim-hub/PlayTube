@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material3.*
@@ -40,11 +41,15 @@ import androidx.compose.ui.platform.LocalContext
 import com.arslandaim.playtube.domain.model.PlaylistItem
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.domain.model.StreamBundle
+import com.arslandaim.playtube.ui.components.InfiniteScrollEffect
 import com.arslandaim.playtube.ui.components.VideoItemRow
 import com.arslandaim.playtube.ui.components.ThumbnailImage
 import com.arslandaim.playtube.ui.components.DownloadSelectionSheet
 import com.arslandaim.playtube.ui.components.DownloadDialogState
+import com.arslandaim.playtube.ui.components.GlassSurface
+import com.arslandaim.playtube.ui.components.EmptyState
 import com.arslandaim.playtube.ui.screens.library.LibraryViewModel
+import com.arslandaim.playtube.utils.PlayTubeError
 import com.arslandaim.playtube.utils.VideoUtils
 import kotlinx.coroutines.flow.SharedFlow
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -57,6 +62,7 @@ fun ChannelScreen(
     viewModel: ChannelViewModel,
     libraryViewModel: LibraryViewModel,
     onBarsVisibilityChange: (Boolean) -> Unit,
+    onNavigateToDownloads: () -> Unit,
     onBack: () -> Unit,
     onVideoClick: (VideoItem) -> Unit,
     onPlaylistClick: (String) -> Unit
@@ -87,6 +93,7 @@ fun ChannelScreen(
         onDownloadConfirm = viewModel::download,
         onDismissDownload = viewModel::dismissDownloadDialog,
         onBarsVisibilityChange = onBarsVisibilityChange,
+        onNavigateToDownloads = onNavigateToDownloads,
         onBack = onBack,
         onVideoClick = onVideoClick,
         onPlaylistClick = onPlaylistClick
@@ -111,6 +118,7 @@ private fun ChannelContent(
     onDownloadConfirm: (VideoItem, StreamBundle, String?, String?, String?, Boolean) -> Unit,
     onDismissDownload: () -> Unit,
     onBarsVisibilityChange: (Boolean) -> Unit,
+    onNavigateToDownloads: () -> Unit,
     onBack: () -> Unit,
     onVideoClick: (VideoItem) -> Unit,
     onPlaylistClick: (String) -> Unit
@@ -159,6 +167,12 @@ private fun ChannelContent(
                 }
                 is ChannelUiState.Success -> {
                     val details = uiState.details
+                    
+                    InfiniteScrollEffect(
+                        listState = listState,
+                        enabled = details.nextVideosPage != null && !uiState.isFetchingNextPage,
+                        onLoadMore = onLoadMore
+                    )
                     
                     // Immersive Banner
                     Box(
@@ -312,11 +326,7 @@ private fun ChannelContent(
                         
                         // Sticky Tabs with Glass Effect
                         stickyHeader {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                color = MaterialTheme.colorScheme.surface.copy(alpha = GlassAlpha),
-                                tonalElevation = 0.dp
-                            ) {
+                            GlassSurface(tonalElevation = 0.dp) {
                                 PrimaryTabRow(
                                     selectedTabIndex = selectedTabIndex,
                                     containerColor = Color.Transparent,
@@ -356,7 +366,12 @@ private fun ChannelContent(
                             // Load More Indicator
                             if (details.nextVideosPage != null) {
                                 item {
-                                    LaunchedEffect(Unit) { onLoadMore() }
+                                    InfiniteScrollEffect(
+                                        listState = listState,
+                                        enabled = details.nextVideosPage != null && !uiState.isFetchingNextPage,
+                                        onLoadMore = onLoadMore
+                                    )
+
                                     Box(
                                         modifier = Modifier.fillMaxWidth().padding(24.dp),
                                         contentAlignment = Alignment.Center
@@ -375,15 +390,17 @@ private fun ChannelContent(
                     }
                 }
                 is ChannelUiState.Error -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(text = uiState.message, color = MaterialTheme.colorScheme.error)
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Button(onClick = { onLoadChannel(channelUrl) }) {
-                                Text("Retry")
-                            }
-                        }
-                    }
+                    val isNetworkError = uiState.error is PlayTubeError.Network
+                    EmptyState(
+                        icon = if (isNetworkError) Icons.Default.WifiOff else Icons.Default.ErrorOutline,
+                        title = if (isNetworkError) stringResource(R.string.no_internet) else "Something went wrong",
+                        description = if (isNetworkError) "Your downloads are still available offline." else uiState.error.getMessage(),
+                        actionText = if (isNetworkError) "Go to Offline Hub" else stringResource(R.string.retry),
+                        onActionClick = { 
+                            if (isNetworkError) onNavigateToDownloads() else onLoadChannel(channelUrl)
+                        },
+                        modifier = Modifier.align(Alignment.Center)
+                    )
                 }
             }
 
@@ -418,22 +435,21 @@ private fun ChannelContent(
                     )
                 }
                 is DownloadDialogState.ShowDialog -> {
-                    DownloadSelectionSheet(
-                        videoStreams = currentDownloadState.bundle.videoStreams,
-                        audioStreams = currentDownloadState.bundle.audioStreams,
-                        onDismiss = { onDismissDownload() },
-                        onDownload = { stream ->
-                            onDownloadConfirm(
-                                currentDownloadState.video,
-                                currentDownloadState.bundle,
-                                stream.url,
-                                stream.quality,
-                                stream.format,
-                                stream.isAdaptive
-                            )
-                        }
-                    )
-                }
+                DownloadSelectionSheet(
+                    videoStreams = currentDownloadState.bundle.videoStreams,
+                    onDismiss = { onDismissDownload() },
+                    onDownload = { stream ->
+                        onDownloadConfirm(
+                            currentDownloadState.video,
+                            currentDownloadState.bundle,
+                            stream.url,
+                            stream.quality,
+                            stream.format,
+                            stream.isAdaptive
+                        )
+                    }
+                )
+            }
             }
         }
     }

@@ -39,4 +39,13 @@ interface HistoryDao {
 
     @Query("DELETE FROM history")
     fun clearHistorySync()
+
+    @Query("SELECT videoId, progressMs, durationMs FROM history WHERE videoId IN (:videoIds)")
+    suspend fun getWatchProgressForVideos(videoIds: List<String>): List<WatchProgressProjection>
 }
+
+data class WatchProgressProjection(
+    val videoId: String,
+    val progressMs: Long,
+    val durationMs: Long
+)

@@ -19,6 +19,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Subscriptions
+import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -32,6 +34,8 @@ import com.arslandaim.playtube.ui.components.DownloadSelectionSheet
 import com.arslandaim.playtube.ui.components.VideoListSkeleton
 import com.arslandaim.playtube.ui.components.VideoList
 import com.arslandaim.playtube.ui.components.DownloadDialogState
+import com.arslandaim.playtube.ui.components.GlassSurface
+import com.arslandaim.playtube.ui.components.EmptyState
 
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -43,8 +47,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.draw.clip
 import com.arslandaim.playtube.ui.theme.GlassAlpha
 import com.arslandaim.playtube.R
+import com.arslandaim.playtube.utils.PlayTubeError
 import kotlin.math.roundToInt
 
 @Composable
@@ -53,7 +61,8 @@ fun HomeScreen(
     libraryViewModel: com.arslandaim.playtube.ui.screens.library.LibraryViewModel,
     onBarsVisibilityChange: (Boolean) -> Unit,
     onVideoClick: (VideoItem) -> Unit,
-    onChannelClick: (String) -> Unit
+    onChannelClick: (String) -> Unit,
+    onNavigateToDownloads: () -> Unit // New parameter
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val downloadedIds by libraryViewModel.downloadedVideoIds.collectAsStateWithLifecycle()
@@ -64,29 +73,28 @@ fun HomeScreen(
         favorites.map { it.videoId }.toSet()
     }
     
-    val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val downloadState by viewModel.downloadState.collectAsStateWithLifecycle()
 
     HomeContent(
         state = state,
-        selectedTab = selectedTab,
         isRefreshing = isRefreshing,
         downloadState = downloadState,
         downloadedIds = downloadedIds,
         favoriteIds = favoriteIds,
         snackbarMessage = viewModel.snackbarMessage,
-        onTabSelected = viewModel::onTabSelected,
         onRefresh = viewModel::refresh,
         onLoadMore = viewModel::loadNextTrendingPage,
         onFavoriteClick = viewModel::toggleFavorite,
+        onNotInterestedClick = viewModel::markNotInterested,
         onDownloadClick = viewModel::prepareDownload,
         onDownloadConfirm = viewModel::download,
         onDismissDownload = viewModel::dismissDownloadDialog,
         onPersonalizedNotifyShown = viewModel::onPersonalizedNotifyShown,
         onBarsVisibilityChange = onBarsVisibilityChange,
         onVideoClick = onVideoClick,
-        onChannelClick = onChannelClick
+        onChannelClick = onChannelClick,
+        onNavigateToDownloads = onNavigateToDownloads // Pass it down
     )
 }
 
@@ -94,23 +102,23 @@ fun HomeScreen(
 @Composable
 private fun HomeContent(
     state: HomeState,
-    selectedTab: Int,
     isRefreshing: Boolean,
     downloadState: DownloadDialogState,
     downloadedIds: Set<String>,
     favoriteIds: Set<String>,
     snackbarMessage: kotlinx.coroutines.flow.SharedFlow<String>,
-    onTabSelected: (Int) -> Unit,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     onFavoriteClick: (VideoItem) -> Unit,
+    onNotInterestedClick: (VideoItem) -> Unit,
     onDownloadClick: (VideoItem) -> Unit,
     onDownloadConfirm: (VideoItem, com.arslandaim.playtube.domain.model.StreamBundle, String?, String?, String?, Boolean) -> Unit,
     onDismissDownload: () -> Unit,
     onPersonalizedNotifyShown: () -> Unit,
     onBarsVisibilityChange: (Boolean) -> Unit,
     onVideoClick: (VideoItem) -> Unit,
-    onChannelClick: (String) -> Unit
+    onChannelClick: (String) -> Unit,
+    onNavigateToDownloads: () -> Unit // New parameter
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -120,10 +128,6 @@ private fun HomeContent(
         }
     }
 
-    val tabs = listOf(stringResource(R.string.tab_for_you), stringResource(R.string.tab_subscriptions))
-    
-    val pagerState = rememberPagerState(pageCount = { tabs.size })
-    
     // Header Scroll State
     val density = LocalDensity.current
     var headerHeightPx by remember { mutableFloatStateOf(0f) }
@@ -165,16 +169,8 @@ private fun HomeContent(
         onBarsVisibilityChange(true)
     }
 
-    LaunchedEffect(selectedTab) {
-        if (pagerState.currentPage != selectedTab) {
-            pagerState.animateScrollToPage(selectedTab)
-        }
-    }
-
-    LaunchedEffect(pagerState.currentPage) {
-        if (pagerState.currentPage != selectedTab) {
-            onTabSelected(pagerState.currentPage)
-        }
+    LaunchedEffect(Unit) {
+        onBarsVisibilityChange(true)
     }
 
     val pullToRefreshState = rememberPullToRefreshState()
@@ -200,69 +196,61 @@ private fun HomeContent(
                 .fillMaxSize()
                 .nestedScroll(connection)
         ) {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(),
-                userScrollEnabled = true
-            ) { pageIndex ->
-                val videos = if (pageIndex == 0) state.trendingVideos else state.subscriptionVideos
-                val isLoading = if (pageIndex == 0) state.isTrendingLoading else state.isSubscriptionsLoading
+            val videos = state.trendingVideos
+            val isLoading = state.isTrendingLoading
 
-                if (isLoading && videos.isEmpty()) {
+            AnimatedContent(
+                targetState = isLoading && videos.isEmpty(),
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(500)) togetherWith fadeOut(animationSpec = tween(500))
+                },
+                label = "HomeContentTransition"
+            ) { loading ->
+                if (loading) {
                     VideoListSkeleton()
                 } else if (state.error != null && videos.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = state.error,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Button(onClick = { onRefresh() }) {
-                                Text(stringResource(R.string.retry))
-                            }
+                    val isNetworkError = state.error is PlayTubeError.Network
+                    
+                    EmptyState(
+                        icon = if (isNetworkError) Icons.Default.WifiOff else Icons.Default.ErrorOutline,
+                        title = if (isNetworkError) stringResource(R.string.no_internet) else "Something went wrong",
+                        description = if (isNetworkError) "Your downloads are still available offline." else state.error.getMessage(),
+                        actionText = if (isNetworkError) "Checkout Downloads" else stringResource(R.string.retry),
+                        onActionClick = { 
+                            if (isNetworkError) onNavigateToDownloads() else onRefresh()
                         }
-                    }
+                    )
+                } else if (!isLoading && videos.isEmpty() && state.error == null) {
+                    EmptyState(
+                        icon = Icons.Default.ErrorOutline,
+                        title = stringResource(R.string.no_videos_found),
+                        description = "Couldn't find any videos right now. Try refreshing later.",
+                        actionText = stringResource(R.string.retry),
+                        onActionClick = { onRefresh() }
+                    )
                 } else {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        if (videos.isEmpty() && pageIndex == 1) {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(stringResource(R.string.no_subscriptions_videos))
-                            }
-                        } else if (videos.isEmpty() && !isLoading) {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(stringResource(R.string.no_videos_found))
-                            }
-                        } else {
-                            VideoList(
-                                videos = videos,
-                                downloadedIds = downloadedIds,
-                                favoriteIds = favoriteIds,
-                                onVideoClick = onVideoClick,
-                                onChannelClick = onChannelClick,
-                                onFavoriteClick = onFavoriteClick,
-                                onDownloadClick = onDownloadClick,
-                                onLoadMore = if (pageIndex == 0 && state.nextTrendingPage != null) onLoadMore else null,
-                                contentPadding = PaddingValues(
-                                    top = with(density) { headerHeightPx.toDp() },
-                                    bottom = 100.dp
-                                )
-                            )
-                        }
-                    }
+                    VideoList(
+                        videos = videos,
+                        downloadedIds = downloadedIds,
+                        favoriteIds = favoriteIds,
+                        onVideoClick = onVideoClick,
+                        onChannelClick = onChannelClick,
+                        onFavoriteClick = onFavoriteClick,
+                        onNotInterestedClick = onNotInterestedClick,
+                        onDownloadClick = onDownloadClick,
+                        onLoadMore = onLoadMore,
+                        isLoadingMore = state.isLoadingMore,
+                        contentPadding = PaddingValues(
+                            top = with(density) { headerHeightPx.toDp() },
+                            bottom = 100.dp
+                        )
+                    )
                 }
             }
         }
 
-        // Collapsible Header (Tabs + Categories)
-        Column(
+        // Header placeholder (could be used for categories if added later)
+        Spacer(
             modifier = Modifier
                 .fillMaxWidth()
                 .onGloballyPositioned { layoutCoordinates ->
@@ -271,19 +259,7 @@ private fun HomeContent(
                         headerHeightPx = newHeight
                     }
                 }
-                .graphicsLayer { translationY = headerOffsetPx }
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = GlassAlpha))
-        ) {
-            Spacer(modifier = Modifier.height(12.dp))
-            ModernPillTabRow(
-                selectedTabIndex = selectedTab,
-                tabs = tabs,
-                isTrendingLoading = state.isTrendingLoading,
-                isSubscriptionsLoading = state.isSubscriptionsLoading,
-                onTabSelected = onTabSelected
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-        }
+        )
 
         // Quick Action Dialogs
         when (val downloadDialogState = downloadState) {
@@ -303,7 +279,6 @@ private fun HomeContent(
             is DownloadDialogState.ShowDialog -> {
                 DownloadSelectionSheet(
                     videoStreams = downloadDialogState.bundle.videoStreams,
-                    audioStreams = downloadDialogState.bundle.audioStreams,
                     onDismiss = { onDismissDownload() },
                     onDownload = { stream ->
                         onDownloadConfirm(
@@ -321,7 +296,7 @@ private fun HomeContent(
 
         state.error?.let { error ->
             LaunchedEffect(error) {
-                snackbarHostState.showSnackbar(error)
+                snackbarHostState.showSnackbar(error.getMessage())
             }
         }
 
@@ -382,99 +357,5 @@ private fun HomeContent(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp)
         )
-    }
-}
-
-@Composable
-fun ModernPillTabRow(
-    selectedTabIndex: Int,
-    tabs: List<String>,
-    isTrendingLoading: Boolean,
-    isSubscriptionsLoading: Boolean,
-    onTabSelected: (Int) -> Unit
-) {
-    Surface(
-        modifier = Modifier
-            .padding(horizontal = 24.dp)
-            .fillMaxWidth()
-            .height(48.dp),
-        color = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp),
-        shape = CircleShape,
-        border = androidx.compose.foundation.BorderStroke(
-            width = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-        )
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // Sliding Indicator
-            val density = LocalDensity.current
-            var rowWidth by remember { mutableFloatStateOf(0f) }
-            val tabWidth = if (rowWidth > 0) rowWidth / tabs.size else 0f
-            
-            val indicatorOffset by animateFloatAsState(
-                targetValue = selectedTabIndex * tabWidth,
-                animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy),
-                label = "IndicatorOffset"
-            )
-
-            if (rowWidth > 0) {
-                Box(
-                    modifier = Modifier
-                        .offset { IntOffset(indicatorOffset.roundToInt(), 0) }
-                        .width(with(density) { tabWidth.toDp() })
-                        .fillMaxHeight()
-                        .padding(4.dp)
-                        .background(MaterialTheme.colorScheme.primary, CircleShape)
-                )
-            }
-
-            // Tab Content
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .onGloballyPositioned { rowWidth = it.size.width.toFloat() },
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                tabs.forEachIndexed { index, title ->
-                    val isSelected = selectedTabIndex == index
-                    val isLoading = if (index == 0) isTrendingLoading else isSubscriptionsLoading
-                    
-                    val contentColor by animateColorAsState(
-                        targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimary 
-                                     else MaterialTheme.colorScheme.onSurfaceVariant,
-                        label = "TabContentColor"
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .clickable(
-                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                indication = null,
-                                onClick = { onTabSelected(index) }
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (isLoading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp,
-                                    color = contentColor
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                            }
-                            Text(
-                                text = title,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
-                                color = contentColor
-                            )
-                        }
-                    }
-                }
-            }
-        }
     }
 }

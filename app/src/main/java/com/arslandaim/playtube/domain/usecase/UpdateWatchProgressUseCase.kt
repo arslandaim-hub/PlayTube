@@ -5,14 +5,18 @@
 */
 package com.arslandaim.playtube.domain.usecase
 
+import com.arslandaim.playtube.data.local.PreferencesManager
 import com.arslandaim.playtube.domain.repository.LibraryRepository
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 class UpdateWatchProgressUseCase @Inject constructor(
-    private val repository: LibraryRepository
+    private val repository: LibraryRepository,
+    private val preferencesManager: PreferencesManager
 ) {
     suspend operator fun invoke(videoId: String, progressMs: Long, durationMs: Long) {
         if (durationMs <= 0) return
+        if (preferencesManager.isIncognitoMode.first()) return
 
         val ratio = progressMs.toFloat() / durationMs
         

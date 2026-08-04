@@ -18,6 +18,7 @@ import com.arslandaim.playtube.domain.usecase.DownloadVideoUseCase
 import com.arslandaim.playtube.domain.usecase.GetVideoStreamsUseCase
 import com.arslandaim.playtube.domain.usecase.ToggleFavoriteUseCase
 import com.arslandaim.playtube.ui.components.DownloadDialogState
+import com.arslandaim.playtube.utils.PlayTubeError
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -31,29 +32,26 @@ import javax.inject.Inject
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val libraryRepository: LibraryRepository,
-    private val videoRepository: VideoRepository,
     private val toggleFavoriteUseCase: ToggleFavoriteUseCase,
     private val getVideoStreamsUseCase: GetVideoStreamsUseCase,
     private val downloadVideoUseCase: DownloadVideoUseCase,
-    private val getRecommendationsUseCase: com.arslandaim.playtube.domain.usecase.GetRecommendationsUseCase
+    private val videoRepository: VideoRepository,
+    private val getRecommendationsUseCase: com.arslandaim.playtube.domain.usecase.GetRecommendationsUseCase,
+    private val markNotInterestedUseCase: com.arslandaim.playtube.domain.usecase.MarkNotInterestedUseCase,
+    private val getTrendingVideosUseCase: com.arslandaim.playtube.domain.usecase.GetTrendingVideosUseCase
 ) : ViewModel() {
 
     private val _internalState = MutableStateFlow(HomeState())
+    private val _watchProgressMap = MutableStateFlow<Map<String, Float?>>(emptyMap())
 
     val uiState: StateFlow<HomeState> = combine(
         _internalState,
-        libraryRepository.getHistory()
-    ) { state, history ->
-        val historyMap = history.associateBy({ it.videoId }, { if (it.durationMs > 0) it.progressMs.toFloat() / it.durationMs else null })
-        
+        _watchProgressMap
+    ) { state, progressMap ->
         state.copy(
-            trendingVideos = state.trendingVideos.map { it.copy(watchProgress = historyMap[it.id]) },
-            subscriptionVideos = state.subscriptionVideos.map { it.copy(watchProgress = historyMap[it.id]) }
+            trendingVideos = state.trendingVideos.map { it.copy(watchProgress = progressMap[it.id]) }
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeState())
-
-    private val _selectedTab = MutableStateFlow(0) // 0: For You, 1: Subscriptions
-    val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
@@ -71,23 +69,10 @@ class HomeViewModel @Inject constructor(
         loadTrending()
     }
 
-    fun onTabSelected(index: Int) {
-        _selectedTab.value = index
-        if (index == 0 && _internalState.value.trendingVideos.isEmpty()) {
-            loadTrending()
-        } else if (index == 1 && _internalState.value.subscriptionVideos.isEmpty()) {
-            loadSubscriptionsFeed()
-        }
-    }
-
     fun refresh() {
         viewModelScope.launch {
             _isRefreshing.value = true
-            if (_selectedTab.value == 0) {
-                fetchTrending(isRefresh = true)
-            } else {
-                fetchSubscriptionsFeed()
-            }
+            fetchTrending(isRefresh = true)
             _isRefreshing.value = false
         }
     }
@@ -103,77 +88,75 @@ class HomeViewModel @Inject constructor(
 
     private suspend fun fetchTrending(isRefresh: Boolean) {
         try {
-            val finalVideos = getRecommendationsUseCase().getOrDefault(emptyList())
+            // First, try to get personalized recommendations
+            val recommendations = getRecommendationsUseCase().getOrDefault(emptyList())
+            
+            // Second, fetch actual trending from YouTube with pagination support
+            val trendingResult = getTrendingVideosUseCase().getOrNull()
+            val trendingVideos = trendingResult?.items ?: emptyList()
+            
+            // Strict deduplication: Remove trending videos that are already in recommendations
+            // This ensures the "Personalized" notification feels truly unique.
+            val filteredTrending = trendingVideos.filter { tv -> recommendations.none { it.id == tv.id } }
+
+            val combinedVideos = if (recommendations.isNotEmpty()) {
+                (recommendations + filteredTrending).distinctBy { it.id }
+            } else {
+                trendingVideos
+            }
 
             _internalState.update { 
                 it.copy(
-                    trendingVideos = finalVideos,
-                    nextTrendingPage = null,
-                    isPersonalized = isRefresh
+                    trendingVideos = combinedVideos,
+                    nextTrendingPage = trendingResult?.nextPage,
+                    isPersonalized = isRefresh && recommendations.isNotEmpty()
                 )
             }
             
+            updateWatchProgress(combinedVideos.map { it.id })
+            
         } catch (e: Exception) {
-            val errorMessage = if (e is java.net.UnknownHostException || e is java.io.IOException) {
-                "No internet connection"
-            } else {
-                e.message ?: "Unknown error"
-            }
-            _internalState.update { it.copy(error = errorMessage) }
+            _internalState.update { it.copy(error = PlayTubeError.fromThrowable(e)) }
         }
     }
 
     fun loadNextTrendingPage() {
-        // Recommendations currently do not support pagination via keywords in the same way
-    }
+        val page = _internalState.value.nextTrendingPage
+        if (_internalState.value.isLoadingMore) return
 
-    fun loadSubscriptionsFeed() {
         viewModelScope.launch {
-            _internalState.update { it.copy(isSubscriptionsLoading = true, error = null) }
-            fetchSubscriptionsFeed()
-            _internalState.update { it.copy(isSubscriptionsLoading = false) }
-        }
-    }
-
-    private suspend fun fetchSubscriptionsFeed() {
-        try {
-            val subscriptions = libraryRepository.getSubscriptions().first()
-            if (subscriptions.isEmpty()) {
-                _internalState.update { it.copy(subscriptionVideos = emptyList()) }
-                return
-            }
-
-            val allVideos = mutableListOf<VideoItem>()
-            // Fetch channel updates in small chunks (5 at a time) to prevent network saturation and throttling
-            subscriptions.take(30).chunked(5).forEach { chunk ->
-                coroutineScope {
-                    val deferredVideos = chunk.map { sub ->
-                        async {
-                            try {
-                                videoRepository.getChannelDetails(sub.channelId).videos
-                            } catch (e: Exception) {
-                                emptyList<VideoItem>()
+            _internalState.update { it.copy(isLoadingMore = true) }
+            try {
+                if (page != null) {
+                    getTrendingVideosUseCase.fetchNextPage(page)
+                        .onSuccess { result ->
+                            _internalState.update { state ->
+                                state.copy(
+                                    trendingVideos = (state.trendingVideos + result.items).distinctBy { it.id },
+                                    nextTrendingPage = result.nextPage,
+                                    isLoadingMore = false
+                                )
                             }
+                            updateWatchProgress(result.items.map { it.id })
                         }
+                        .onFailure {
+                            _internalState.update { it.copy(isLoadingMore = false) }
+                        }
+                } else {
+                    // Fallback to recommendations if no trending page is available
+                    val result = getRecommendationsUseCase()
+                    val newVideos = result.getOrDefault(emptyList())
+                    
+                    _internalState.update { state ->
+                        state.copy(
+                            trendingVideos = (state.trendingVideos + newVideos).distinctBy { it.id },
+                            isLoadingMore = false
+                        )
                     }
-                    allVideos.addAll(deferredVideos.awaitAll().flatten())
                 }
+            } catch (e: Exception) {
+                _internalState.update { it.copy(isLoadingMore = false) }
             }
-            
-            // Sort by rawUploadDate (newest first)
-            val sortedVideos = allVideos
-                .distinctBy { it.id }
-                .sortedByDescending { it.rawUploadDate ?: 0L }
-                .take(60)
-
-            _internalState.update { it.copy(subscriptionVideos = sortedVideos) }
-        } catch (e: Exception) {
-            val errorMessage = if (e is java.net.UnknownHostException || e is java.io.IOException) {
-                "No internet connection"
-            } else {
-                e.message ?: "Unknown error"
-            }
-            _internalState.update { it.copy(error = errorMessage) }
         }
     }
 
@@ -194,6 +177,13 @@ class HomeViewModel @Inject constructor(
 
     fun prepareDownload(video: VideoItem) {
         viewModelScope.launch {
+            // Optimistic Cache Check
+            val cachedBundle = videoRepository.getCachedStreamBundle(video.id)
+            if (cachedBundle != null && !cachedBundle.videoStreams.isEmpty()) {
+                _downloadState.value = DownloadDialogState.ShowDialog(video, cachedBundle)
+                return@launch
+            }
+
             _downloadState.value = DownloadDialogState.Loading(video)
             getVideoStreamsUseCase(video.id)
                 .onSuccess { bundle ->
@@ -256,14 +246,34 @@ class HomeViewModel @Inject constructor(
     fun onPersonalizedNotifyShown() {
         _internalState.update { it.copy(isPersonalized = false) }
     }
+
+    private fun updateWatchProgress(videoIds: List<String>) {
+        viewModelScope.launch {
+            val progressMap = libraryRepository.getWatchProgressForVideos(videoIds)
+            _watchProgressMap.update { it + progressMap }
+        }
+    }
+
+    fun markNotInterested(video: VideoItem) {
+        viewModelScope.launch {
+            markNotInterestedUseCase(video)
+            _snackbarMessage.emit("Video hidden from recommendations")
+            
+            // Immediately remove from current UI state to feel responsive
+            _internalState.update { state ->
+                state.copy(
+                    trendingVideos = state.trendingVideos.filter { it.id != video.id }
+                )
+            }
+        }
+    }
 }
 
 data class HomeState(
     val trendingVideos: List<VideoItem> = emptyList(),
-    val nextTrendingPage: Page? = null,
-    val subscriptionVideos: List<VideoItem> = emptyList(),
-    val isTrendingLoading: Boolean = false,
-    val isSubscriptionsLoading: Boolean = false,
+    val nextTrendingPage: org.schabi.newpipe.extractor.Page? = null,
+    val isTrendingLoading: Boolean = true,
+    val isLoadingMore: Boolean = false,
     val isPersonalized: Boolean = false,
-    val error: String? = null
+    val error: PlayTubeError? = null
 )

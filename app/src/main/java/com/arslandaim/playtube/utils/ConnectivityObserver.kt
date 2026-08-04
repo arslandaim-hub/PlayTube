@@ -64,16 +64,21 @@ class NetworkConnectivityObserver @Inject constructor(
                 .build()
             connectivityManager.registerNetworkCallback(request, callback)
 
-            // Send initial state
-            val isConnected = connectivityManager.activeNetwork?.let {
-                connectivityManager.getNetworkCapabilities(it)
+            // Initial check using both activeNetwork and allNetworks for redundancy
+            val isConnected = connectivityManager.activeNetwork?.let { network ->
+                connectivityManager.getNetworkCapabilities(network)
                     ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            } ?: false
+                    ?: false
+            } ?: connectivityManager.allNetworks.any { network ->
+                connectivityManager.getNetworkCapabilities(network)
+                    ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    ?: false
+            }
             
             if (isConnected) {
-                send(ConnectivityObserver.Status.Available)
+                launch { send(ConnectivityObserver.Status.Available) }
             } else {
-                send(ConnectivityObserver.Status.Unavailable)
+                launch { send(ConnectivityObserver.Status.Unavailable) }
             }
 
             awaitClose {

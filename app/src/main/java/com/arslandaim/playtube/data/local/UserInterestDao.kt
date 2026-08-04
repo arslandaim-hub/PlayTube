@@ -25,7 +25,10 @@ interface UserInterestDao {
     suspend fun getAllInterestsStatic(): List<UserInterestEntity>
 
     @Query("DELETE FROM user_interests")
-    fun clearInterests()
+    suspend fun clearInterests()
+
+    @Query("DELETE FROM user_interests")
+    fun clearInterestsSync()
 
     @Query("UPDATE user_interests SET weight = weight * :decayFactor")
     suspend fun applyDecay(decayFactor: Float)

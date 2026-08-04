@@ -14,14 +14,20 @@ import android.os.Build
 import androidx.annotation.OptIn
 import androidx.core.app.NotificationCompat
 import androidx.core.app.TaskStackBuilder
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
 import com.arslandaim.playtube.MainActivity
 import com.arslandaim.playtube.R
 import com.arslandaim.playtube.data.local.PreferencesManager
+import com.arslandaim.playtube.ui.screens.player.QueueManager
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +42,7 @@ class PlaybackService : MediaSessionService() {
 
     @Inject lateinit var player: ExoPlayer
     @Inject lateinit var preferencesManager: PreferencesManager
+    @Inject lateinit var queueManager: QueueManager
     
     private var mediaSession: MediaSession? = null
     private val serviceJob = SupervisorJob()
@@ -45,7 +52,7 @@ class PlaybackService : MediaSessionService() {
 
     companion object {
         const val CHANNEL_ID = "playback_channel"
-        const val NOTIFICATION_ID = 1001 // Standard ID for PlayTube media controls
+        const val NOTIFICATION_ID = 1001 
     }
 
     @OptIn(UnstableApi::class)
@@ -54,30 +61,55 @@ class PlaybackService : MediaSessionService() {
         
         createNotificationChannel()
 
-        setMediaNotificationProvider(
-            DefaultMediaNotificationProvider.Builder(this)
-                .setChannelId(CHANNEL_ID)
-                .build()
+        // Custom Notification Provider to ensure specific buttons are shown
+        val notificationProvider = DefaultMediaNotificationProvider.Builder(this)
+            .setChannelId(CHANNEL_ID)
+            .build()
+        
+        setMediaNotificationProvider(notificationProvider)
+
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_LAUNCHER)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val intent = Intent(this, MainActivity::class.java)
-        val pendingIntent = TaskStackBuilder.create(this).run {
-            addNextIntentWithParentStack(intent)
-            getPendingIntent(0, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        // We wrap the player in a ForwardingPlayer to handle Skip commands
+        val forwardingPlayer = object : androidx.media3.common.ForwardingPlayer(player) {
+            override fun getAvailableCommands(): Player.Commands {
+                return super.getAvailableCommands().buildUpon()
+                    .add(Player.COMMAND_SEEK_TO_NEXT)
+                    .add(Player.COMMAND_SEEK_TO_PREVIOUS)
+                    .build()
+            }
+
+            override fun isCommandAvailable(command: Int): Boolean {
+                return command == Player.COMMAND_SEEK_TO_NEXT || 
+                       command == Player.COMMAND_SEEK_TO_PREVIOUS || 
+                       super.isCommandAvailable(command)
+            }
+
+            override fun seekToNext() {
+                queueManager.skipToNext()
+            }
+
+            override fun seekToPrevious() {
+                queueManager.skipToPrevious()
+            }
         }
 
-        mediaSession = MediaSession.Builder(this, player)
+        mediaSession = MediaSession.Builder(this, forwardingPlayer)
             .setSessionActivity(pendingIntent!!)
+            .setCallback(MediaSessionCallback())
             .build()
             
-        // Observe background play setting and update notification behavior dynamically
+        // Observe background play setting
         serviceScope.launch {
             preferencesManager.isBackgroundPlayEnabled.collectLatest { enabled ->
                 isBackgroundPlayEnabled = enabled
-                
                 if (!enabled) {
-                    // Explicitly remove notification and exit foreground status
-                    // This prevents the system "App is running" notification
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
                     notificationManager.cancel(NOTIFICATION_ID)
@@ -86,21 +118,10 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
-    // Removed updateNotificationProvider dummy logic
-
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = getString(R.string.background_play)
-            val descriptionText = getString(R.string.background_play_desc)
-            val importance = NotificationManager.IMPORTANCE_LOW // Use LOW to ensure silent media controls
-            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
-                description = descriptionText
-                setShowBadge(false) // Media controls usually don't need badges
-                setSound(null, null) // Defensive: ensure no sound
-                enableVibration(false) // Defensive: ensure no vibration
-            }
-            val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
+    private inner class MediaSessionCallback : MediaSession.Callback {
+        override fun onPostConnect(session: MediaSession, controller: MediaSession.ControllerInfo) {
+            super.onPostConnect(session, controller)
+            android.util.Log.d("PlaybackService", "Controller connected: ${controller.packageName}")
         }
     }
 
@@ -110,7 +131,8 @@ class PlaybackService : MediaSessionService() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         val player = mediaSession?.player
-        if (player == null || player.playbackState == androidx.media3.common.Player.STATE_IDLE || player.playbackState == androidx.media3.common.Player.STATE_ENDED || !player.playWhenReady) {
+        // Only stop service if the activity is removed AND nothing is actually playing
+        if (player == null || (!player.isPlaying && player.playbackState != androidx.media3.common.Player.STATE_BUFFERING)) {
             stopSelf()
         }
     }
@@ -122,5 +144,21 @@ class PlaybackService : MediaSessionService() {
         }
         mediaSession = null
         super.onDestroy()
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = getString(R.string.background_play)
+            val descriptionText = getString(R.string.background_play_desc)
+            val importance = NotificationManager.IMPORTANCE_LOW 
+            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
+                description = descriptionText
+                setShowBadge(false)
+                setSound(null, null)
+                enableVibration(false)
+            }
+            val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
     }
 }

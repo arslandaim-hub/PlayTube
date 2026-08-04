@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.arslandaim.playtube.ui.components.ThumbnailImage
+import com.arslandaim.playtube.ui.components.GlassSurface
 import com.arslandaim.playtube.data.local.HistoryEntity
 import com.arslandaim.playtube.data.local.SubscriptionEntity
 import com.arslandaim.playtube.data.local.DownloadEntity
@@ -39,21 +40,6 @@ import com.arslandaim.playtube.domain.model.PlaylistItem
 import com.arslandaim.playtube.utils.VideoUtils
 
 const val GlobalGlassAlpha = 0.75f
-
-@Composable
-fun GlassSurface(
-    modifier: Modifier = Modifier,
-    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(0.dp),
-    content: @Composable () -> Unit
-) {
-    Surface(
-        modifier = modifier,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = GlobalGlassAlpha),
-        shape = shape,
-        tonalElevation = 0.dp,
-        content = content
-    )
-}
 
 @Composable
 fun ProfileStatsHeader(
@@ -477,6 +463,9 @@ fun VideoRow(
     title: String,
     uploader: String,
     thumbnailUrl: String,
+    duration: Long = 0,
+    viewCount: Long? = null,
+    uploadDate: String? = null,
     progress: Float? = null,
     watchProgress: Float? = null,
     isDownloaded: Boolean = false,
@@ -489,8 +478,11 @@ fun VideoRow(
     onChannelClick: (() -> Unit)? = null,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    trailing: @Composable (() -> Unit)? = null
+    trailing: @Composable (() -> Unit)? = null,
+    metadata: @Composable (() -> Unit)? = null
 ) {
+    var showMenu by remember { mutableStateOf(false) }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -509,6 +501,27 @@ fun VideoRow(
                 modifier = Modifier.fillMaxSize()
             )
             
+            // Duration Badge
+            if (duration > 0) {
+                Surface(
+                    color = Color.Black.copy(alpha = 0.8f),
+                    shape = RoundedCornerShape(4.dp),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(4.dp)
+                ) {
+                    Text(
+                        text = VideoUtils.formatDuration(duration),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
             val actualProgress = progress ?: watchProgress
             actualProgress?.let {
                 Box(
@@ -553,15 +566,86 @@ fun VideoRow(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
+            
+            val metaText = remember(uploader, viewCount, uploadDate) {
+                buildString {
+                    append(uploader)
+                    if (viewCount != null && viewCount >= 0) {
+                        append(" • ")
+                        append(VideoUtils.formatViewCount(viewCount))
+                        if (viewCount >= 0) append(" views")
+                    }
+                    if (!uploadDate.isNullOrBlank()) {
+                        append(" • ")
+                        append(VideoUtils.formatUploadDate(uploadDate))
+                    }
+                }
+            }
+
             Text(
-                text = uploader,
+                text = metaText,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
+            metadata?.invoke()
         }
         
         if (trailing != null) {
-            trailing()
+            Box(modifier = Modifier.minimumInteractiveComponentSize()) {
+                trailing()
+            }
+        } else if (onFavoriteClick != null || onDownloadClick != null) {
+            Box {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "More",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    if (onDownloadClick != null) {
+                        DropdownMenuItem(
+                            text = { Text(if (isDownloaded) "Downloaded" else "Download") },
+                            leadingIcon = { 
+                                Icon(
+                                    imageVector = if (isDownloaded) Icons.Default.CheckCircle else Icons.Default.Download, 
+                                    contentDescription = null,
+                                    tint = if (isDownloaded) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                                ) 
+                            },
+                            onClick = {
+                                showMenu = false
+                                if (!isDownloaded) onDownloadClick()
+                            },
+                            enabled = !isDownloaded
+                        )
+                    }
+                    if (onFavoriteClick != null) {
+                        DropdownMenuItem(
+                            text = { Text(if (isFavorite) "Remove from Favorites" else "Add to Favorites") },
+                            leadingIcon = { 
+                                Icon(
+                                    imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, 
+                                    contentDescription = null,
+                                    tint = if (isFavorite) Color.Red else LocalContentColor.current
+                                ) 
+                            },
+                            onClick = {
+                                showMenu = false
+                                onFavoriteClick()
+                            }
+                        )
+                    }
+                }
+            }
         } else {
             // Default Download controls if not provided via trailing
             Row {
@@ -741,6 +825,49 @@ fun DownloadItemRow(
         } else null,
         onClick = onClick,
         modifier = modifier,
+        metadata = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val statusText = when (download.status) {
+                    com.arslandaim.playtube.data.local.DownloadStatus.COMPLETED -> "Completed"
+                    com.arslandaim.playtube.data.local.DownloadStatus.DOWNLOADING -> "Downloading"
+                    com.arslandaim.playtube.data.local.DownloadStatus.FAILED -> "Failed"
+                    com.arslandaim.playtube.data.local.DownloadStatus.PAUSED -> "Paused"
+                    com.arslandaim.playtube.data.local.DownloadStatus.PENDING, 
+                    com.arslandaim.playtube.data.local.DownloadStatus.WAITING -> "Waiting"
+                }
+                
+                val sizeText = if (download.status == com.arslandaim.playtube.data.local.DownloadStatus.COMPLETED) {
+                    formatBytes(download.totalSize)
+                } else {
+                    "${formatBytes(download.downloadedSize)} / ${formatBytes(download.totalSize)}"
+                }
+
+                val qualityText = download.quality?.let { " • $it" } ?: ""
+
+                // Status: Truncates if space is tight
+                Text(
+                    text = statusText,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                    color = if (download.status == com.arslandaim.playtube.data.local.DownloadStatus.COMPLETED) 
+                        MaterialTheme.colorScheme.primary 
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                // Metrics: Always visible
+                Text(
+                    text = " • $sizeText$qualityText",
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
         trailing = {
             Row {
                 when (download.status) {

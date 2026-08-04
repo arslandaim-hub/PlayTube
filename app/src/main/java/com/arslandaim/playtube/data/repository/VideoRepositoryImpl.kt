@@ -18,6 +18,7 @@ import com.arslandaim.playtube.utils.VideoUtils
 import android.util.LruCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.ServiceList
@@ -27,78 +28,105 @@ import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
 import org.schabi.newpipe.extractor.stream.AudioTrackType
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
+import org.schabi.newpipe.extractor.stream.StreamType
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class VideoRepositoryImpl @Inject constructor() : VideoRepository {
+class VideoRepositoryImpl @Inject constructor(
+    private val preferencesManager: com.arslandaim.playtube.data.local.PreferencesManager
+) : VideoRepository {
     private val streamCache = LruCache<String, StreamBundle>(50)
 
-    override suspend fun getStreamBundle(videoId: String): StreamBundle {
+    override suspend fun getStreamBundle(videoId: String, forceRefresh: Boolean): StreamBundle {
         if (videoId.isBlank()) throw IllegalArgumentException("Video ID cannot be blank")
-        streamCache.get(videoId)?.let { return it }
+        
+        val isIncognito = preferencesManager.isIncognitoMode.first()
+        
+        if (!forceRefresh && !isIncognito) {
+            streamCache.get(videoId)?.let { 
+                if (!it.isExpired()) return it 
+            }
+        }
         
         return withContext(Dispatchers.IO) {
             val service = ServiceList.YouTube
             val videoUrl = "https://www.youtube.com/watch?v=$videoId"
             val streamInfo = StreamInfo.getInfo(service, videoUrl)
 
-            val videoStreams = mutableListOf<StreamItem>()
-            val isLive = streamInfo.streamType.name == "LIVE"
+            val isLive = streamInfo.streamType == StreamType.LIVE_STREAM || 
+                         streamInfo.streamType == StreamType.AUDIO_LIVE_STREAM ||
+                         streamInfo.streamType.name == "LIVE"
 
-            // Handle HLS streams for live content
-            if (isLive) {
-                streamInfo.hlsUrl?.let { url ->
-                    videoStreams.add(
-                        StreamItem(
+            val videoStreamsDeferred = async {
+                val streamsMap = mutableMapOf<String, StreamItem>()
+                
+                if (isLive) {
+                    streamInfo.hlsUrl?.let { url ->
+                        val item = StreamItem(
                             url = url,
                             quality = "Auto (Live)",
                             format = "m3u8",
                             isAdaptive = false
                         )
-                    )
+                        streamsMap[item.quality] = item
+                    }
+                } else {
+                    // 1. Add legacy muxed streams first
+                    streamInfo.videoStreams?.forEach {
+                        val resolution = it.getResolution() ?: "Unknown"
+                        streamsMap[resolution] = StreamItem(
+                            url = it.url ?: "",
+                            quality = resolution,
+                            format = it.format?.suffix ?: "mp4",
+                            isAdaptive = false
+                        )
+                    }
+                    
+                    // 2. Overwrite with adaptive (video-only) streams for better performance
+                    // YouTube throttles legacy muxed streams much more heavily than adaptive ones.
+                    streamInfo.videoOnlyStreams?.forEach {
+                        val resolution = it.getResolution() ?: "Unknown"
+                        streamsMap[resolution] = StreamItem(
+                            url = it.url ?: "",
+                            quality = resolution,
+                            format = it.format?.suffix ?: "webm",
+                            isAdaptive = true
+                        )
+                    }
                 }
+
+                val streams = streamsMap.values.toMutableList()
+                if (!isLive) {
+                    streams.sortByDescending {
+                        it.quality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 
+                    }
+                }
+                streams
             }
 
-            streamInfo.videoStreams?.forEach {
-                videoStreams.add(
+            val audioStreamsDeferred = async {
+                streamInfo.audioStreams?.map {
                     StreamItem(
                         url = it.url ?: "",
-                        quality = it.getResolution() ?: "Unknown",
-                        format = it.format?.suffix ?: "mp4",
-                        isAdaptive = false
+                        quality = "${it.averageBitrate}kbps",
+                        format = it.format?.suffix ?: "m4a",
+                        languageTag = it.audioLocale?.language,
+                        trackType = it.audioTrackType?.name
                     )
-                )
+                } ?: emptyList()
             }
-            streamInfo.videoOnlyStreams?.forEach {
-                videoStreams.add(
-                    StreamItem(
+
+            val subtitlesDeferred = async {
+                streamInfo.subtitles?.map {
+                    SubtitleItem(
                         url = it.url ?: "",
-                        quality = it.getResolution() ?: "Unknown",
-                        format = it.format?.suffix ?: "webm",
-                        isAdaptive = true
+                        languageTag = it.languageTag ?: "und",
+                        format = it.format?.suffix ?: "vtt",
+                        isAutoGenerated = it.isAutoGenerated
                     )
-                )
+                }?.sortedWith(compareBy({ it.isAutoGenerated }, { it.languageTag })) ?: emptyList()
             }
-
-            val audioStreams = streamInfo.audioStreams?.map {
-                StreamItem(
-                    url = it.url ?: "",
-                    quality = "${it.averageBitrate}kbps",
-                    format = it.format?.suffix ?: "m4a",
-                    languageTag = it.audioLocale?.language,
-                    trackType = it.audioTrackType?.name
-                )
-            } ?: emptyList()
-
-            val subtitles = streamInfo.subtitles?.map {
-                SubtitleItem(
-                    url = it.url ?: "",
-                    languageTag = it.languageTag ?: "und",
-                    format = it.format?.suffix ?: "vtt",
-                    isAutoGenerated = it.isAutoGenerated
-                )
-            } ?: emptyList()
 
             val bestAudioStream = streamInfo.audioStreams?.let { streams ->
                 val originals = streams.filter { it.audioTrackType == AudioTrackType.ORIGINAL }
@@ -114,33 +142,59 @@ class VideoRepositoryImpl @Inject constructor() : VideoRepository {
                 }
             }
 
-            val relatedItems = streamInfo.relatedItems
+            val videoStreams = videoStreamsDeferred.await()
+            val isUpcoming = (isLive && videoStreams.isEmpty()) || streamInfo.viewCount == -1L
+            val scheduledStartTime = if (isUpcoming) {
+                streamInfo.uploadDate?.offsetDateTime()?.toString() ?: streamInfo.textualUploadDate
+            } else null
+
             val bundle = StreamBundle(
-                videoStreams = videoStreams.sortedByDescending {
-                    it.quality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 
-                },
-                audioStreams = audioStreams,
+                videoStreams = videoStreams,
+                audioStreams = audioStreamsDeferred.await(),
                 title = streamInfo.name ?: "Unknown",
                 uploaderName = streamInfo.uploaderName ?: "Unknown",
                 uploaderUrl = streamInfo.uploaderUrl,
-                uploaderThumbnailUrl = streamInfo.uploaderAvatars.find { it.width in 80..180 }?.url ?: streamInfo.uploaderAvatars.firstOrNull()?.url,
+                uploaderThumbnailUrl = streamInfo.uploaderAvatars.maxByOrNull { it.width }?.url ?: streamInfo.uploaderAvatars.firstOrNull()?.url,
                 uploaderSubscriberCount = streamInfo.uploaderSubscriberCount,
-                description = streamInfo.description?.content,
+                description = VideoUtils.sanitizeDescription(streamInfo.description?.content),
                 viewCount = streamInfo.viewCount,
                 uploadDate = streamInfo.textualUploadDate ?: streamInfo.uploadDate?.offsetDateTime()?.toLocalDate()?.toString(),
-                thumbnailUrl = streamInfo.thumbnails?.maxByOrNull { it.width }?.url ?: streamInfo.thumbnails?.firstOrNull()?.url,
+                thumbnailUrl = streamInfo.thumbnails.maxByOrNull { it.width }?.url ?: streamInfo.thumbnails.firstOrNull()?.url,
                 isLive = isLive,
-                relatedVideos = relatedItems
+                isUpcoming = isUpcoming,
+                scheduledStartTime = scheduledStartTime,
+                relatedVideos = streamInfo.relatedItems
                     ?.filterIsInstance<StreamInfoItem>()
                     ?.map { item ->
                         mapToVideoItem(item)
                     } ?: emptyList(),
-                nextRelatedVideosPage = null, // NewPipe doesn't easily support pagination for related streams in StreamInfo
+                nextRelatedVideosPage = null,
                 bestAudioStreamUrl = bestAudioStream?.url,
-                subtitles = subtitles
+                subtitles = subtitlesDeferred.await()
             )
-            streamCache.put(videoId, bundle)
+            
+            if (!isIncognito) {
+                streamCache.put(videoId, bundle)
+            }
             bundle
+        }
+    }
+
+    override suspend fun getCachedStreamBundle(videoId: String): StreamBundle? {
+        val cached = streamCache.get(videoId)
+        return if (cached != null && !cached.isExpired()) cached else null
+    }
+
+    override suspend fun preloadStreamBundle(videoId: String) {
+        if (videoId.isBlank()) return
+        val cached = streamCache.get(videoId)
+        if (cached != null && !cached.isExpired()) {
+            return
+        }
+        try {
+            getStreamBundle(videoId, forceRefresh = true)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -161,8 +215,6 @@ class VideoRepositoryImpl @Inject constructor() : VideoRepository {
             }
             
             val channelInfo = ChannelInfo.getInfo(service, finalUrl)
-
-            // Parallelize fetching of "Videos" and "Playlists" tabs
             val channelAvatarUrl = channelInfo.avatars?.find { it.width in 150..300 }?.url ?: channelInfo.avatars?.firstOrNull()?.url
             
             val videosDeferred = async {
@@ -220,7 +272,7 @@ class VideoRepositoryImpl @Inject constructor() : VideoRepository {
                 name = channelInfo.name ?: "Unknown",
                 description = channelInfo.description,
                 bannerUrl = channelInfo.banners?.find { it.width in 800..1500 }?.url ?: channelInfo.banners?.firstOrNull()?.url,
-                avatarUrl = channelInfo.avatars?.find { it.width in 150..300 }?.url ?: channelInfo.avatars?.firstOrNull()?.url,
+                avatarUrl = channelAvatarUrl,
                 subscriberCount = channelInfo.subscriberCount,
                 videos = videos,
                 nextVideosPage = nextPage,
@@ -235,7 +287,6 @@ class VideoRepositoryImpl @Inject constructor() : VideoRepository {
                 val service = ServiceList.YouTube
                 val videosTabLinkHandler = service.channelTabLHFactory.fromUrl(channelUrl + "/videos")
                 val extractor = service.getChannelTabExtractor(videosTabLinkHandler)
-                extractor.fetchPage() // Some extractors need this to initialize
                 val nextPage = extractor.getPage(page)
                 
                 val videos = nextPage.items.filterIsInstance<StreamInfoItem>().map { item: StreamInfoItem ->
@@ -248,6 +299,27 @@ class VideoRepositoryImpl @Inject constructor() : VideoRepository {
                 PaginatedList(emptyList(), null)
             }
         }
+    }
+
+    override suspend fun getTrendingVideos(): PaginatedList<VideoItem> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val service = ServiceList.YouTube
+                val kioskInfo = org.schabi.newpipe.extractor.kiosk.KioskInfo.getInfo(service, "https://www.youtube.com/feed/trending")
+                PaginatedList(
+                    items = kioskInfo.relatedItems.filterIsInstance<StreamInfoItem>().map { mapToVideoItem(it) },
+                    nextPage = kioskInfo.nextPage
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+                PaginatedList(emptyList(), null)
+            }
+        }
+    }
+
+    override suspend fun fetchNextTrendingPage(page: Page): PaginatedList<VideoItem> {
+        // Fallback as generic Page-based fetching is not directly exposed for kiosks in this version
+        return PaginatedList(emptyList(), null)
     }
 
     private fun mapToVideoItem(item: StreamInfoItem, uploaderThumbnailUrl: String? = null): VideoItem {
@@ -263,7 +335,8 @@ class VideoRepositoryImpl @Inject constructor() : VideoRepository {
             subscriberCount = null,
             duration = item.duration,
             uploadDate = item.textualUploadDate ?: item.uploadDate?.offsetDateTime()?.toLocalDate()?.toString() ?: "",
-            rawUploadDate = item.uploadDate?.instant?.toEpochMilli()
+            rawUploadDate = item.uploadDate?.instant?.toEpochMilli(),
+            watchProgress = null
         )
     }
 

@@ -28,6 +28,7 @@ fun PlayerOverlay(
     isExpanded: Boolean,
     currentVideo: VideoItem?,
     bottomBarHeight: androidx.compose.ui.unit.Dp = 0.dp,
+    isIncognito: Boolean = false,
     viewModel: PlayerViewModel,
     onClose: () -> Unit,
     onMaximize: () -> Unit,
@@ -36,14 +37,19 @@ fun PlayerOverlay(
     onVideoClick: (VideoItem) -> Unit,
     content: @Composable (Modifier) -> Unit
 ) {
-    if (currentVideo == null) return
+    val visibility by viewModel.miniPlayerManager.visibilityState.collectAsState()
+    if (visibility == MiniPlayerVisibility.Hidden) return
 
-    // CRITICAL: Ensure BackHandler is only active when expanded
-    // to prevent it from intercepting back presses meant for the navigation stack 
-    // when the player is minimized or hidden.
-    BackHandler(enabled = isExpanded) {
-        onMinimize()
+    // Keep a local copy of the last non-null video to prevent flicker during transitions
+    var lastVideo by remember { mutableStateOf<VideoItem?>(null) }
+    LaunchedEffect(currentVideo) {
+        if (currentVideo != null) {
+            lastVideo = currentVideo
+        }
     }
+
+    val displayVideo = currentVideo ?: lastVideo
+    if (displayVideo == null) return
 
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
@@ -87,6 +93,11 @@ fun PlayerOverlay(
             .fillMaxSize()
             .zIndex(100f) // Ensure it's above everything
     ) {
+        // Handle System Back Press: Minimize when expanded
+        BackHandler(enabled = isExpanded) {
+            onMinimize()
+        }
+
         if (isExpanded) {
             // Full Screen Player
             Box(
@@ -118,9 +129,9 @@ fun PlayerOverlay(
                     }
             ) {
                 PlayerScreen(
-                    videoId = currentVideo.id,
-                    initialTitle = currentVideo.title,
-                    initialThumbnail = currentVideo.thumbnailUrl,
+                    videoId = displayVideo.id,
+                    initialTitle = displayVideo.title,
+                    initialThumbnail = displayVideo.thumbnailUrl,
                     viewModel = viewModel,
                     onBack = onMinimize,
                     onVideoClick = onVideoClick,
@@ -156,8 +167,9 @@ fun PlayerOverlay(
                     }
             ) {
                 MiniPlayerUI(
-                    video = currentVideo,
+                    video = displayVideo,
                     player = viewModel.player,
+                    isIncognito = isIncognito,
                     onMaximize = onMaximize,
                     onClose = onClose
                 )

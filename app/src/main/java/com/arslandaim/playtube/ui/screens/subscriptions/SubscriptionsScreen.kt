@@ -26,11 +26,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.arslandaim.playtube.ui.screens.library.LibraryViewModel
 import com.arslandaim.playtube.ui.screens.library.SubscriptionItemRow
-import com.arslandaim.playtube.ui.screens.library.GlobalGlassAlpha
 import com.arslandaim.playtube.ui.components.EmptyState
+import com.arslandaim.playtube.ui.components.GlassSurface
 import androidx.compose.material.icons.filled.People
 import androidx.compose.ui.res.stringResource
 import com.arslandaim.playtube.R
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
@@ -43,8 +44,8 @@ fun SubscriptionsScreen(
     onChannelClick: (String) -> Unit,
     showTopAppBar: Boolean = true
 ) {
-    val subscriptions by viewModel.filteredSubscriptions.collectAsState()
-    val searchQuery by viewModel.subscriptionSearchQuery.collectAsState()
+    val subscriptions by viewModel.filteredSubscriptions.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.subscriptionSearchQuery.collectAsStateWithLifecycle()
 
     SubscriptionsContent(
         subscriptions = subscriptions,
@@ -114,11 +115,7 @@ private fun SubscriptionsContent(
         modifier = Modifier.nestedScroll(scrollVisibilityConnection),
         topBar = {
             if (showTopAppBar) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = GlobalGlassAlpha), // Unified Glass Effect
-                    tonalElevation = 0.dp
-                ) {
+                GlassSurface(tonalElevation = 0.dp) {
                     TopAppBar(
                         title = {
                             if (isSearchActive) {
@@ -190,7 +187,11 @@ private fun SubscriptionsContent(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
-                    items(subscriptions, key = { it.channelId }) { sub ->
+                    items(
+                        items = subscriptions,
+                        key = { it.channelId },
+                        contentType = { "subscription" }
+                    ) { sub ->
                         SubscriptionItemRow(
                             sub = sub,
                             onClick = { onChannelClick(sub.channelId) },

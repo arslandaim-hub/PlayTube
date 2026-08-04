@@ -25,8 +25,10 @@ import com.arslandaim.playtube.domain.usecase.SyncSubscriptionMetadataUseCase
 import com.arslandaim.playtube.domain.usecase.ToggleFavoriteUseCase
 import com.arslandaim.playtube.domain.usecase.ToggleSubscriptionUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.Locale
 import javax.inject.Inject
 
 @HiltViewModel
@@ -70,13 +72,36 @@ class LibraryViewModel @Inject constructor(
     private val _subscriptionSearchQuery = MutableStateFlow("")
     val subscriptionSearchQuery: StateFlow<String> = _subscriptionSearchQuery.asStateFlow()
 
+    private val _offlineSearchQuery = MutableStateFlow("")
+    val offlineSearchQuery: StateFlow<String> = _offlineSearchQuery.asStateFlow()
+
+    val filteredDownloads: StateFlow<List<DownloadEntity>> = combine(
+        downloads,
+        _offlineSearchQuery
+    ) { list, query ->
+        if (query.isBlank()) list
+        else list.filter { it.title.contains(query, ignoreCase = true) || it.uploaderName.contains(query, ignoreCase = true) }
+    }.flowOn(Dispatchers.Default)
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val storageUsage: StateFlow<StorageInfo> = downloads
+        .map { list ->
+            val totalBytes = list.sumOf { it.downloadedSize }
+            StorageInfo(
+                usedBytes = totalBytes,
+                usedText = formatSize(totalBytes)
+            )
+        }.flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), StorageInfo())
+
     val filteredSubscriptions: StateFlow<List<SubscriptionEntity>> = combine(
         subscriptions,
         _subscriptionSearchQuery
     ) { subs, query ->
         if (query.isBlank()) subs
         else subs.filter { it.name.contains(query, ignoreCase = true) }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.flowOn(Dispatchers.Default)
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
         syncSubscriptions()
@@ -90,6 +115,32 @@ class LibraryViewModel @Inject constructor(
 
     fun onSubscriptionSearchQueryChange(query: String) {
         _subscriptionSearchQuery.value = query
+    }
+
+    fun onOfflineSearchQueryChange(query: String) {
+        _offlineSearchQuery.value = query
+    }
+
+    fun clearWatchedDownloads() {
+        viewModelScope.launch {
+            val watchedIds = history.value
+                .filter { it.durationMs > 0 && it.progressMs.toFloat() / it.durationMs > 0.9f }
+                .map { it.videoId }
+                .toSet()
+            
+            downloads.value.forEach { download ->
+                if (watchedIds.contains(download.videoId) && download.status == DownloadStatus.COMPLETED) {
+                    deleteDownload(download.videoId)
+                }
+            }
+        }
+    }
+
+    private fun formatSize(bytes: Long): String {
+        if (bytes <= 0) return "0 B"
+        val units = arrayOf("B", "KB", "MB", "GB", "TB")
+        val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt()
+        return String.format(Locale.US, "%.1f %s", bytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
     }
 
     fun deleteDownload(videoId: String) {
@@ -122,3 +173,8 @@ class LibraryViewModel @Inject constructor(
         }
     }
 }
+
+data class StorageInfo(
+    val usedBytes: Long = 0,
+    val usedText: String = "0 B"
+)

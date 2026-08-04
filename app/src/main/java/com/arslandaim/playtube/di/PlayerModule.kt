@@ -25,6 +25,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import okhttp3.OkHttpClient
 import java.io.File
+import javax.inject.Named
 import javax.inject.Singleton
 
 @Module
@@ -48,16 +49,27 @@ object PlayerModule {
     @OptIn(UnstableApi::class)
     @Provides
     @Singleton
-    fun provideDataSourceFactory(
-        @ApplicationContext context: Context,
-        okHttpClient: OkHttpClient,
-        cache: SimpleCache
+    @Named("HttpDataSourceFactory")
+    fun provideHttpDataSourceFactory(
+        okHttpClient: OkHttpClient
     ): DataSource.Factory {
         val userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
-        val httpDataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
+        return OkHttpDataSource.Factory(okHttpClient)
             .setUserAgent(userAgent)
-            .setDefaultRequestProperties(mapOf("Accept-Language" to "en-US,en;q=0.9"))
+            .setDefaultRequestProperties(mapOf(
+                "Accept-Language" to "en-US,en;q=0.9",
+                "Referer" to "https://www.youtube.com/"
+            ))
+    }
 
+    @OptIn(UnstableApi::class)
+    @Provides
+    @Singleton
+    fun provideDataSourceFactory(
+        @ApplicationContext context: Context,
+        @Named("HttpDataSourceFactory") httpDataSourceFactory: DataSource.Factory,
+        cache: SimpleCache
+    ): DataSource.Factory {
         val defaultDataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
         
         return CacheDataSource.Factory()
@@ -75,12 +87,13 @@ object PlayerModule {
     ): ExoPlayer {
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                30000, // Min buffer 30s (Increased from 15s)
-                60000, // Max buffer 60s (Increased from 50s)
-                2500,  // Buffer to start playback 2.5s (Increased from 1s for slow networks)
-                5000   // Buffer after rebuffer 5s (Increased from 2s)
+                20000, // Min buffer 20s (Increased for stability)
+                60000, // Max buffer 60s (Balanced for memory)
+                1000,  // Buffer to start playback 1s (Prevent instant stutter)
+                1500   // Buffer after rebuffer 1.5s
             )
-            .setBackBuffer(10000, true) // Keep 10s of back buffer for seeking
+            .setBackBuffer(15000, true) // 15s back buffer for smooth rewinding
+            .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
         return ExoPlayer.Builder(context)
@@ -91,6 +104,7 @@ object PlayerModule {
                     .build(),
                 true
             )
+            .setDeviceVolumeControlEnabled(true)
             .setWakeMode(androidx.media3.common.C.WAKE_MODE_NETWORK)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))

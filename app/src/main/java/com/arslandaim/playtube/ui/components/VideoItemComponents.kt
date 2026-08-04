@@ -5,7 +5,7 @@
 */
 package com.arslandaim.playtube.ui.components
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -325,8 +325,11 @@ fun VideoList(
     onVideoClick: (VideoItem) -> Unit,
     onChannelClick: ((String) -> Unit)? = null,
     onFavoriteClick: ((VideoItem) -> Unit)? = null,
+    onNotInterestedClick: ((VideoItem) -> Unit)? = null,
     onDownloadClick: ((VideoItem) -> Unit)? = null,
     onLoadMore: (() -> Unit)? = null,
+    isLoadingMore: Boolean = false,
+    header: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(bottom = 100.dp)
 ) {
@@ -336,19 +339,11 @@ fun VideoList(
 
     if (columns > 1) {
         val gridState = rememberLazyGridState()
-        val shouldLoadMore = remember {
-            derivedStateOf {
-                val totalItemsCount = gridState.layoutInfo.totalItemsCount
-                val lastVisibleItemIndex = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                lastVisibleItemIndex >= totalItemsCount - 5 // Trigger when 5 items from the end
-            }
-        }
-
-        LaunchedEffect(shouldLoadMore.value) {
-            if (shouldLoadMore.value && onLoadMore != null && videos.isNotEmpty()) {
-                onLoadMore()
-            }
-        }
+        InfiniteScrollGridEffect(
+            gridState = gridState,
+            enabled = onLoadMore != null && videos.isNotEmpty() && !isLoadingMore,
+            onLoadMore = { onLoadMore?.invoke() }
+        )
 
         LazyVerticalGrid(
             state = gridState,
@@ -358,6 +353,12 @@ fun VideoList(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
+            if (header != null) {
+                item(span = { GridItemSpan(columns) }) {
+                    header()
+                }
+            }
+
             items(
                 items = videos,
                 key = { video -> video.id },
@@ -368,13 +369,14 @@ fun VideoList(
                     isDownloaded = downloadedIds.contains(video.id),
                     isFavorite = favoriteIds.contains(video.id),
                     onFavoriteClick = if (onFavoriteClick != null) { { onFavoriteClick(video) } } else null,
+                    onNotInterestedClick = if (onNotInterestedClick != null) { { onNotInterestedClick(video) } } else null,
                     onDownloadClick = if (onDownloadClick != null) { { onDownloadClick(video) } } else null,
                     onChannelClick = if (onChannelClick != null && video.uploaderUrl != null) { { onChannelClick(video.uploaderUrl) } } else null,
                     onClick = { onVideoClick(video) }
                 )
             }
             
-            if (onLoadMore != null && videos.isNotEmpty()) {
+            if (isLoadingMore) {
                 item(span = { GridItemSpan(columns) }) {
                     Box(
                         modifier = Modifier
@@ -389,19 +391,11 @@ fun VideoList(
         }
     } else {
         val listState = rememberLazyListState()
-        val shouldLoadMore = remember {
-            derivedStateOf {
-                val totalItemsCount = listState.layoutInfo.totalItemsCount
-                val lastVisibleItemIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                lastVisibleItemIndex >= totalItemsCount - 5
-            }
-        }
-
-        LaunchedEffect(shouldLoadMore.value) {
-            if (shouldLoadMore.value && onLoadMore != null && videos.isNotEmpty()) {
-                onLoadMore()
-            }
-        }
+        InfiniteScrollEffect(
+            listState = listState,
+            enabled = onLoadMore != null && videos.isNotEmpty() && !isLoadingMore,
+            onLoadMore = { onLoadMore?.invoke() }
+        )
 
         LazyColumn(
             state = listState,
@@ -409,6 +403,12 @@ fun VideoList(
             contentPadding = contentPadding,
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
+            if (header != null) {
+                item {
+                    header()
+                }
+            }
+
             items(
                 items = videos,
                 key = { video -> video.id },
@@ -419,13 +419,14 @@ fun VideoList(
                     isDownloaded = downloadedIds.contains(video.id),
                     isFavorite = favoriteIds.contains(video.id),
                     onFavoriteClick = if (onFavoriteClick != null) { { onFavoriteClick(video) } } else null,
+                    onNotInterestedClick = if (onNotInterestedClick != null) { { onNotInterestedClick(video) } } else null,
                     onDownloadClick = if (onDownloadClick != null) { { onDownloadClick(video) } } else null,
                     onChannelClick = if (onChannelClick != null && video.uploaderUrl != null) { { onChannelClick(video.uploaderUrl) } } else null,
                     onClick = { onVideoClick(video) }
                 )
             }
 
-            if (onLoadMore != null && videos.isNotEmpty()) {
+            if (isLoadingMore) {
                 item {
                     Box(
                         modifier = Modifier
@@ -447,6 +448,7 @@ fun VideoItemRow(
     isDownloaded: Boolean = false,
     isFavorite: Boolean = false,
     onFavoriteClick: (() -> Unit)? = null,
+    onNotInterestedClick: (() -> Unit)? = null,
     onDownloadClick: (() -> Unit)? = null,
     onChannelClick: (() -> Unit)? = null,
     onClick: () -> Unit
@@ -459,6 +461,7 @@ fun VideoItemRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -468,12 +471,11 @@ fun VideoItemRow(
                 indication = androidx.compose.foundation.LocalIndication.current,
                 onClick = onClick
             )
-            .padding(bottom = 12.dp)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp)) // Unified corners
+                .clip(RoundedCornerShape(12.dp))
         ) {
             ThumbnailImage(
                 videoId = video.id,
@@ -505,7 +507,7 @@ fun VideoItemRow(
             if (isDownloaded) {
                 Surface(
                     color = MaterialTheme.colorScheme.primary,
-                    shape = RoundedCornerShape(bottomStart = 16.dp),
+                    shape = RoundedCornerShape(bottomStart = 12.dp),
                     modifier = Modifier.align(Alignment.TopEnd)
                 ) {
                     Icon(
@@ -533,13 +535,13 @@ fun VideoItemRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 12.dp, start = 8.dp, end = 8.dp),
+                .padding(top = 12.dp),
             verticalAlignment = Alignment.Top
         ) {
             // Channel Avatar
             Surface(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(36.dp)
                     .clickable(
                         enabled = onChannelClick != null,
                         onClick = { onChannelClick?.invoke() }
@@ -587,16 +589,19 @@ fun VideoItemRow(
                         modifier = Modifier.weight(1f)
                     )
                     
-                    if (onFavoriteClick != null || onDownloadClick != null) {
+                    if (onFavoriteClick != null || onDownloadClick != null || onNotInterestedClick != null) {
                         Box {
                             IconButton(
                                 onClick = { showMenu = true },
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .offset(x = 8.dp, y = (-4).dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.MoreVert,
                                     contentDescription = "More",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                             
@@ -637,12 +642,27 @@ fun VideoItemRow(
                                         }
                                     )
                                 }
+                                if (onNotInterestedClick != null) {
+                                    DropdownMenuItem(
+                                        text = { Text("Not interested") },
+                                        leadingIcon = { 
+                                            Icon(
+                                                imageVector = Icons.Default.Block, 
+                                                contentDescription = null
+                                            ) 
+                                        },
+                                        onClick = {
+                                            showMenu = false
+                                            onNotInterestedClick()
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
                 }
                 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 
                 VideoMetadata(
                     uploaderName = video.uploaderName,
@@ -660,6 +680,12 @@ fun WatchProgressBar(
     progress: Float,
     modifier: Modifier = Modifier
 ) {
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress.coerceIn(0f, 1f),
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "WatchProgressAnimation"
+    )
+
     Box(
         modifier = modifier
             .height(3.dp)
@@ -668,7 +694,7 @@ fun WatchProgressBar(
         Box(
             modifier = Modifier
                 .fillMaxHeight()
-                .fillMaxWidth(progress.coerceIn(0f, 1f))
+                .fillMaxWidth(animatedProgress)
                 .background(MaterialTheme.colorScheme.primary)
         )
     }

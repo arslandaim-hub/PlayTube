@@ -8,13 +8,16 @@ package com.arslandaim.playtube.ui.screens.playlist
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.arslandaim.playtube.domain.model.PlaylistDetails
+import com.arslandaim.playtube.domain.model.VideoItem
+import com.arslandaim.playtube.domain.model.StreamBundle
 import com.arslandaim.playtube.data.local.PlaylistFavoriteEntity
+import com.arslandaim.playtube.data.local.FavoriteEntity
 import com.arslandaim.playtube.domain.repository.DownloadRepository
 import com.arslandaim.playtube.domain.repository.VideoRepository
-import com.arslandaim.playtube.domain.usecase.DownloadVideoUseCase
-import com.arslandaim.playtube.domain.usecase.GetPlaylistDetailsUseCase
-import com.arslandaim.playtube.domain.usecase.IsPlaylistFavoriteUseCase
-import com.arslandaim.playtube.domain.usecase.TogglePlaylistFavoriteUseCase
+import com.arslandaim.playtube.domain.repository.LibraryRepository
+import com.arslandaim.playtube.domain.usecase.*
+import com.arslandaim.playtube.ui.components.DownloadDialogState
+import com.arslandaim.playtube.utils.PlayTubeError
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -23,9 +26,12 @@ import javax.inject.Inject
 @HiltViewModel
 class PlaylistViewModel @Inject constructor(
     private val getPlaylistDetailsUseCase: GetPlaylistDetailsUseCase,
+    private val getVideoStreamsUseCase: GetVideoStreamsUseCase,
     private val downloadVideoUseCase: DownloadVideoUseCase,
     private val togglePlaylistFavoriteUseCase: TogglePlaylistFavoriteUseCase,
     private val isPlaylistFavoriteUseCase: IsPlaylistFavoriteUseCase,
+    private val toggleFavoriteUseCase: ToggleFavoriteUseCase,
+    val libraryRepository: LibraryRepository,
     private val videoRepository: VideoRepository,
     val downloadRepository: DownloadRepository
 ) : ViewModel() {
@@ -68,17 +74,17 @@ class PlaylistViewModel @Inject constructor(
                     _uiState.value = PlaylistUiState.Success(details)
                 }
                 .onFailure { exception ->
-                    _uiState.value = PlaylistUiState.Error(exception.message ?: "Unknown error")
+                    _uiState.value = PlaylistUiState.Error(PlayTubeError.fromThrowable(exception))
                 }
         }
     }
 
-    fun downloadPlaylist() {
+    fun downloadPlaylist(quality: String) {
         val state = _uiState.value as? PlaylistUiState.Success ?: return
         val details = state.details
         
         viewModelScope.launch {
-            _snackbarMessage.emit("Playlist download started")
+            _snackbarMessage.emit("Playlist download started (${quality})")
             details.videos.forEach { video ->
                 downloadVideoUseCase(
                     videoId = video.id,
@@ -86,17 +92,29 @@ class PlaylistViewModel @Inject constructor(
                     title = video.title,
                     thumbnailUrl = video.thumbnailUrl,
                     uploaderName = video.uploaderName,
-                    quality = null, // Will be fetched by the worker
+                    quality = quality,
                     format = null, // Will be fetched by the worker
                     audioUrl = null,
                     playlistId = details.id,
                     playlistTitle = details.title
                 )
             }
+            _showPlaylistDownloadDialog.value = false
         }
     }
 
-    fun toggleFavorite() {
+    private val _showPlaylistDownloadDialog = MutableStateFlow(false)
+    val showPlaylistDownloadDialog: StateFlow<Boolean> = _showPlaylistDownloadDialog.asStateFlow()
+
+    fun showPlaylistDownloadDialog() {
+        _showPlaylistDownloadDialog.value = true
+    }
+
+    fun dismissPlaylistDownloadDialog() {
+        _showPlaylistDownloadDialog.value = false
+    }
+
+    fun togglePlaylistFavorite() {
         val state = _uiState.value as? PlaylistUiState.Success ?: return
         val details = state.details
         viewModelScope.launch {
@@ -110,10 +128,88 @@ class PlaylistViewModel @Inject constructor(
             )
         }
     }
+
+    fun toggleVideoFavorite(video: VideoItem) {
+        viewModelScope.launch {
+            toggleFavoriteUseCase(
+                com.arslandaim.playtube.data.local.FavoriteEntity(
+                    videoId = video.id,
+                    title = video.title,
+                    thumbnailUrl = video.thumbnailUrl,
+                    uploaderName = video.uploaderName
+                )
+            )
+            val isFav = libraryRepository.isFavorite(video.id).first()
+            _snackbarMessage.emit(if (isFav) "Added to Favorites" else "Removed from Favorites")
+        }
+    }
+
+    private val _downloadState = MutableStateFlow<com.arslandaim.playtube.ui.components.DownloadDialogState>(com.arslandaim.playtube.ui.components.DownloadDialogState.Idle)
+    val downloadState: StateFlow<com.arslandaim.playtube.ui.components.DownloadDialogState> = _downloadState.asStateFlow()
+
+    fun prepareDownload(video: VideoItem) {
+        viewModelScope.launch {
+            // Optimistic Cache Check
+            val cachedBundle = videoRepository.getCachedStreamBundle(video.id)
+            if (cachedBundle != null && !cachedBundle.videoStreams.isEmpty()) {
+                _downloadState.value = com.arslandaim.playtube.ui.components.DownloadDialogState.ShowDialog(video, cachedBundle)
+                return@launch
+            }
+
+            _downloadState.value = com.arslandaim.playtube.ui.components.DownloadDialogState.Loading(video)
+            getVideoStreamsUseCase(video.id)
+                .onSuccess { bundle ->
+                    _downloadState.value = com.arslandaim.playtube.ui.components.DownloadDialogState.ShowDialog(video, bundle)
+                }
+                .onFailure {
+                    _downloadState.value = com.arslandaim.playtube.ui.components.DownloadDialogState.Idle
+                }
+        }
+    }
+
+    fun download(video: VideoItem, bundle: com.arslandaim.playtube.domain.model.StreamBundle, url: String?, quality: String?, format: String?, isAdaptive: Boolean) {
+        viewModelScope.launch {
+            val audioUrl = if (isAdaptive) {
+                val isWebm = format?.contains("webm", ignoreCase = true) == true
+                val compatibleStreams = bundle.audioStreams.filter { audio ->
+                    if (isWebm) {
+                        audio.format.contains("webm", ignoreCase = true) || 
+                        audio.format.contains("opus", ignoreCase = true)
+                    } else {
+                        audio.format.contains("m4a", ignoreCase = true) || 
+                        audio.format.contains("aac", ignoreCase = true)
+                    }
+                }
+
+                val bestAudio = compatibleStreams.filter { it.trackType == "ORIGINAL" }
+                    .maxByOrNull { it.quality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }
+                    ?: compatibleStreams.maxByOrNull { it.quality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }
+                
+                bestAudio?.url
+            } else null
+
+            downloadVideoUseCase(
+                videoId = video.id,
+                url = url,
+                title = video.title,
+                thumbnailUrl = video.thumbnailUrl,
+                uploaderName = video.uploaderName,
+                quality = quality,
+                format = format,
+                audioUrl = audioUrl
+            )
+            _snackbarMessage.emit("Downloading started")
+            _downloadState.value = com.arslandaim.playtube.ui.components.DownloadDialogState.Idle
+        }
+    }
+
+    fun dismissDownloadDialog() {
+        _downloadState.value = com.arslandaim.playtube.ui.components.DownloadDialogState.Idle
+    }
 }
 
 sealed interface PlaylistUiState {
     object Loading : PlaylistUiState
     data class Success(val details: PlaylistDetails) : PlaylistUiState
-    data class Error(val message: String) : PlaylistUiState
+    data class Error(val error: PlayTubeError) : PlaylistUiState
 }

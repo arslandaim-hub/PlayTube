@@ -38,6 +38,8 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Recommend
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
@@ -73,11 +75,13 @@ import androidx.compose.ui.res.stringResource
 import com.arslandaim.playtube.R
 import androidx.core.net.toUri
 import com.arslandaim.playtube.BuildConfig
+import com.arslandaim.playtube.ui.components.GlassSurface
 import com.arslandaim.playtube.ui.screens.library.GlobalGlassAlpha
 
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
+    updateViewModel: UpdateViewModel,
     onViewHistory: () -> Unit,
     onDataManagement: () -> Unit,
     onBack: () -> Unit
@@ -85,14 +89,23 @@ fun SettingsScreen(
     val isSearchHistoryPaused by viewModel.isSearchHistoryPaused.collectAsState()
     val isPipEnabled by viewModel.isPipEnabled.collectAsState()
     val isBackgroundPlayEnabled by viewModel.isBackgroundPlayEnabled.collectAsState()
+    val isRecommendationsPaused by viewModel.isRecommendationsPaused.collectAsState()
+    val isAutoUpdateEnabled by updateViewModel.isAutoUpdateEnabled.collectAsState()
+    val updateInfo by updateViewModel.updateInfo.collectAsState()
 
     SettingsContent(
         isSearchHistoryPaused = isSearchHistoryPaused,
         isPipEnabled = isPipEnabled,
         isBackgroundPlayEnabled = isBackgroundPlayEnabled,
+        isRecommendationsPaused = isRecommendationsPaused,
+        isAutoUpdateEnabled = isAutoUpdateEnabled,
+        updateInfo = updateInfo,
         onSetSearchHistoryPaused = viewModel::setSearchHistoryPaused,
         onSetPipEnabled = viewModel::setPipEnabled,
         onSetBackgroundPlayEnabled = viewModel::setBackgroundPlayEnabled,
+        onSetRecommendationsPaused = viewModel::setRecommendationsPaused,
+        onClearLearnedInterests = viewModel::clearLearnedInterests,
+        onSetAutoUpdateEnabled = updateViewModel::setAutoUpdateEnabled,
         onClearAllDownloads = viewModel::clearAllDownloads,
         onViewHistory = onViewHistory,
         onDataManagement = onDataManagement,
@@ -106,15 +119,22 @@ private fun SettingsContent(
     isSearchHistoryPaused: Boolean,
     isPipEnabled: Boolean,
     isBackgroundPlayEnabled: Boolean,
+    isRecommendationsPaused: Boolean,
+    isAutoUpdateEnabled: Boolean,
+    updateInfo: com.arslandaim.playtube.domain.repository.UpdateInfo,
     onSetSearchHistoryPaused: (Boolean) -> Unit,
     onSetPipEnabled: (Boolean) -> Unit,
     onSetBackgroundPlayEnabled: (Boolean) -> Unit,
+    onSetRecommendationsPaused: (Boolean) -> Unit,
+    onClearLearnedInterests: () -> Unit,
+    onSetAutoUpdateEnabled: (Boolean) -> Unit,
     onClearAllDownloads: () -> Unit,
     onViewHistory: () -> Unit,
     onDataManagement: () -> Unit,
     onBack: () -> Unit
 ) {
     var showClearDownloadsDialog by remember { mutableStateOf(false) }
+    var showClearInterestsDialog by remember { mutableStateOf(false) }
     var showDeveloperDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
@@ -149,14 +169,22 @@ private fun SettingsContent(
         )
     }
 
+    if (showClearInterestsDialog) {
+        ConfirmationDialog(
+            title = "Clear learned data?",
+            message = "This will wipe all learned user interests and reset the recommendation engine. This action cannot be undone.",
+            onDismiss = { showClearInterestsDialog = false },
+            onConfirm = {
+                onClearLearnedInterests()
+                showClearInterestsDialog = false
+            }
+        )
+    }
+
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = GlobalGlassAlpha),
-                tonalElevation = 0.dp
-            ) {
+            GlassSurface(tonalElevation = 0.dp) {
                 LargeTopAppBar(
                     title = { Text("Settings", fontWeight = FontWeight.Bold) },
                     navigationIcon = {
@@ -181,6 +209,48 @@ private fun SettingsContent(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Update Category
+            item {
+                SettingsGroup(title = "Auto-Update") {
+                    SettingsSwitchItem(
+                        title = "Auto Check for Updates",
+                        subtitle = "Notify when a new version is available on GitHub",
+                        icon = Icons.Default.Info,
+                        checked = isAutoUpdateEnabled,
+                        onCheckedChange = onSetAutoUpdateEnabled
+                    )
+                    if (isAutoUpdateEnabled && updateInfo.hasUpdate) {
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "New Update Available: ${updateInfo.latestVersion}",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = updateInfo.releaseNotes,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            TextButton(
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_VIEW, updateInfo.updateUrl.toUri())
+                                    context.startActivity(intent)
+                                },
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text("Download from GitHub", fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                }
+            }
+
             // History & Privacy Category
             item {
                 SettingsGroup(title = "History & Privacy") {
@@ -224,6 +294,22 @@ private fun SettingsContent(
                         icon = Icons.Default.Info,
                         onClick = onDataManagement,
                         trailingIcon = Icons.AutoMirrored.Filled.KeyboardArrowRight
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    SettingsSwitchItem(
+                        title = "Pause Recommendations",
+                        subtitle = "Stop learning your interests temporarily",
+                        icon = Icons.Default.Recommend,
+                        checked = isRecommendationsPaused,
+                        onCheckedChange = onSetRecommendationsPaused
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    SettingsItem(
+                        title = "Clear learned data",
+                        subtitle = "Reset recommendation engine profile",
+                        icon = Icons.Default.AutoAwesome,
+                        onClick = { showClearInterestsDialog = true },
+                        titleColor = MaterialTheme.colorScheme.error
                     )
                 }
             }

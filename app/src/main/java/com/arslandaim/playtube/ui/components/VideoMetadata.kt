@@ -54,9 +54,11 @@ fun VideoMetadata(
         }
 
         // Views (Always shown as long as count is 0 or more, but adds bullet if uploader exists)
+        val formattedViews = VideoUtils.formatViewCount(viewCount)
         Text(
-            text = if (hasUploader) " • ${VideoUtils.formatNumber(viewCount)} views" 
-                   else "${VideoUtils.formatNumber(viewCount)} views",
+            text = if (hasUploader) " • $formattedViews" 
+                   else if (viewCount == -1L) formattedViews
+                   else "$formattedViews views",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
             maxLines = 1
@@ -65,7 +67,7 @@ fun VideoMetadata(
         // Upload Date
         if (hasUploadDate) {
             Text(
-                text = " • $uploadDate",
+                text = " • ${VideoUtils.formatUploadDate(uploadDate)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 maxLines = 1

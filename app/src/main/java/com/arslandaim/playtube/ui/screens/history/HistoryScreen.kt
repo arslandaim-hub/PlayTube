@@ -19,10 +19,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.arslandaim.playtube.ui.screens.library.HistoryItemRow
-import com.arslandaim.playtube.ui.screens.library.GlobalGlassAlpha
+import com.arslandaim.playtube.ui.components.EmptyState
+import com.arslandaim.playtube.ui.components.GlassSurface
 import com.arslandaim.playtube.ui.screens.settings.SettingsViewModel
 import com.arslandaim.playtube.domain.model.VideoItem
-import com.arslandaim.playtube.ui.components.EmptyState
 import androidx.compose.material.icons.filled.History
 import androidx.compose.ui.res.stringResource
 import com.arslandaim.playtube.R
@@ -75,11 +75,7 @@ private fun HistoryContent(
         modifier = Modifier.nestedScroll(scrollVisibilityConnection),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = GlobalGlassAlpha), // Unified Glass Effect
-                tonalElevation = 0.dp
-            ) {
+            GlassSurface(tonalElevation = 0.dp) {
                 TopAppBar(
                     title = { Text("History", fontWeight = FontWeight.Bold) },
                     navigationIcon = {

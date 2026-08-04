@@ -7,9 +7,10 @@ package com.arslandaim.playtube.ui.screens.player
 
 import android.app.Activity
 import android.content.pm.ActivityInfo
-import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -27,9 +28,11 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.BrightnessLow
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -44,10 +47,15 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlin.math.roundToInt
 import androidx.media3.common.Player
+import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.CaptionStyleCompat
@@ -58,9 +66,11 @@ import coil3.request.crossfade
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arslandaim.playtube.R
+import com.arslandaim.playtube.ui.components.InfiniteScrollEffect
 import com.arslandaim.playtube.ui.components.DownloadSelectionSheet
 import com.arslandaim.playtube.ui.components.PlaybackSpeedSelectionSheet
 import com.arslandaim.playtube.ui.components.QualitySelectionSheet
+import com.arslandaim.playtube.ui.components.SubtitleSelectionSheet
 import com.arslandaim.playtube.ui.components.DownloadDialogState
 import com.arslandaim.playtube.domain.model.StreamItem
 import com.arslandaim.playtube.domain.model.VideoItem
@@ -68,12 +78,20 @@ import com.arslandaim.playtube.domain.model.StreamBundle
 import com.arslandaim.playtube.ui.components.VideoItemRow
 import com.arslandaim.playtube.ui.components.ThumbnailImage
 import com.arslandaim.playtube.ui.components.rememberSyncShimmerTransition
+import com.arslandaim.playtube.ui.components.EmptyState
+import com.arslandaim.playtube.ui.components.EmptyState
+import com.arslandaim.playtube.utils.PlayTubeError
 import com.arslandaim.playtube.utils.VideoUtils
+import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material.icons.filled.ErrorOutline
 import kotlinx.coroutines.delay
 import android.media.AudioManager
 import android.provider.Settings
 import android.content.res.Configuration
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -105,12 +123,52 @@ fun PlayerScreen(
     val showSeekFeedback by viewModel.showSeekFeedback.collectAsStateWithLifecycle()
     val isSeekForward by viewModel.isSeekForward.collectAsStateWithLifecycle()
     val isCcEnabled by viewModel.isCcEnabled.collectAsStateWithLifecycle()
+    val availableSubtitles by viewModel.availableSubtitles.collectAsStateWithLifecycle()
+    val selectedSubtitleLanguage by viewModel.selectedSubtitleLanguage.collectAsStateWithLifecycle()
     val currentPosition by viewModel.currentPosition.collectAsStateWithLifecycle()
     val bufferedPosition by viewModel.bufferedPosition.collectAsStateWithLifecycle()
     val duration by viewModel.duration.collectAsStateWithLifecycle()
     val downloadState by viewModel.downloadState.collectAsStateWithLifecycle()
     val isRecovering by viewModel.isRecovering.collectAsStateWithLifecycle()
+    val isIncognito by viewModel.isIncognitoMode.collectAsStateWithLifecycle()
+    val isAutoplayEnabled by viewModel.isAutoplayEnabled.collectAsStateWithLifecycle()
+    val sleepTimerRemainingTime by viewModel.sleepTimerRemainingTime.collectAsStateWithLifecycle()
+    val shouldCloseAppOnTimerFinish by viewModel.shouldCloseAppOnTimerFinish.collectAsStateWithLifecycle()
     val syncTransition = rememberSyncShimmerTransition()
+
+    var activeCues by remember { mutableStateOf<List<Cue>>(emptyList()) }
+
+    DisposableEffect(viewModel.player) {
+        val listener = object : Player.Listener {
+            @androidx.annotation.OptIn(UnstableApi::class)
+            override fun onCues(cueGroup: CueGroup) {
+                // Intercept and sanitize cues to prevent stacking (roll-up)
+                activeCues = if (cueGroup.cues.isEmpty()) {
+                    emptyList()
+                } else {
+                    // 1. Only take the most recent cue object
+                    val lastCue = cueGroup.cues.last()
+                    val originalText = lastCue.text?.toString() ?: ""
+                    
+                    if (originalText.isNotBlank()) {
+                        // 2. Extract only the last line if multiple lines exist
+                        val singleLineText = if (originalText.contains("\n")) {
+                            originalText.substringAfterLast("\n").trim()
+                        } else {
+                            originalText
+                        }
+                        
+                        // 3. Rebuild the cue with sanitized text
+                        listOf(lastCue.buildUpon().setText(singleLineText).build())
+                    } else {
+                        emptyList()
+                    }
+                }
+            }
+        }
+        viewModel.player.addListener(listener)
+        onDispose { viewModel.player.removeListener(listener) }
+    }
 
     val favoriteIds = remember(favorites) {
         favorites.map { it.videoId }.toSet()
@@ -127,17 +185,21 @@ fun PlayerScreen(
         currentQuality = currentQuality,
         isBuffering = isBuffering,
         isRecovering = isRecovering,
+        isIncognito = isIncognito,
         downloadedIds = downloadedIds,
         favoriteIds = favoriteIds,
         seekAmount = seekAmount,
         showSeekFeedback = showSeekFeedback,
         isSeekForward = isSeekForward,
         isCcEnabled = isCcEnabled,
+        availableSubtitles = availableSubtitles,
+        selectedSubtitleLanguage = selectedSubtitleLanguage,
         currentPosition = currentPosition,
         bufferedPosition = bufferedPosition,
         duration = duration,
         downloadState = downloadState,
         player = viewModel.player,
+        activeCues = activeCues,
         syncTransition = syncTransition,
         snackbarMessage = viewModel.snackbarMessage,
         onToggleFavorite = { viewModel.toggleFavorite(it) },
@@ -145,6 +207,9 @@ fun PlayerScreen(
         onSetQuality = viewModel::setQuality,
         onSetPlaybackSpeed = viewModel::setPlaybackSpeed,
         onToggleSubtitles = viewModel::toggleSubtitles,
+        onSetSubtitleLanguage = viewModel::setSubtitleLanguage,
+        onSkipNext = viewModel::playNext,
+        onSkipPrevious = viewModel::playPrevious,
         onDownloadConfirm = viewModel::download,
         onDownloadClick = { viewModel.prepareDownload(it) },
         onDismissDownload = viewModel::dismissDownloadDialog,
@@ -153,9 +218,18 @@ fun PlayerScreen(
         onSeekBackward = viewModel::seekBackward,
         onSeekTo = viewModel::seekTo,
         onShareVideo = viewModel::shareVideo,
-        onBack = onBack, // Use the provided onBack lambda which is passed from PlayerOverlay as onMinimize
+        onBack = onBack,
         onVideoClick = onVideoClick,
-        onChannelClick = onChannelClick
+        onChannelClick = onChannelClick,
+        onRetry = { viewModel.currentVideoItem?.let { viewModel.loadVideo(it) } },
+        isAutoplayEnabled = isAutoplayEnabled,
+        onAutoplayChange = viewModel::setAutoplayEnabled,
+        sleepTimerRemainingTime = sleepTimerRemainingTime,
+        shouldCloseAppOnTimerFinish = shouldCloseAppOnTimerFinish,
+        onStartSleepTimer = viewModel.sleepTimerManager::startTimer,
+        onSetEndOfVideoSleepTimer = viewModel.sleepTimerManager::setEndOfVideo,
+        onCancelSleepTimer = viewModel.sleepTimerManager::cancelTimer,
+        onSetShouldCloseApp = viewModel.sleepTimerManager::setShouldCloseApp
     )
 }
 
@@ -172,24 +246,31 @@ private fun PlayerContent(
     currentQuality: String?,
     isBuffering: Boolean,
     isRecovering: Boolean,
+    isIncognito: Boolean,
     downloadedIds: Set<String>,
     favoriteIds: Set<String>,
     seekAmount: Int,
     showSeekFeedback: Boolean,
     isSeekForward: Boolean,
     isCcEnabled: Boolean,
+    availableSubtitles: List<com.arslandaim.playtube.domain.model.SubtitleItem>,
+    selectedSubtitleLanguage: String?,
     currentPosition: Long,
     bufferedPosition: Long,
     duration: Long,
     downloadState: DownloadDialogState,
     player: Player,
-    syncTransition: androidx.compose.animation.core.InfiniteTransition,
+    activeCues: List<Cue>,
+    syncTransition: InfiniteTransition,
     snackbarMessage: SharedFlow<String>,
     onToggleFavorite: (VideoItem?) -> Unit,
     onToggleSubscription: () -> Unit,
     onSetQuality: (com.arslandaim.playtube.domain.model.StreamItem) -> Unit,
     onSetPlaybackSpeed: (Float) -> Unit,
     onToggleSubtitles: () -> Unit,
+    onSetSubtitleLanguage: (String?) -> Unit,
+    onSkipNext: () -> Unit,
+    onSkipPrevious: () -> Unit,
     onDownloadConfirm: (VideoItem, StreamBundle, String?, String?, String?, Boolean) -> Unit,
     onDownloadClick: (VideoItem?) -> Unit,
     onDismissDownload: () -> Unit,
@@ -200,13 +281,24 @@ private fun PlayerContent(
     onShareVideo: () -> Unit,
     onBack: () -> Unit,
     onVideoClick: (VideoItem) -> Unit,
-    onChannelClick: (String) -> Unit
+    onChannelClick: (String) -> Unit,
+    onRetry: () -> Unit,
+    isAutoplayEnabled: Boolean,
+    onAutoplayChange: (Boolean) -> Unit,
+    sleepTimerRemainingTime: Int?,
+    shouldCloseAppOnTimerFinish: Boolean,
+    onStartSleepTimer: (Int) -> Unit,
+    onSetEndOfVideoSleepTimer: () -> Unit,
+    onCancelSleepTimer: () -> Unit,
+    onSetShouldCloseApp: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     var showQualityDialog by remember { mutableStateOf(false) }
+    var showSubtitleSheet by remember { mutableStateOf(false) }
     var showSpeedSheet by remember { mutableStateOf(false) }
     var showSettingsSheet by remember { mutableStateOf(false) }
+    var showSleepTimerSheet by remember { mutableStateOf(false) }
     var showDescriptionSheet by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
 
@@ -224,7 +316,7 @@ private fun PlayerContent(
     LaunchedEffect(Unit) {
         val activity = context as? Activity
         val layoutParams = activity?.window?.attributes
-        brightnessLevel = if (layoutParams?.screenBrightness ?: -1f < 0) {
+        brightnessLevel = if ((layoutParams?.screenBrightness ?: -1f) < 0) {
             Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS) / 255f
         } else {
             layoutParams?.screenBrightness ?: 0.5f
@@ -238,19 +330,12 @@ private fun PlayerContent(
     }
 
     val listState = rememberLazyListState()
-    val shouldLoadMore = remember {
-        derivedStateOf {
-            val totalItemsCount = listState.layoutInfo.totalItemsCount
-            val lastVisibleItemIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            lastVisibleItemIndex >= totalItemsCount - 5
-        }
-    }
-
-    LaunchedEffect(shouldLoadMore.value) {
-        if (shouldLoadMore.value) {
-            onLoadMore()
-        }
-    }
+    InfiniteScrollEffect(
+        listState = listState,
+        buffer = 5,
+        enabled = uiState is PlayerUiState.Success && !isBuffering,
+        onLoadMore = onLoadMore
+    )
 
     DisposableEffect(Unit) {
         onDispose {
@@ -273,6 +358,19 @@ private fun PlayerContent(
                 }
             )
         }
+    }
+
+    if (showSubtitleSheet) {
+        SubtitleSelectionSheet(
+            subtitles = availableSubtitles,
+            currentLanguage = selectedSubtitleLanguage,
+            isCcEnabled = isCcEnabled,
+            onDismiss = { showSubtitleSheet = false },
+            onLanguageSelected = { lang ->
+                onSetSubtitleLanguage(lang)
+                showSubtitleSheet = false
+            }
+        )
     }
 
     if (showSpeedSheet) {
@@ -329,6 +427,18 @@ private fun PlayerContent(
                         showQualityDialog = true
                     }
                 )
+                val currentLangName = selectedSubtitleLanguage?.let { 
+                    java.util.Locale.forLanguageTag(it).displayLanguage.replaceFirstChar { c -> c.uppercase() } 
+                } ?: "Off"
+                ListItem(
+                    headlineContent = { Text("Subtitles") },
+                    supportingContent = { Text(if (isCcEnabled) currentLangName else "Off") },
+                    leadingContent = { Icon(Icons.Default.ClosedCaption, null) },
+                    modifier = Modifier.clickable {
+                        showSettingsSheet = false
+                        showSubtitleSheet = true
+                    }
+                )
                 ListItem(
                     headlineContent = { Text(stringResource(R.string.playback_speed)) },
                     supportingContent = { Text(if (playbackSpeed == 1f) stringResource(R.string.normal_speed) else "${playbackSpeed}x") },
@@ -338,20 +448,114 @@ private fun PlayerContent(
                         showSpeedSheet = true
                     }
                 )
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.sleep_timer)) },
+                    supportingContent = {
+                        Text(
+                            when (sleepTimerRemainingTime) {
+                                null -> stringResource(R.string.timer_off)
+                                -1 -> stringResource(R.string.timer_end_of_video_active)
+                                else -> stringResource(R.string.timer_minutes_remaining, sleepTimerRemainingTime)
+                            }
+                        )
+                    },
+                    leadingContent = { Icon(Icons.Default.Timer, null) },
+                    modifier = Modifier.clickable {
+                        showSettingsSheet = false
+                        showSleepTimerSheet = true
+                    }
+                )
+            }
+        }
+    }
+
+    if (showSleepTimerSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showSleepTimerSheet = false }
+        ) {
+            Column(modifier = Modifier.padding(bottom = 32.dp)) {
+                Text(
+                    text = stringResource(R.string.sleep_timer),
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(16.dp),
+                    fontWeight = FontWeight.Bold
+                )
+
+                val currentMinutes = if (sleepTimerRemainingTime != null && sleepTimerRemainingTime > 0) sleepTimerRemainingTime else 0
+                var selectedMinutes by remember { mutableIntStateOf(currentMinutes) }
+                val isEndOfVideo = sleepTimerRemainingTime == -1
+
+                ListItem(
+                    headlineContent = { Text("Duration: ${if (isEndOfVideo) "End of Video" else if (selectedMinutes == 0) "Off" else "$selectedMinutes minutes"}") },
+                    trailingContent = {
+                        if (!isEndOfVideo && selectedMinutes > 0) {
+                            val timeFormat = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
+                            Text(
+                                text = "Ends at ${timeFormat.format(System.currentTimeMillis() + selectedMinutes * 60000)}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                )
+
+                Slider(
+                    value = if (isEndOfVideo) 0f else selectedMinutes.toFloat(),
+                    onValueChange = { selectedMinutes = it.roundToInt() },
+                    valueRange = 0f..120f,
+                    steps = 23, // 5 min gaps: (120/5)-1 = 23
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    enabled = !isEndOfVideo
+                )
+
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.timer_end_of_video)) },
+                    trailingContent = {
+                        Switch(
+                            checked = isEndOfVideo,
+                            onCheckedChange = { if (it) onSetEndOfVideoSleepTimer() else onCancelSleepTimer() }
+                        )
+                    }
+                )
+
+                ListItem(
+                    headlineContent = { Text("Close app on finish") },
+                    supportingContent = { Text("Conserve battery by closing PlayTube") },
+                    trailingContent = {
+                        Switch(
+                            checked = shouldCloseAppOnTimerFinish,
+                            onCheckedChange = onSetShouldCloseApp
+                        )
+                    }
+                )
+
+                Button(
+                    onClick = {
+                        if (!isEndOfVideo) {
+                            if (selectedMinutes > 0) onStartSleepTimer(selectedMinutes)
+                            else onCancelSleepTimer()
+                        }
+                        showSleepTimerSheet = false
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text("Apply")
+                }
             }
         }
     }
 
     LaunchedEffect(brightnessOverlayVisible) {
         if (brightnessOverlayVisible) {
-            delay(3000)
+            delay(3000L)
             brightnessOverlayVisible = false
         }
     }
 
     LaunchedEffect(volumeOverlayVisible) {
         if (volumeOverlayVisible) {
-            delay(3000)
+            delay(3000L)
             volumeOverlayVisible = false
         }
     }
@@ -393,22 +597,85 @@ private fun PlayerContent(
                         .background(Color.Black)
                 ) {
                     when (uiState) {
-                        is PlayerUiState.Loading, is PlayerUiState.Error -> {
-                            // Show high-res placeholder during loading or error
+                        is PlayerUiState.Loading, is PlayerUiState.Error, is PlayerUiState.Upcoming -> {
+                            // Show high-res placeholder during loading, error, or upcoming
                             ThumbnailImage(
                                 videoId = videoId,
-                                thumbnailUrl = initialThumbnail ?: VideoUtils.getBestThumbnailUrl(videoId),
+                                thumbnailUrl = when(uiState) {
+                                    is PlayerUiState.Upcoming -> uiState.thumbnailUrl
+                                    is PlayerUiState.Success -> uiState.bundle.thumbnailUrl
+                                    else -> null
+                                } ?: initialThumbnail ?: VideoUtils.getBestThumbnailUrl(videoId),
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop,
                                 filterQuality = FilterQuality.High
                             )
-                            if (uiState is PlayerUiState.Loading) {
-                                CircularProgressIndicator(
+
+                            if (uiState is PlayerUiState.Upcoming) {
+                                Box(
                                     modifier = Modifier
-                                        .align(Alignment.Center)
-                                        .size(48.dp),
-                                    color = Color.White
-                                )
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.6f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.padding(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Timer,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(48.dp)
+                                        )
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Text(
+                                            text = "Upcoming Content",
+                                            style = MaterialTheme.typography.titleLarge,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            textAlign = TextAlign.Center
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = "This Premiere or Live Stream has not started yet.",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = Color.White.copy(alpha = 0.8f),
+                                            textAlign = TextAlign.Center
+                                        )
+                                        uiState.scheduledTime?.let { time ->
+                                            Spacer(modifier = Modifier.height(16.dp))
+                                            Surface(
+                                                color = MaterialTheme.colorScheme.primary,
+                                                shape = RoundedCornerShape(20.dp)
+                                            ) {
+                                                Text(
+                                                    text = VideoUtils.formatUploadDate(time),
+                                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                                    color = MaterialTheme.colorScheme.onPrimary,
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            } else if (uiState is PlayerUiState.Error) {
+                                val isNetworkError = uiState.error is PlayTubeError.Network
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.6f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    EmptyState(
+                                        icon = if (isNetworkError) Icons.Default.WifiOff else Icons.Default.ErrorOutline,
+                                        title = if (isNetworkError) stringResource(R.string.no_internet) else "Playback Error",
+                                        description = uiState.error.getMessage(),
+                                        actionText = stringResource(R.string.retry),
+                                        onActionClick = onRetry
+                                    )
+                                }
                             }
                         }
                         is PlayerUiState.Success -> {
@@ -455,22 +722,18 @@ private fun PlayerContent(
                                     modifier = Modifier.fillMaxSize()
                                 )
 
-                                if (isRecovering) {
+                                // Manual Subtitle Overlay
+                                if (isCcEnabled && activeCues.isNotEmpty()) {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .background(Color.Black.copy(alpha = 0.5f)),
-                                        contentAlignment = Alignment.Center
+                                            .padding(bottom = if (controlsVisible) 64.dp else 24.dp),
+                                        contentAlignment = Alignment.BottomCenter
                                     ) {
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            CircularProgressIndicator(color = Color.White)
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            Text(
-                                                text = stringResource(R.string.waiting_for_connection),
-                                                color = Color.White,
-                                                style = MaterialTheme.typography.bodyMedium
-                                            )
-                                        }
+                                        ManualSubtitleView(
+                                            cues = activeCues,
+                                            modifier = Modifier.fillMaxWidth().wrapContentHeight()
+                                        )
                                     }
                                 }
                             }
@@ -487,15 +750,16 @@ private fun PlayerContent(
                             VerticalGestureHUD(
                                 visible = volumeOverlayVisible,
                                 progress = volumeLevel,
-                                icon = Icons.Default.VolumeUp,
+                                icon = Icons.AutoMirrored.Filled.VolumeUp,
                                 isRightSide = true,
                                 modifier = Modifier.align(Alignment.CenterEnd)
                             )
 
                             // Persistent Progress Bar (Always visible at the very bottom)
+                            val isLive = (uiState as? PlayerUiState.Success)?.bundle?.isLive == true
                             PersistentProgressBar(
-                                progress = if (duration > 0) currentPosition.toFloat() / duration else 0f,
-                                bufferedProgress = if (duration > 0) bufferedPosition.toFloat() / duration else 0f,
+                                progress = if (isLive) 1f else if (duration > 0) currentPosition.toFloat() / duration else 0f,
+                                bufferedProgress = if (isLive) 1f else if (duration > 0) bufferedPosition.toFloat() / duration else 0f,
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
                                     .fillMaxWidth()
@@ -512,11 +776,16 @@ private fun PlayerContent(
                                     isPlaying = player.isPlaying,
                                     currentPosition = currentPosition,
                                     duration = duration,
+                                    isLive = isLive,
                                     isCcEnabled = isCcEnabled,
-                                    hasSubtitles = uiState.bundle.subtitles.isNotEmpty(),
+                                    isIncognito = isIncognito,
+                                    hasSubtitles = (uiState as? PlayerUiState.Success)?.bundle?.subtitles?.isNotEmpty() == true,
                                     onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
+                                    onSkipNext = onSkipNext,
+                                    onSkipPrevious = onSkipPrevious,
                                     onSeekTo = onSeekTo,
                                     onToggleSubtitles = onToggleSubtitles,
+                                    onShowSubtitleSettings = { showSubtitleSheet = true },
                                     onShowSettings = { showSettingsSheet = true },
                                     onBack = onBack
                                 )
@@ -524,7 +793,7 @@ private fun PlayerContent(
 
                             LaunchedEffect(controlsVisible, player.isPlaying) {
                                 if (controlsVisible && player.isPlaying) {
-                                    delay(3000)
+                                    delay(3000L)
                                     controlsVisible = false
                                 }
                             }
@@ -535,96 +804,116 @@ private fun PlayerContent(
                                 isForward = isSeekForward
                             )
 
-                            if (isBuffering) {
-                                CircularProgressIndicator(
+                            // Consolidated Player Loading UI
+                            val showLoader = (uiState is PlayerUiState.Loading) || isBuffering || isRecovering
+                            if (showLoader) {
+                                Box(
                                     modifier = Modifier
-                                        .align(Alignment.Center)
-                                        .size(48.dp),
-                                    color = Color.White,
-                                    strokeWidth = 4.dp
-                                )
+                                        .fillMaxSize()
+                                        .background(if (isRecovering) Color.Black.copy(alpha = 0.5f) else Color.Transparent),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(48.dp),
+                                            color = Color.White,
+                                            strokeWidth = 4.dp
+                                        )
+                                        if (isRecovering) {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = stringResource(R.string.waiting_for_connection),
+                                                color = Color.White,
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
 
                 // Metadata Area
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize()
+                AnimatedVisibility(
+                    visible = uiState !is PlayerUiState.Error,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
                 ) {
-                    when (uiState) {
-                        is PlayerUiState.Loading -> {
-                            item {
-                                com.arslandaim.playtube.ui.components.PlayerMetadataSkeleton(syncTransition)
-                            }
-                            
-                            items(3) {
-                                Box(modifier = Modifier.padding(horizontal = 16.dp)) {
-                                    com.arslandaim.playtube.ui.components.VideoCardSkeleton(syncTransition)
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        when (uiState) {
+                            is PlayerUiState.Loading -> {
+                                item {
+                                    com.arslandaim.playtube.ui.components.PlayerMetadataSkeleton(syncTransition)
+                                }
+
+                                items(3) {
+                                    Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                        com.arslandaim.playtube.ui.components.VideoCardSkeleton(syncTransition)
+                                    }
                                 }
                             }
-                        }
-                        is PlayerUiState.Success -> {
-                            item {
-                                UnifiedMetadataHub(
-                                    title = uiState.title,
-                                    viewCount = uiState.bundle.viewCount,
-                                    uploadDate = uiState.bundle.uploadDate,
-                                    description = uiState.bundle.description,
-                                    uploaderName = uiState.uploader,
-                                    uploaderThumbnailUrl = uiState.bundle.uploaderThumbnailUrl,
-                                    uploaderUrl = uiState.bundle.uploaderUrl,
-                                    subscriberCount = uiState.bundle.uploaderSubscriberCount,
-                                    isSubscribed = isSubscribed,
-                                    isFavorite = isFavorite,
-                                    isDownloaded = downloadedIds.contains(videoId),
-                                    onToggleSubscription = onToggleSubscription,
-                                    onToggleFavorite = { onToggleFavorite(null) },
-                                    onDownloadClick = { if (!downloadedIds.contains(videoId)) onDownloadClick(null) },
-                                    onShareClick = onShareVideo,
-                                    onChannelClick = onChannelClick
+                            is PlayerUiState.Success -> {
+                                item {
+                                    UnifiedMetadataHub(
+                                        title = uiState.title,
+                                        viewCount = uiState.bundle.viewCount,
+                                        uploadDate = uiState.bundle.uploadDate,
+                                        description = uiState.bundle.description,
+                                        uploaderName = uiState.uploader,
+                                        uploaderThumbnailUrl = uiState.bundle.uploaderThumbnailUrl,
+                                        uploaderUrl = uiState.bundle.uploaderUrl,
+                                        subscriberCount = uiState.bundle.uploaderSubscriberCount,
+                                        isSubscribed = isSubscribed,
+                                        isFavorite = isFavorite,
+                                        isDownloaded = downloadedIds.contains(videoId),
+                                        onToggleSubscription = onToggleSubscription,
+                                        onToggleFavorite = { onToggleFavorite(null) },
+                                        onDownloadClick = { if (!downloadedIds.contains(videoId)) onDownloadClick(null) },
+                                        onShareClick = onShareVideo,
+                                        onChannelClick = onChannelClick
+                                    )
+                                }
+
+                                relatedVideosSection(
+                                    relatedVideos = uiState.bundle.relatedVideos,
+                                    downloadedIds = downloadedIds,
+                                    favoriteIds = favoriteIds,
+                                    isAutoplayEnabled = isAutoplayEnabled,
+                                    onAutoplayChange = onAutoplayChange,
+                                    onVideoClick = onVideoClick,
+                                    onChannelClick = onChannelClick,
+                                    onFavoriteClick = { onToggleFavorite(it) },
+                                    onDownloadClick = { onDownloadClick(it) }
                                 )
                             }
-
-                            relatedVideosSection(
-                                relatedVideos = uiState.bundle.relatedVideos,
-                                downloadedIds = downloadedIds,
-                                favoriteIds = favoriteIds,
-                                onVideoClick = onVideoClick,
-                                onChannelClick = onChannelClick,
-                                onFavoriteClick = { onToggleFavorite(it) },
-                                onDownloadClick = { onDownloadClick(it) }
-                            )
-
-                            if (uiState.bundle.nextRelatedVideosPage != null) {
+                            is PlayerUiState.Upcoming -> {
                                 item {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(24.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
-                                    }
+                                    UnifiedMetadataHub(
+                                        title = uiState.title,
+                                        viewCount = -1L,
+                                        uploadDate = uiState.scheduledTime,
+                                        description = null,
+                                        uploaderName = uiState.uploader,
+                                        uploaderThumbnailUrl = null,
+                                        uploaderUrl = null,
+                                        subscriberCount = null,
+                                        isSubscribed = isSubscribed,
+                                        isFavorite = isFavorite,
+                                        isDownloaded = false,
+                                        onToggleSubscription = onToggleSubscription,
+                                        onToggleFavorite = { onToggleFavorite(null) },
+                                        onDownloadClick = { },
+                                        onShareClick = onShareVideo,
+                                        onChannelClick = onChannelClick
+                                    )
                                 }
                             }
-                        }
-                        is PlayerUiState.Error -> {
-                            item {
-                                Box(modifier = Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text(
-                                            text = stringResource(R.string.error_prefix, uiState.message),
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Spacer(modifier = Modifier.height(16.dp))
-                                        Button(onClick = { /* Handle Retry */ }) {
-                                            Text(stringResource(R.string.retry))
-                                        }
-                                    }
-                                }
+                            else -> {
+                                // Handled by AnimatedVisibility
                             }
                         }
                     }
@@ -647,22 +936,21 @@ private fun PlayerContent(
                     )
                 }
                 is DownloadDialogState.ShowDialog -> {
-                    DownloadSelectionSheet(
-                        videoStreams = currentDownloadState.bundle.videoStreams,
-                        audioStreams = currentDownloadState.bundle.audioStreams,
-                        onDismiss = { onDismissDownload() },
-                        onDownload = { stream ->
-                            onDownloadConfirm(
-                                currentDownloadState.video,
-                                currentDownloadState.bundle,
-                                stream.url,
-                                stream.quality,
-                                stream.format,
-                                stream.isAdaptive
-                            )
-                        }
-                    )
-                }
+                DownloadSelectionSheet(
+                    videoStreams = currentDownloadState.bundle.videoStreams,
+                    onDismiss = { onDismissDownload() },
+                    onDownload = { stream ->
+                        onDownloadConfirm(
+                            currentDownloadState.video,
+                            currentDownloadState.bundle,
+                            stream.url,
+                            stream.quality,
+                            stream.format,
+                            stream.isAdaptive
+                        )
+                    }
+                )
+            }
             }
         }
     }
@@ -672,48 +960,93 @@ private fun PlayerContent(
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
+private fun ManualSubtitleView(
+    cues: List<Cue>,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        cues.forEach { cue ->
+            val text = cue.text
+            if (text != null && text.isNotEmpty()) {
+                Surface(
+                    color = Color.Black.copy(alpha = 0.65f),
+                    shape = RoundedCornerShape(10.dp),
+                    tonalElevation = 2.dp
+                ) {
+                    Text(
+                        text = text.toString(),
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = FontWeight.Medium,
+                            lineHeight = 22.sp,
+                            textAlign = TextAlign.Center,
+                            shadow = androidx.compose.ui.graphics.Shadow(
+                                color = Color.Black.copy(alpha = 0.5f),
+                                offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                blurRadius = 2f
+                            )
+                        ),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@androidx.annotation.OptIn(UnstableApi::class)
+@Composable
 private fun VideoPlayerView(
     player: Player,
     controlsVisible: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var playerView by remember { mutableStateOf<PlayerView?>(null) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> playerView?.onResume()
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> playerView?.onPause()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     AndroidView(
         factory = { context ->
             PlayerView(context).apply {
                 this.player = player
-                this.keepScreenOn = true 
+                this.keepScreenOn = true
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                 useController = false // We use our custom Compose controller
                 
-                // Professional Subtitle Styling
-                subtitleView?.apply {
-                    // Force Canvas rendering for predictable padding behavior
-                    setViewType(SubtitleView.VIEW_TYPE_CANVAS)
-                    
-                    // Explicitly align to bottom to fix the "subtitles at top" issue
-                    val params = layoutParams as? android.widget.FrameLayout.LayoutParams
-                    params?.gravity = android.view.Gravity.BOTTOM
-                    layoutParams = params
+                // Disable native buffering indicator to prevent "Double Loader" bug
+                setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
 
-                    setApplyEmbeddedStyles(false)
-                    setStyle(
-                        CaptionStyleCompat(
-                            Color.White.toArgb(),
-                            0x66000000.toInt(), // Reduced background opacity (40%)
-                            Color.Transparent.toArgb(),
-                            CaptionStyleCompat.EDGE_TYPE_OUTLINE, // Better contrast
-                            Color.Black.toArgb(),
-                            android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
-                        )
-                    )
-                    setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * 1.05f)
-                }
+                // Hide internal subtitle view to use our manual one
+                subtitleView?.visibility = android.view.View.GONE
+                playerView = this
             }
         },
-        update = { playerView ->
-            playerView.subtitleView?.setBottomPaddingFraction(
-                if (controlsVisible) 0.18f else 0.08f
-            )
+        update = { view ->
+            if (view.player != player) {
+                view.player = player
+            }
+            view.subtitleView?.visibility = android.view.View.GONE
+        },
+        onRelease = { view ->
+            view.player = null
+            playerView = null
         },
         modifier = modifier
     )
@@ -725,64 +1058,107 @@ private fun PersistentProgressBar(
     bufferedProgress: Float,
     modifier: Modifier = Modifier
 ) {
-    Box(
+    Canvas(
         modifier = modifier
-            .background(Color.White.copy(alpha = 0.05f))
+            .fillMaxWidth()
+            .height(2.dp)
     ) {
-        // Buffered (Preloaded) line
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(bufferedProgress.coerceIn(0f, 1f))
-                .background(Color.White.copy(alpha = 0.25f))
+        val width = size.width
+        val height = size.height
+        
+        // Background
+        drawRect(
+            color = Color.White.copy(alpha = 0.1f),
+            size = size
         )
+        
+        // Buffered (Preloaded) line
+        drawRect(
+            color = Color.White.copy(alpha = 0.3f),
+            size = size.copy(width = width * bufferedProgress.coerceIn(0f, 1f))
+        )
+        
         // Playback progress line
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(progress.coerceIn(0f, 1f))
-                .background(Color.Red)
+        drawRect(
+            color = Color.Red,
+            size = size.copy(width = width * progress.coerceIn(0f, 1f))
         )
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PlayerControlsOverlay(
     isPlaying: Boolean,
     currentPosition: Long,
     duration: Long,
+    isLive: Boolean,
     isCcEnabled: Boolean,
+    isIncognito: Boolean,
     hasSubtitles: Boolean,
     onPlayPause: () -> Unit,
+    onSkipNext: () -> Unit,
+    onSkipPrevious: () -> Unit,
     onSeekTo: (Long) -> Unit,
     onToggleSubtitles: () -> Unit,
+    onShowSubtitleSettings: () -> Unit,
     onShowSettings: () -> Unit,
     onBack: () -> Unit
 ) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.4f))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Black.copy(alpha = 0.5f),
+                        Color.Transparent,
+                        Color.Transparent,
+                        Color.Black.copy(alpha = 0.6f)
+                    )
+                )
+            )
     ) {
-        // Center Play/Pause with Scale Animation
-        Box(
+        // Center Play/Pause with Skip Buttons
+        Row(
             modifier = Modifier.align(Alignment.Center),
-            contentAlignment = Alignment.Center
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+            // Skip Previous
+            IconButton(
+                onClick = onSkipPrevious,
+                modifier = Modifier
+                    .background(Color.White.copy(alpha = 0.12f), CircleShape)
+                    .size(44.dp)
+            ) {
+                Icon(Icons.Default.SkipPrevious, null, tint = Color.White, modifier = Modifier.size(24.dp))
+            }
+
             Surface(
                 onClick = onPlayPause,
                 shape = CircleShape,
-                color = Color.White.copy(alpha = 0.2f),
-                modifier = Modifier.size(76.dp)
+                color = Color.White.copy(alpha = 0.15f),
+                modifier = Modifier.size(64.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(42.dp)
+                        modifier = Modifier.size(36.dp)
                     )
                 }
+            }
+
+            // Skip Next
+            IconButton(
+                onClick = onSkipNext,
+                modifier = Modifier
+                    .background(Color.White.copy(alpha = 0.12f), CircleShape)
+                    .size(44.dp)
+            ) {
+                Icon(Icons.Default.SkipNext, null, tint = Color.White, modifier = Modifier.size(24.dp))
             }
         }
 
@@ -791,7 +1167,7 @@ private fun PlayerControlsOverlay(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(bottom = 12.dp)
+                .padding(bottom = 8.dp)
         ) {
             Row(
                 modifier = Modifier
@@ -800,31 +1176,70 @@ private fun PlayerControlsOverlay(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = VideoUtils.formatDuration(currentPosition / 1000),
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
-                )
-                Text(
-                    text = VideoUtils.formatDuration(duration / 1000),
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White.copy(alpha = 0.7f)
-                )
+                if (isLive) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .background(Color.Red, CircleShape)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "LIVE",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            ),
+                            color = Color.White
+                        )
+                    }
+                } else {
+                    Text(
+                        text = VideoUtils.formatDuration(currentPosition / 1000),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White
+                    )
+                    Text(
+                        text = VideoUtils.formatDuration(duration / 1000),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White.copy(alpha = 0.7f)
+                    )
+                }
             }
             
-            Slider(
-                value = currentPosition.toFloat(),
-                onValueChange = { onSeekTo(it.toLong()) },
-                valueRange = 0f..duration.toFloat().coerceAtLeast(1f),
-                colors = SliderDefaults.colors(
-                    thumbColor = Color.Red,
-                    activeTrackColor = Color.Red,
-                    inactiveTrackColor = Color.White.copy(alpha = 0.25f),
-                    activeTickColor = Color.Transparent,
-                    inactiveTickColor = Color.Transparent
-                ),
-                modifier = Modifier.fillMaxWidth().height(32.dp)
-            )
+            if (!isLive) {
+                Slider(
+                    value = currentPosition.toFloat(),
+                    onValueChange = { onSeekTo(it.toLong()) },
+                    valueRange = 0f..duration.toFloat().coerceAtLeast(1f),
+                    thumb = {
+                        Box(
+                            modifier = Modifier.size(20.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .background(Color.Red, CircleShape)
+                            )
+                        }
+                    },
+                    track = { sliderState ->
+                        SliderDefaults.Track(
+                            sliderState = sliderState,
+                            modifier = Modifier.height(3.dp),
+                            thumbTrackGapSize = 0.dp,
+                            colors = SliderDefaults.colors(
+                                activeTrackColor = Color.Red,
+                                inactiveTrackColor = Color.White.copy(alpha = 0.25f)
+                            )
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth().height(48.dp) // Professional 48dp touch target
+                )
+            } else {
+                Spacer(modifier = Modifier.height(16.dp))
+            }
         }
 
         // Top Navigation & Actions Pill
@@ -843,6 +1258,23 @@ private fun PlayerControlsOverlay(
             ) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White, modifier = Modifier.size(20.dp))
             }
+
+            if (isIncognito) {
+                Spacer(modifier = Modifier.width(12.dp))
+                Surface(
+                    color = Color(0xFF9C27B0).copy(alpha = 0.6f),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.VisibilityOff, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Incognito", color = Color.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
             
             Spacer(modifier = Modifier.weight(1f))
 
@@ -852,7 +1284,16 @@ private fun PlayerControlsOverlay(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (hasSubtitles) {
-                        IconButton(onClick = onToggleSubtitles, modifier = Modifier.size(40.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .combinedClickable(
+                                    onClick = onToggleSubtitles,
+                                    onLongClick = onShowSubtitleSettings
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
                             Icon(
                                 imageVector = if (isCcEnabled) Icons.Default.ClosedCaption else Icons.Default.ClosedCaptionDisabled,
                                 contentDescription = null,

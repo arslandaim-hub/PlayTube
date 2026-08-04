@@ -66,12 +66,48 @@ object VideoUtils {
     }
 
     fun formatViewCount(views: Long): String {
+        if (views == -1L) return "Upcoming"
         return formatNumber(views)
     }
 
     fun formatUploadDate(date: String?): String {
         if (date == null) return ""
-        return date
+        return when {
+            // Handle absolute ISO timestamps for upcoming streams
+            date.contains("T") && date.contains("-") -> {
+                try {
+                    val odt = java.time.OffsetDateTime.parse(date)
+                    val now = java.time.OffsetDateTime.now()
+                    if (odt.isAfter(now)) {
+                        val formatter = java.time.format.DateTimeFormatter.ofPattern("MMM d, HH:mm")
+                        "Starts ${odt.format(formatter)}"
+                    } else {
+                        formatRelativeTime(date)
+                    }
+                } catch (e: Exception) {
+                    formatRelativeTime(date)
+                }
+            }
+            else -> date
+        }
+    }
+
+    /**
+     * Formats an ISO 8601 date string into a relative time string (e.g. "2 hours ago").
+     */
+    fun formatRelativeTime(isoDate: String?): String {
+        if (isoDate.isNullOrBlank()) return ""
+        return try {
+            val odt = java.time.OffsetDateTime.parse(isoDate)
+            val timeMillis = odt.toInstant().toEpochMilli()
+            android.text.format.DateUtils.getRelativeTimeSpanString(
+                timeMillis,
+                System.currentTimeMillis(),
+                android.text.format.DateUtils.MINUTE_IN_MILLIS
+            ).toString()
+        } catch (e: Exception) {
+            isoDate
+        }
     }
 
     fun formatDuration(seconds: Long): String {
@@ -102,5 +138,75 @@ object VideoUtils {
         
         // Handles and custom URLs don't contain the channel ID directly
         return null
+    }
+
+    fun sanitizeDescription(html: String?): String {
+        if (html == null) return ""
+        return try {
+            androidx.core.text.HtmlCompat.fromHtml(
+                html,
+                androidx.core.text.HtmlCompat.FROM_HTML_MODE_COMPACT
+            ).toString().trim()
+        } catch (e: Exception) {
+            html.replace(Regex("<[^>]*>"), "").trim()
+        }
+    }
+
+    /**
+     * Parses textual upload dates like "5 minutes ago", "2 hours ago", "1 day ago", "yesterday", "streamed 2 hours ago"
+     * into an approximate timestamp (Long) for sorting purposes.
+     */
+    fun parseTextualUploadDate(text: String?): Long {
+        if (text == null || text.isBlank()) return 0L
+        
+        val cleanText = text.lowercase()
+            .replace(" ago", "")
+            .replace(" streaming", "")
+            .replace("streamed ", "")
+            .trim()
+            
+        // Direct matches for common single-unit strings
+        if (cleanText.contains("yesterday")) return System.currentTimeMillis() - (24 * 60 * 60 * 1000L)
+        
+        val parts = cleanText.split(" ")
+        
+        var amount: Long? = null
+        var unit: String? = null
+        
+        // Find the numeric amount and the unit following it
+        for (i in parts.indices) {
+            val num = parts[i].toLongOrNull()
+            if (num != null) {
+                amount = num
+                if (i + 1 < parts.size) {
+                    unit = parts[i + 1]
+                }
+                break
+            }
+        }
+        
+        // Handle "a year ago", "an hour ago"
+        if (amount == null) {
+            if (cleanText.contains("a ") || cleanText.contains("an ") || cleanText.contains("one ")) {
+                amount = 1L
+                unit = parts.last() // Usually the unit
+            }
+        }
+        
+        if (amount == null || unit == null) return 0L
+        
+        val now = System.currentTimeMillis()
+        val multiplier = when {
+            unit.contains("second") -> 1000L
+            unit.contains("minute") -> 60 * 1000L
+            unit.contains("hour") -> 60 * 60 * 1000L
+            unit.contains("day") -> 24 * 60 * 60 * 1000L
+            unit.contains("week") -> 7 * 24 * 60 * 60 * 1000L
+            unit.contains("month") -> 30 * 24 * 60 * 60 * 1000L
+            unit.contains("year") -> 365 * 24 * 60 * 60 * 1000L
+            else -> 0L
+        }
+        
+        return now - (amount * multiplier)
     }
 }

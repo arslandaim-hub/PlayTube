@@ -22,6 +22,9 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -41,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -51,6 +55,7 @@ import com.arslandaim.playtube.ui.navigation.Screen
 import com.arslandaim.playtube.ui.theme.PlayTubeTheme
 import dagger.hilt.android.AndroidEntryPoint
 import android.app.PictureInPictureParams
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import android.content.Intent
 import android.util.Rational
 import androidx.core.util.Consumer
@@ -88,6 +93,8 @@ import com.arslandaim.playtube.R
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.ui.screens.player.MiniPlayerManager
 import com.arslandaim.playtube.ui.screens.player.PlayerOverlay
+import com.arslandaim.playtube.ui.screens.settings.UpdateViewModel
+import com.arslandaim.playtube.ui.components.GlassSurface
 import com.arslandaim.playtube.utils.ConnectivityObserver
 import javax.inject.Inject
 import kotlin.math.roundToInt
@@ -97,7 +104,6 @@ import kotlin.math.roundToInt
 class MainActivity : ComponentActivity() {
     companion object {
         val BOTTOM_BAR_HEIGHT = 64.dp
-        const val TOP_BAR_HEIGHT_PX = 64
     }
 
     @Inject lateinit var connectivityObserver: ConnectivityObserver
@@ -105,23 +111,44 @@ class MainActivity : ComponentActivity() {
     
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { isGranted: Boolean ->
+    ) {
         // Handle permission result if needed
     }
 
     private val mainViewModel: MainViewModel by viewModels()
     private val playerViewModel: com.arslandaim.playtube.ui.screens.player.PlayerViewModel by viewModels()
+    private val updateViewModel: UpdateViewModel by viewModels()
 
     private var isPlayerScreen = false
     private var isPipEnabledBySetting = true
     private var isBackgroundPlayEnabledBySetting = false
     private var wasInPip = false
     private var isEnteringPip = false
-    private val isInPipModeState = mutableStateOf(false)
+    private val isInPipModeState = mutableStateOf(value = false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Keep the splash screen on-screen until onboarding completion status is known
+        splashScreen.setKeepOnScreenCondition {
+            mainViewModel.isOnboardingCompleted.value == null
+        }
+
+        // Local Network Protection check (Android 16+ Opt-in, Android 17+ Mandatory)
+        if (Build.VERSION.SDK_INT >= 36) {
+            val permission = if (Build.VERSION.SDK_INT >= 37) {
+                "android.permission.ACCESS_LOCAL_NETWORK"
+            } else {
+                // In Android 16, this is gated behind NEARBY_WIFI_DEVICES for some implementations
+                Manifest.permission.NEARBY_WIFI_DEVICES
+            }
+
+            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissionLauncher.launch(permission)
+            }
+        }
 
         // Observe Settings from MainViewModel
         lifecycleScope.launch {
@@ -136,6 +163,13 @@ class MainActivity : ComponentActivity() {
                         isBackgroundPlayEnabledBySetting = it
                     }
                 }
+                launch {
+                    playerViewModel.sleepTimerManager.timerFinishedEvent.collectLatest {
+                        if (playerViewModel.sleepTimerManager.shouldCloseApp.value) {
+                            finishAndRemoveTask()
+                        }
+                    }
+                }
             }
         }
 
@@ -143,10 +177,16 @@ class MainActivity : ComponentActivity() {
             val darkTheme = isSystemInDarkTheme()
             val isBackgroundPlayEnabled by mainViewModel.isBackgroundPlayEnabled.collectAsState()
             val isOnboardingCompleted by mainViewModel.isOnboardingCompleted.collectAsState()
+            val isOffline by mainViewModel.isOffline.collectAsState()
 
             if (isOnboardingCompleted == null) return@setContent
             
-            val startDestination = if (isOnboardingCompleted == true) Screen.Home.route else Screen.Onboarding.route
+            // Startup Redirection: If offline on launch, default to Library/Downloads
+            val startDestination = remember(isOnboardingCompleted, isOffline) {
+                if (isOnboardingCompleted == false) Screen.Onboarding.route
+                else if (isOffline) Screen.Library.route
+                else Screen.Home.route
+            }
 
             // Connect to MediaSession ONLY if background play is enabled
             if (isBackgroundPlayEnabled) {
@@ -186,24 +226,43 @@ class MainActivity : ComponentActivity() {
                 val playerVisibility by miniPlayerManager.visibilityState.collectAsState()
                 val isExpanded = playerVisibility == com.arslandaim.playtube.ui.screens.player.MiniPlayerVisibility.Expanded
                 val currentVideo by miniPlayerManager.currentVideo.collectAsState()
+                val isIncognitoMode by mainViewModel.isIncognitoMode.collectAsState()
 
                 isPlayerScreen = currentRoute?.startsWith("player") == true
                 var isBarsVisible by remember { mutableStateOf(true) }
 
-                val mainRoutes = remember { listOf(Screen.Home.route, Screen.Subscriptions.route, Screen.Library.route) }
-                val isMainRoute = currentRoute in mainRoutes
+                val mainRoutes = remember { listOf(Screen.Home.route, Screen.Subscriptions.route, Screen.Search.route, Screen.Library.route) }
+                val currentBaseRoute = currentRoute?.split("/")?.firstOrNull()
+                val isMainRoute = currentBaseRoute in mainRoutes
                 val isOnboarding = currentRoute == Screen.Onboarding.route
                 
                 LaunchedEffect(currentRoute) {
                     if (isMainRoute) {
                         isBarsVisible = true
-                    } else if (isOnboarding) {
+                    } else if (isOnboarding || (currentRoute?.startsWith("player") == true)) {
                         isBarsVisible = false
                     }
                 }
 
                 val showBars = isMainRoute && !isInPipModeState.value && !isOnboarding
                 
+                // Visual feedback for Incognito Mode
+                val incognitoTint = Color(0xFF673AB7).copy(alpha = 0.25f) // Stronger purple tint
+                val baseSurfaceColor = MaterialTheme.colorScheme.surface
+                val glassColor = if (isIncognitoMode) {
+                    baseSurfaceColor.copy(alpha = 0.95f).run {
+                        Color(
+                            red = (red + incognitoTint.red * incognitoTint.alpha) / (1 + incognitoTint.alpha),
+                            green = (green + incognitoTint.green * incognitoTint.alpha) / (1 + incognitoTint.alpha),
+                            blue = (blue + incognitoTint.blue * incognitoTint.alpha) / (1 + incognitoTint.alpha),
+                            alpha = alpha
+                        )
+                    }
+                } else {
+                    baseSurfaceColor.copy(alpha = com.arslandaim.playtube.ui.theme.GlassAlpha)
+                }
+
+
                 // Animate visibility with a natural spring
                 val barsVisibilityProgress by animateFloatAsState(
                     targetValue = if (showBars && isBarsVisible) 1f else 0f,
@@ -251,13 +310,27 @@ class MainActivity : ComponentActivity() {
 
                 Scaffold(
                     topBar = {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            color = MaterialTheme.colorScheme.surface, // Solid surface to prevent background bleed
-                            tonalElevation = 3.dp // Slight elevation for depth
+                        GlassSurface(
+                            tonalElevation = 3.dp,
+                            border = null,
+                            containerColor = if (isIncognitoMode) glassColor.copy(alpha = 1f) else MaterialTheme.colorScheme.surface
                         ) {
                             Column(modifier = Modifier.fillMaxWidth().statusBarsPadding()) {
-                                OfflineStatusBar(status = connectivityStatus)
+                                val hideBannerRoutes = listOf(
+                                    Screen.Home.route,
+                                    Screen.Subscriptions.route,
+                                    Screen.Search.route
+                                )
+                                if (currentRoute !in hideBannerRoutes) {
+                                    OfflineStatusBar(
+                                        status = connectivityStatus,
+                                        onNavigateToDownloads = {
+                                            navController.navigate(Screen.Downloads.route) {
+                                                launchSingleTop = true
+                                            }
+                                        }
+                                    )
+                                }
                                 if (showBars || barsVisibilityProgress > 0f) {
                                     Box(modifier = Modifier
                                         .fillMaxWidth()
@@ -294,24 +367,71 @@ class MainActivity : ComponentActivity() {
                                                             ),
                                                             fontWeight = FontWeight.ExtraBold
                                                         )
+
+                                                        if (isIncognitoMode) {
+                                                            Spacer(modifier = Modifier.width(8.dp))
+                                                            Surface(
+                                                                color = Color(0xFF9C27B0).copy(alpha = 0.8f),
+                                                                shape = RoundedCornerShape(8.dp)
+                                                            ) {
+                                                                Text(
+                                                                    text = "INCOGNITO",
+                                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                                        fontSize = 9.sp,
+                                                                        fontWeight = FontWeight.Black,
+                                                                        letterSpacing = 1.sp
+                                                                    ),
+                                                                    color = Color.White
+                                                                )
+                                                            }
+                                                        }
                                                     }
                                                 },
                                                 actions = {
-                                                    IconButton(onClick = { navController.navigate(Screen.Search.route) }) {
+                                                    if (currentRoute != Screen.Search.route) {
+                                                        IconButton(onClick = { navController.navigate(Screen.Search.route) }) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Search,
+                                                                contentDescription = stringResource(R.string.search),
+                                                                tint = MaterialTheme.colorScheme.onSurface,
+                                                                modifier = Modifier.size(24.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                    
+                                                    val updateInfo by updateViewModel.updateInfo.collectAsState()
+                                                    val isAutoUpdateEnabled by updateViewModel.isAutoUpdateEnabled.collectAsState()
+
+                                                    IconButton(onClick = { mainViewModel.toggleIncognitoMode() }) {
                                                         Icon(
-                                                            imageVector = Icons.Default.Search,
-                                                            contentDescription = stringResource(R.string.search),
-                                                            tint = MaterialTheme.colorScheme.onSurface,
+                                                            imageVector = if (isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                            contentDescription = "Incognito Mode",
+                                                            tint = if (isIncognitoMode) Color(0xFF9C27B0) else MaterialTheme.colorScheme.onSurface,
                                                             modifier = Modifier.size(24.dp)
                                                         )
                                                     }
+
                                                     IconButton(onClick = { navController.navigate(Screen.Settings.route) }) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.Settings,
-                                                            contentDescription = stringResource(R.string.settings),
-                                                            tint = MaterialTheme.colorScheme.onSurface,
-                                                            modifier = Modifier.size(24.dp)
-                                                        )
+                                                        BadgedBox(
+                                                            badge = {
+                                                                if (isAutoUpdateEnabled && updateInfo.hasUpdate) {
+                                                                    Badge(
+                                                                        containerColor = MaterialTheme.colorScheme.error,
+                                                                        contentColor = MaterialTheme.colorScheme.onError
+                                                                    ) {
+                                                                        Text("!")
+                                                                    }
+                                                                }
+                                                            }
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Settings,
+                                                                contentDescription = stringResource(R.string.settings),
+                                                                tint = MaterialTheme.colorScheme.onSurface,
+                                                                modifier = Modifier.size(24.dp)
+                                                            )
+                                                        }
                                                     }
                                                 },
                                                 colors = TopAppBarDefaults.topAppBarColors(
@@ -355,18 +475,14 @@ class MainActivity : ComponentActivity() {
                                         alpha = barsVisibilityProgress
                                     }
                             ) {
-                                Surface(
+                                GlassSurface(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(BOTTOM_BAR_HEIGHT),
-                                    color = MaterialTheme.colorScheme.surface.copy(alpha = com.arslandaim.playtube.ui.theme.GlassAlpha),
                                     shape = RoundedCornerShape(20.dp),
                                     tonalElevation = 8.dp,
                                     shadowElevation = 12.dp,
-                                    border = androidx.compose.foundation.BorderStroke(
-                                        width = 0.5.dp,
-                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                                    )
+                                    containerColor = glassColor
                                 ) {
                                     PlayTubeBottomBar(navController = navController)
                                 }
@@ -379,6 +495,7 @@ class MainActivity : ComponentActivity() {
                     isExpanded = isExpanded,
                     currentVideo = currentVideo,
                     bottomBarHeight = if (showBars) BOTTOM_BAR_HEIGHT * barsVisibilityProgress else 0.dp,
+                    isIncognito = isIncognitoMode,
                     viewModel = playerViewModel,
                     onClose = {
                         miniPlayerManager.close {
@@ -396,6 +513,32 @@ class MainActivity : ComponentActivity() {
                     },
                     content = { /* PlayerView is handled inside PlayerOverlay/PlayerScreen for now(I will do something later) */ }
                 )
+
+                // Global Offline Dialog for Startup
+                val showOfflineDialog by mainViewModel.showOfflineDialog.collectAsState()
+                if (showOfflineDialog) {
+                    AlertDialog(
+                        onDismissRequest = { mainViewModel.dismissOfflineDialog() },
+                        icon = { Icon(Icons.Default.WifiOff, null, tint = MaterialTheme.colorScheme.primary) },
+                        title = { Text(stringResource(R.string.no_internet)) },
+                        text = { Text("You are currently offline. Checkout your downloads.") },
+                        confirmButton = {
+                            Button(onClick = { 
+                                mainViewModel.dismissOfflineDialog()
+                                navController.navigate(Screen.Downloads.route) {
+                                    launchSingleTop = true
+                                }
+                            }) {
+                                Text("Go to Downloads")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { mainViewModel.dismissOfflineDialog() }) {
+                                Text(stringResource(R.string.close))
+                            }
+                        }
+                    )
+                }
             }
         }
     }
@@ -408,6 +551,7 @@ class MainActivity : ComponentActivity() {
         // 2. We are NOT rotating (changing configs)
         // 3. Background Play is DISABLED
         // 4. We are NOT currently entering PiP
+        val isInPictureInPictureMode = isInPictureInPictureMode
         val shouldPause = !isInPictureInPictureMode && !isChangingConfigurations && 
                          !isBackgroundPlayEnabledBySetting && !isEnteringPip
         
@@ -454,17 +598,13 @@ class MainActivity : ComponentActivity() {
         
         if (isPipEnabledBySetting && playerViewModel.player.isPlaying) {
             isEnteringPip = true
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val params = PictureInPictureParams.Builder()
                     .setAspectRatio(Rational(16, 9))
                     .build()
                 
                 android.util.Log.d("PiP", "Entering Picture-in-Picture mode")
                 enterPictureInPictureMode(params)
-            } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                android.util.Log.d("PiP", "Entering Picture-in-Picture mode (Legacy)")
-                @Suppress("DEPRECATION")
-                enterPictureInPictureMode()
             }
         }
     }
@@ -473,9 +613,10 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PlayTubeBottomBar(navController: androidx.navigation.NavHostController) {
     val items = listOf(
-        Screen.Home to Icons.Default.Home,
-        Screen.Subscriptions to Icons.Default.Subscriptions,
-        Screen.Library to Icons.Default.LibraryMusic
+        Triple(Screen.Home, Icons.Default.Home, stringResource(R.string.tab_for_you)),
+        Triple(Screen.Subscriptions, Icons.Default.Subscriptions, stringResource(R.string.subscriptions)),
+        Triple(Screen.Search, Icons.Default.Search, stringResource(R.string.search)),
+        Triple(Screen.Library, Icons.Default.LibraryMusic, stringResource(R.string.library))
     )
     NavigationBar(
         modifier = Modifier.height(MainActivity.BOTTOM_BAR_HEIGHT),
@@ -484,10 +625,10 @@ fun PlayTubeBottomBar(navController: androidx.navigation.NavHostController) {
     ) {
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentDestination = navBackStackEntry?.destination
-        items.forEach { (screen, icon) ->
+        items.forEach { (screen, icon, label) ->
             NavigationBarItem(
                 icon = { Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp).offset(y = 2.dp)) },
-                label = { Text(screen.route, style = MaterialTheme.typography.labelSmall, modifier = Modifier.offset(y = (-2).dp)) },
+                label = { Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.offset(y = (-2).dp)) },
                 selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
                 onClick = {
                     navController.navigate(screen.route) {
@@ -506,7 +647,10 @@ fun PlayTubeBottomBar(navController: androidx.navigation.NavHostController) {
 // Legacy MiniPlayer removed
 
 @Composable
-fun OfflineStatusBar(status: ConnectivityObserver.Status) {
+fun OfflineStatusBar(
+    status: ConnectivityObserver.Status,
+    onNavigateToDownloads: () -> Unit = {}
+) {
     val isOffline = status == ConnectivityObserver.Status.Lost || status == ConnectivityObserver.Status.Unavailable
     
     AnimatedVisibility(
@@ -518,15 +662,28 @@ fun OfflineStatusBar(status: ConnectivityObserver.Status) {
             modifier = Modifier
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.errorContainer)
-                .padding(vertical = 4.dp),
+                .clickable { onNavigateToDownloads() }
+                .padding(vertical = 6.dp, horizontal = 16.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = stringResource(R.string.no_internet),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onErrorContainer,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.LibraryMusic,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onErrorContainer
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.no_internet) + ". Tap to view downloads.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }

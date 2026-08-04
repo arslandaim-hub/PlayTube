@@ -33,6 +33,10 @@ class MiniPlayerManager @Inject constructor() {
         _visibilityState.value = MiniPlayerVisibility.Minimized
     }
 
+    fun updateMetadata(video: VideoItem?) {
+        _currentVideo.value = video
+    }
+
     fun onNewVideoSelected(video: VideoItem) {
         _currentVideo.value = video
         _isMinimized.value = false

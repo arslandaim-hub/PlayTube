@@ -31,9 +31,12 @@ import com.arslandaim.playtube.ui.screens.search.SearchScreen
 import com.arslandaim.playtube.ui.screens.search.SearchViewModel
 import com.arslandaim.playtube.ui.screens.settings.SettingsScreen
 import com.arslandaim.playtube.ui.screens.settings.SettingsViewModel
+import com.arslandaim.playtube.ui.screens.settings.UpdateViewModel
 import com.arslandaim.playtube.ui.screens.settings.DataManagementScreen
 import com.arslandaim.playtube.ui.screens.settings.DataManagementViewModel
 import com.arslandaim.playtube.ui.screens.subscriptions.SubscriptionsScreen
+import com.arslandaim.playtube.ui.screens.subscriptions.SubscriptionFeedScreen
+import com.arslandaim.playtube.ui.screens.subscriptions.SubscriptionsFeedViewModel
 
 @Composable
 fun NavGraph(
@@ -60,29 +63,29 @@ fun NavGraph(
         startDestination = startDestination,
         enterTransition = {
             onBarsVisibilityChange(true)
-            val isBottomTab = initialState.destination.route in listOf(Screen.Home.route, Screen.Subscriptions.route, Screen.Library.route) &&
-                             targetState.destination.route in listOf(Screen.Home.route, Screen.Subscriptions.route, Screen.Library.route)
+            val isBottomTab = initialState.destination.route in listOf(Screen.Home.route, Screen.Subscriptions.route, Screen.Search.route, Screen.Library.route) &&
+                             targetState.destination.route in listOf(Screen.Home.route, Screen.Subscriptions.route, Screen.Search.route, Screen.Library.route)
             
             if (isBottomTab) {
-                fadeIn(animationSpec = tween(300))
+                fadeIn(animationSpec = tween(200, easing = FastOutSlowInEasing))
             } else {
                 slideIntoContainer(
                     towards = AnimatedContentTransitionScope.SlideDirection.Start,
                     animationSpec = slideSpring
-                ) + fadeIn(animationSpec = tween(300))
+                ) + fadeIn(animationSpec = tween(200))
             }
         },
         exitTransition = {
-            val isBottomTab = initialState.destination.route in listOf(Screen.Home.route, Screen.Subscriptions.route, Screen.Library.route) &&
+            val isBottomTab = initialState.destination.route in listOf(Screen.Home.route, Screen.Subscriptions.route, Screen.Search.route, Screen.Library.route) &&
                              targetState.destination.route in listOf(Screen.Home.route, Screen.Subscriptions.route, Screen.Library.route)
             
             if (isBottomTab) {
-                fadeOut(animationSpec = tween(300))
+                fadeOut(animationSpec = tween(200, easing = FastOutSlowInEasing))
             } else {
                 slideOutOfContainer(
                     towards = AnimatedContentTransitionScope.SlideDirection.Start,
                     animationSpec = slideSpring
-                ) + fadeOut(animationSpec = tween(300))
+                ) + fadeOut(animationSpec = tween(200))
             }
         },
         popEnterTransition = {
@@ -110,18 +113,36 @@ fun NavGraph(
                 },
                 onChannelClick = { channelUrl ->
                     navController.navigate(Screen.Channel.createRoute(channelUrl))
+                },
+                onNavigateToDownloads = {
+                    navController.navigate(Screen.Downloads.route) {
+                        launchSingleTop = true
+                    }
                 }
             )
         }
         composable(Screen.Subscriptions.route) {
-            SubscriptionsScreen(
-                viewModel = libraryViewModel,
+            val viewModel: SubscriptionsFeedViewModel = hiltViewModel()
+            SubscriptionFeedScreen(
+                viewModel = viewModel,
+                libraryViewModel = libraryViewModel,
                 onBarsVisibilityChange = onBarsVisibilityChange,
-                onBackClick = { navController.popBackStack() },
+                onVideoClick = { video ->
+                    playerViewModel.loadVideo(video)
+                },
                 onChannelClick = { channelUrl ->
                     navController.navigate(Screen.Channel.createRoute(channelUrl))
                 },
-                showTopAppBar = false
+                onNavigateToDownloads = {
+                    navController.navigate(Screen.Downloads.route) {
+                        launchSingleTop = true
+                    }
+                },
+                onNavigateToSubscriptionsList = {
+                    navController.navigate(Screen.SubscriptionsList.route) {
+                        launchSingleTop = true
+                    }
+                }
             )
         }
         composable(Screen.SubscriptionsList.route) {
@@ -165,8 +186,10 @@ fun NavGraph(
         }
         composable(Screen.Settings.route) {
             val viewModel: SettingsViewModel = hiltViewModel()
+            val updateViewModel: UpdateViewModel = hiltViewModel(activity)
             SettingsScreen(
                 viewModel = viewModel,
+                updateViewModel = updateViewModel,
                 onViewHistory = { navController.navigate(Screen.History.route) { launchSingleTop = true } },
                 onDataManagement = { navController.navigate(Screen.DataManagement.route) },
                 onBack = { navController.popBackStack() }
@@ -204,6 +227,11 @@ fun NavGraph(
                 viewModel = viewModel,
                 libraryViewModel = libraryViewModel,
                 onBarsVisibilityChange = onBarsVisibilityChange,
+                onNavigateToDownloads = {
+                    navController.navigate(Screen.Downloads.route) {
+                        launchSingleTop = true
+                    }
+                },
                 onBack = { navController.popBackStack() },
                 onVideoClick = { video ->
                     playerViewModel.loadVideo(video)
@@ -220,6 +248,11 @@ fun NavGraph(
                 playlistId = playlistId,
                 viewModel = viewModel,
                 onBarsVisibilityChange = onBarsVisibilityChange,
+                onNavigateToDownloads = {
+                    navController.navigate(Screen.Downloads.route) {
+                        launchSingleTop = true
+                    }
+                },
                 onBack = { navController.popBackStack() },
                 onVideoClick = { video ->
                     playerViewModel.loadVideo(video)
@@ -240,6 +273,11 @@ fun NavGraph(
                 },
                 onPlaylistClick = { playlistId ->
                     navController.navigate(Screen.Playlist.createRoute(playlistId))
+                },
+                onNavigateToDownloads = {
+                    navController.navigate(Screen.Downloads.route) {
+                        launchSingleTop = true
+                    }
                 },
                 onBack = { navController.popBackStack() }
             )

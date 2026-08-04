@@ -21,6 +21,7 @@ interface LibraryRepository {
     suspend fun updateWatchProgress(videoId: String, progressMs: Long, durationMs: Long)
     suspend fun removeFromHistory(videoId: String)
     suspend fun clearHistory()
+    suspend fun getWatchProgressForVideos(videoIds: List<String>): Map<String, Float?>
 
     // Favorites
     fun getFavorites(): Flow<List<FavoriteEntity>>
@@ -51,5 +52,13 @@ interface LibraryRepository {
     suspend fun getTopInterests(limit: Int): List<UserInterestEntity>
     suspend fun updateInterest(keyword: String, weightDelta: Float)
     suspend fun applyInterestDecay(decayFactor: Float)
+    suspend fun clearAllInterests()
     suspend fun hasInterests(): Boolean
+
+    // Blacklist
+    fun getBlacklist(): Flow<List<com.arslandaim.playtube.data.local.BlacklistEntity>>
+    suspend fun getBlacklistStatic(): List<com.arslandaim.playtube.data.local.BlacklistEntity>
+    suspend fun addToBlacklist(id: String, type: com.arslandaim.playtube.data.local.BlacklistType)
+    suspend fun removeFromBlacklist(id: String)
+    suspend fun isBlacklisted(id: String): Boolean
 }

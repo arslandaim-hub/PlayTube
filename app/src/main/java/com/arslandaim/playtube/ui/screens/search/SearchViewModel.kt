@@ -28,10 +28,12 @@ import com.arslandaim.playtube.domain.usecase.SearchVideosUseCase
 import com.arslandaim.playtube.domain.usecase.ToggleFavoriteUseCase
 import com.arslandaim.playtube.domain.usecase.ToggleSubscriptionUseCase
 import com.arslandaim.playtube.ui.components.DownloadDialogState
+import com.arslandaim.playtube.utils.PlayTubeError
 import com.arslandaim.playtube.utils.VideoUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.schabi.newpipe.extractor.Page
@@ -48,6 +50,7 @@ class SearchViewModel @Inject constructor(
     private val toggleSubscriptionUseCase: ToggleSubscriptionUseCase,
     private val getVideoStreamsUseCase: GetVideoStreamsUseCase,
     private val downloadVideoUseCase: DownloadVideoUseCase,
+    private val videoRepository: com.arslandaim.playtube.domain.repository.VideoRepository
 ) : ViewModel() {
 
     private val _internalUiState = MutableStateFlow<SearchUiState>(SearchUiState.Initial)
@@ -57,6 +60,9 @@ class SearchViewModel @Inject constructor(
 
     private val _searchSort = MutableStateFlow(SearchSort.RELEVANCE)
     val searchSort: StateFlow<SearchSort> = _searchSort.asStateFlow()
+
+    private val _isSortingNewest = MutableStateFlow(false)
+    val isSortingNewest: StateFlow<Boolean> = _isSortingNewest.asStateFlow()
 
     val isGridView: StateFlow<Boolean> = preferencesManager.isSearchGridView
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
@@ -98,11 +104,14 @@ class SearchViewModel @Inject constructor(
                 
                 val sortedVideos = when (sort) {
                     SearchSort.UPLOAD_DATE -> {
-                        videos.sortedWith(compareByDescending<SearchItem> { 
-                            (it as SearchItem.Video).video.rawUploadDate ?: 0L 
-                        }.thenByDescending {
-                            (it as SearchItem.Video).video.viewCount
-                        })
+                        // Strict chronological sort matching subscription feed.
+                        // We use withIndex to preserve original server order for items with identical timestamps
+                        // (common when parsing textual dates like "2 hours ago").
+                        videos.withIndex().sortedWith(
+                            compareByDescending<IndexedValue<SearchItem>> { 
+                                (it.value as SearchItem.Video).video.rawUploadDate ?: 0L 
+                            }.thenBy { it.index }
+                        ).map { it.value }
                     }
                     SearchSort.VIEW_COUNT -> {
                         videos.sortedByDescending { (it as SearchItem.Video).video.viewCount }
@@ -113,7 +122,9 @@ class SearchViewModel @Inject constructor(
                     }
                     else -> videos
                 }
-                staticItems + sortedVideos
+
+                // For newest sort, we skip static items to avoid pinning channels/playlists to the top
+                if (sort == SearchSort.UPLOAD_DATE) sortedVideos else staticItems + sortedVideos
             }
 
             SearchUiState.Success(sortedItems, isLoadingMore)
@@ -149,6 +160,7 @@ class SearchViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val isSearchHistoryPaused = preferencesManager.isSearchHistoryPaused
+    private val isIncognitoMode = preferencesManager.isIncognitoMode
 
     fun onQueryChange(query: String) {
         _searchQuery.value = query
@@ -163,6 +175,12 @@ class SearchViewModel @Inject constructor(
         if (_searchSort.value == sort) return
         _searchSort.value = sort
         if (_searchQuery.value.isNotBlank()) {
+            // Reset the internal state to prevent "stale" results from being shown 
+            // while the new sort-specific query is fetching.
+            _internalUiState.value = SearchUiState.Loading
+            
+            // Only use the top-level Fetching indicator if switching TO newest sort
+            _isSortingNewest.value = (sort == SearchSort.UPLOAD_DATE)
             search(_searchQuery.value)
         }
     }
@@ -180,49 +198,100 @@ class SearchViewModel @Inject constructor(
 
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
-            _internalUiState.value = SearchUiState.Loading
+            // If it's not already in Loading state (from onSortChange), set it now.
+            if (_internalUiState.value !is SearchUiState.Loading && !_isSortingNewest.value) {
+                _internalUiState.value = SearchUiState.Loading
+            }
 
-            // Save to history if not paused
-            if (!isSearchHistoryPaused.first()) {
+            // Save to history if not paused and not incognito
+            if (!isSearchHistoryPaused.first() && !isIncognitoMode.first()) {
                 libraryRepository.addSearchQuery(query)
             }
 
-            searchVideosUseCase(query, _searchSort.value)
-                .onSuccess { result ->
-                    nextPage = result.nextPage
-                    _internalUiState.value = SearchUiState.Success(result.items)
-                }
-                .onFailure { exception ->
-                    val errorMessage = if (exception is java.net.UnknownHostException || exception is java.io.IOException) {
-                        "No internet connection"
-                    } else {
-                        exception.message ?: "Unknown error"
+            if (_isSortingNewest.value) {
+                performDeepSearch(query)
+            } else {
+                searchVideosUseCase(query, _searchSort.value)
+                    .onSuccess { result ->
+                        nextPage = result.nextPage
+                        _internalUiState.value = SearchUiState.Success(result.items)
+                        _isSortingNewest.value = false
                     }
-                    _internalUiState.value = SearchUiState.Error(errorMessage)
-                }
+                    .onFailure { exception ->
+                        _internalUiState.value = SearchUiState.Error(PlayTubeError.fromThrowable(exception))
+                        _isSortingNewest.value = false
+                    }
+            }
+        }
+    }
+
+    private suspend fun performDeepSearch(query: String) {
+        val allItems = mutableListOf<SearchItem>()
+        var currentPage: Page? = null
+        val maxPages = 5 // Deep fetch 5 pages immediately for "Newest" sort
+
+        try {
+            // Initial Page
+            val initialResult = searchVideosUseCase(query, SearchSort.UPLOAD_DATE).getOrThrow()
+            allItems.addAll(initialResult.items)
+            currentPage = initialResult.nextPage
+
+            // Progressively fetch and update UI (similar to Subscriptions)
+            _internalUiState.value = SearchUiState.Success(allItems.toList())
+
+            for (i in 1 until maxPages) {
+                if (currentPage == null) break
+                
+                delay(100) // Small delay to prevent rate limiting and allow UI to breathe
+                val nextResult = searchVideosUseCase.fetchNextPage(query, SearchSort.UPLOAD_DATE, currentPage).getOrThrow()
+                
+                val newItems = nextResult.items.filter { ni -> allItems.none { it.uniqueKey == ni.uniqueKey } }
+                allItems.addAll(newItems)
+                currentPage = nextResult.nextPage
+                
+                // Update UI incrementally so user sees results coming in
+                _internalUiState.value = SearchUiState.Success(
+                    items = allItems.toList(),
+                    isLoadingMore = i < maxPages - 1 && currentPage != null
+                )
+            }
+
+            nextPage = currentPage
+            _isSortingNewest.value = false
+        } catch (e: Exception) {
+            if (allItems.isNotEmpty()) {
+                _internalUiState.value = SearchUiState.Success(allItems.toList())
+            } else {
+                _internalUiState.value = SearchUiState.Error(PlayTubeError.fromThrowable(e))
+            }
+            _isSortingNewest.value = false
         }
     }
 
     fun loadNextPage() {
         val currentQuery = _searchQuery.value
         val currentPage = nextPage
+        // Re-enabled pagination for UPLOAD_DATE (Newest) to fetch more recent content
         if (isFetchingNextPage || currentPage == null || currentQuery.isBlank()) return
 
         isFetchingNextPage = true
         viewModelScope.launch {
             searchVideosUseCase.fetchNextPage(currentQuery, _searchSort.value, currentPage)
                 .onSuccess { result ->
-                    val currentState = _internalUiState.value
-                    if (currentState is SearchUiState.Success) {
-                        nextPage = result.nextPage
-                        
-                        // Strict de-duplication to prevent "accumulation" bugs
-                        val currentKeys = currentState.items.map { it.uniqueKey }.toSet()
-                        val filteredNewItems = result.items.filter { it.uniqueKey !in currentKeys }
-                        
-                        _internalUiState.value = SearchUiState.Success(
-                            items = currentState.items + filteredNewItems
-                        )
+                    _internalUiState.update { currentState ->
+                        if (currentState is SearchUiState.Success) {
+                            nextPage = result.nextPage
+                            
+                            // Strict de-duplication to prevent "accumulation" bugs
+                            val currentKeys = currentState.items.map { it.uniqueKey }.toSet()
+                            val filteredNewItems = result.items.filter { it.uniqueKey !in currentKeys }
+                            
+                            currentState.copy(
+                                items = currentState.items + filteredNewItems
+                            )
+                        } else {
+                            currentState
+                        }
                     }
                 }
             isFetchingNextPage = false
@@ -272,6 +341,13 @@ class SearchViewModel @Inject constructor(
 
     fun prepareDownload(video: VideoItem) {
         viewModelScope.launch {
+            // Optimistic Cache Check
+            val cachedBundle = videoRepository.getCachedStreamBundle(video.id)
+            if (cachedBundle != null && !cachedBundle.videoStreams.isEmpty()) {
+                _downloadState.value = DownloadDialogState.ShowDialog(video, cachedBundle)
+                return@launch
+            }
+
             _downloadState.value = DownloadDialogState.Loading(video)
             getVideoStreamsUseCase(video.id)
                 .onSuccess { bundle ->
@@ -327,5 +403,5 @@ sealed interface SearchUiState {
     object Initial : SearchUiState
     object Loading : SearchUiState
     data class Success(val items: List<SearchItem>, val isLoadingMore: Boolean = false) : SearchUiState
-    data class Error(val message: String) : SearchUiState
+    data class Error(val error: PlayTubeError) : SearchUiState
 }

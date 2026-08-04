@@ -86,4 +86,15 @@
     <string name="video_count">%s videos</string>
     <string name="background_play">Background Play</string>
     <string name="background_play_desc">Keep audio playing when app is minimized</string>
+
+    <!-- Sleep Timer -->
+    <string name="sleep_timer">Sleep Timer</string>
+    <string name="timer_off">Off</string>
+    <string name="timer_15">15 minutes</string>
+    <string name="timer_30">30 minutes</string>
+    <string name="timer_45">45 minutes</string>
+    <string name="timer_60">60 minutes</string>
+    <string name="timer_end_of_video">End of Video</string>
+    <string name="timer_minutes_remaining">%d minutes remaining</string>
+    <string name="timer_end_of_video_active">Stops at end of video</string>
 </resources>

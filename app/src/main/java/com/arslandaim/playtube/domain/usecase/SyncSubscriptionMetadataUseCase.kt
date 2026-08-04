@@ -18,19 +18,26 @@ class SyncSubscriptionMetadataUseCase @Inject constructor(
     suspend operator fun invoke() {
         val subscriptions = libraryRepository.getSubscriptions().first()
         
-        subscriptions.filter { it.subscriberCount == null || it.subscriberCount == 0L }.forEach { sub ->
+        // Sync channels that have missing metadata or seem to have ID as names
+        subscriptions.filter { 
+            it.subscriberCount == null || 
+            it.subscriberCount == 0L || 
+            it.thumbnailUrl == null ||
+            it.name.startsWith("UC")
+        }.forEach { sub ->
             try {
+                // Add a small delay to be "good citizens" and avoid throttling
+                kotlinx.coroutines.delay(500)
+                
                 val details = videoRepository.getChannelDetails(sub.channelId)
-                if (details.subscriberCount != null && details.subscriberCount > 0) {
-                    libraryRepository.subscribe(
-                        SubscriptionEntity(
-                            channelId = sub.channelId,
-                            name = details.name,
-                            thumbnailUrl = details.avatarUrl ?: sub.thumbnailUrl,
-                            subscriberCount = details.subscriberCount
-                        )
+                libraryRepository.subscribe(
+                    SubscriptionEntity(
+                        channelId = sub.channelId,
+                        name = details.name,
+                        thumbnailUrl = details.avatarUrl ?: sub.thumbnailUrl,
+                        subscriberCount = details.subscriberCount
                     )
-                }
+                )
             } catch (e: Exception) {
                 // Skip failed syncs to avoid blocking others
                 e.printStackTrace()

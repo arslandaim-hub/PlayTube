@@ -32,6 +32,7 @@ import com.arslandaim.playtube.domain.model.VideoItem
 fun MiniPlayerUI(
     video: VideoItem,
     player: Player,
+    isIncognito: Boolean = false,
     onMaximize: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
@@ -50,6 +51,21 @@ fun MiniPlayerUI(
         }
     }
 
+    val incognitoTint = Color(0xFF673AB7).copy(alpha = 0.12f)
+    val baseSurfaceColor = MaterialTheme.colorScheme.surface
+    val containerColor = if (isIncognito) {
+        baseSurfaceColor.copy(alpha = 0.85f).run {
+            Color(
+                red = (red + incognitoTint.red * incognitoTint.alpha) / (1 + incognitoTint.alpha),
+                green = (green + incognitoTint.green * incognitoTint.alpha) / (1 + incognitoTint.alpha),
+                blue = (blue + incognitoTint.blue * incognitoTint.alpha) / (1 + incognitoTint.alpha),
+                alpha = alpha
+            )
+        }
+    } else {
+        baseSurfaceColor.copy(alpha = com.arslandaim.playtube.ui.theme.GlassAlpha)
+    }
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -60,7 +76,7 @@ fun MiniPlayerUI(
                 indication = null,
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
             ),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = com.arslandaim.playtube.ui.theme.GlassAlpha),
+        color = containerColor,
         contentColor = MaterialTheme.colorScheme.onSurface,
         shape = RoundedCornerShape(20.dp), // Increased for v2 consistency
         tonalElevation = 0.dp,

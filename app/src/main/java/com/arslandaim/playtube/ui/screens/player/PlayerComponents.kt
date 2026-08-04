@@ -18,7 +18,6 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.BrightnessLow
 import androidx.compose.material.icons.filled.VolumeUp
@@ -27,6 +26,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -176,7 +176,7 @@ fun VideoHeaderSection(
     uploadDate: String?,
     description: String? = null
 ) {
-    var isExpanded by remember { mutableStateOf(false) }
+    var isExpanded by remember { mutableStateOf(value = false) }
 
     Column(
         modifier = Modifier
@@ -196,31 +196,25 @@ fun VideoHeaderSection(
         Spacer(modifier = Modifier.height(8.dp))
         
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Surface(
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                shape = RoundedCornerShape(6.dp)
-            ) {
-                Text(
-                    text = "${VideoUtils.formatViewCount(viewCount)} views",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                )
-            }
+            Text(
+                text = "${VideoUtils.formatViewCount(viewCount)} views",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                fontWeight = FontWeight.Bold
+            )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = VideoUtils.formatUploadDate(uploadDate),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                 fontWeight = FontWeight.Medium
             )
             Spacer(modifier = Modifier.weight(1f))
             Text(
                 text = if (isExpanded) "less" else "...more",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
+                fontWeight = FontWeight.ExtraBold
             )
         }
 
@@ -271,7 +265,7 @@ fun ChannelInfoSection(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            if (subscriberCount != null && subscriberCount > 0) {
+            if ((subscriberCount != null) && (subscriberCount > 0)) {
                 Text(
                     text = "${VideoUtils.formatNumber(subscriberCount)} subs",
                     style = MaterialTheme.typography.labelSmall,
@@ -353,7 +347,7 @@ fun PlayerActionPill(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     Surface(
         onClick = {
             // Subtle Haptic Feedback
@@ -396,35 +390,54 @@ fun LazyListScope.relatedVideosSection(
     relatedVideos: List<VideoItem>,
     downloadedIds: Set<String>,
     favoriteIds: Set<String>,
+    isAutoplayEnabled: Boolean,
+    onAutoplayChange: (Boolean) -> Unit,
     onVideoClick: (VideoItem) -> Unit,
     onChannelClick: (String) -> Unit,
     onFavoriteClick: (VideoItem) -> Unit,
-    onDownloadClick: (VideoItem) -> Unit
+    onDownloadClick: (VideoItem) -> Unit,
 ) {
     item {
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = stringResource(R.string.related_videos),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.related_videos),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Autoplay",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Switch(
+                        checked = isAutoplayEnabled,
+                        onCheckedChange = onAutoplayChange,
+                        modifier = Modifier.scale(0.7f)
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(12.dp))
         }
     }
 
     items(relatedVideos, key = { it.id }) { relatedVideo ->
-        Box(modifier = Modifier.padding(horizontal = 16.dp)) {
-            VideoItemRow(
-                video = relatedVideo,
-                isDownloaded = downloadedIds.contains(relatedVideo.id),
-                isFavorite = favoriteIds.contains(relatedVideo.id),
-                onFavoriteClick = { onFavoriteClick(relatedVideo) },
-                onDownloadClick = { onDownloadClick(relatedVideo) },
-                onChannelClick = { onChannelClick(relatedVideo.uploaderUrl ?: "") },
-                onClick = { onVideoClick(relatedVideo) }
-            )
-        }
-        Spacer(modifier = Modifier.height(16.dp))
+        VideoItemRow(
+            video = relatedVideo,
+            isDownloaded = downloadedIds.contains(relatedVideo.id),
+            isFavorite = favoriteIds.contains(relatedVideo.id),
+            onFavoriteClick = { onFavoriteClick(relatedVideo) },
+            onDownloadClick = { onDownloadClick(relatedVideo) },
+            onChannelClick = { onChannelClick(relatedVideo.uploaderUrl ?: "") },
+            onClick = { onVideoClick(relatedVideo) }
+        )
     }
 }

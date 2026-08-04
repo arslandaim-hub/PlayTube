@@ -46,4 +46,10 @@ abstract class RepositoryModule {
     abstract fun bindDataManagerRepository(
         dataManagerRepositoryImpl: DataManagerRepositoryImpl
     ): DataManagerRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindUpdateRepository(
+        updateRepositoryImpl: UpdateRepositoryImpl
+    ): UpdateRepository
 }

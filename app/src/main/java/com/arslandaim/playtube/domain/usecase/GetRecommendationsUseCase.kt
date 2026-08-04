@@ -5,11 +5,11 @@
 */
 package com.arslandaim.playtube.domain.usecase
 
-import com.arslandaim.playtube.data.local.PreferencesManager
 import com.arslandaim.playtube.domain.model.SearchItem
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.domain.repository.LibraryRepository
 import com.arslandaim.playtube.domain.repository.SearchRepository
+import com.arslandaim.playtube.domain.repository.VideoRepository
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -18,76 +18,139 @@ import javax.inject.Inject
 
 class GetRecommendationsUseCase @Inject constructor(
     private val searchRepository: SearchRepository,
-    private val libraryRepository: LibraryRepository,
-    private val preferencesManager: PreferencesManager
+    private val videoRepository: VideoRepository,
+    private val libraryRepository: LibraryRepository
 ) {
     suspend operator fun invoke(): Result<List<VideoItem>> = coroutineScope {
         try {
-            // 1. Get Top Interests from Local Intelligence Engine
+            // 1. Check if Recommendations are Paused or Learned Data should be ignored
+            // For now, if paused, we still show generic/trending but stop updating interests.
+            // If the profile is empty, we use a larger default set.
+
+            // 2. Multi-Seed Strategy
             val topInterests = libraryRepository.getTopInterests(20)
-            
-            val isHistoryEnabled = preferencesManager.isHistoryEnabled.first()
-            // Optimized: Fetch a fixed recent set directly from DB instead of full Flow collection
-            val watchHistory = if (isHistoryEnabled) libraryRepository.getRecentHistory(100) else emptyList()
+            val subscriptions = libraryRepository.getSubscriptions().first()
+            val watchHistory = libraryRepository.getRecentHistory(100)
             
             val seedKeywords = mutableListOf<String>()
+            val relatedVideoSeeds = mutableListOf<String>() // Video IDs to fetch related from
             
-            // Use top interests as primary seeds
+            // Interest-based seeds (Keywords)
             if (topInterests.isNotEmpty()) {
-                seedKeywords.addAll(topInterests.take(8).map { it.keyword })
+                seedKeywords.addAll(topInterests.take(10).map { it.keyword })
             }
             
-            // Supplemental seeds from recent history if profile is sparse
-            if (seedKeywords.size < 4 && watchHistory.isNotEmpty()) {
-                watchHistory.take(5).forEach { video ->
-                    seedKeywords.addAll(extractKeywords(video.title).take(2))
-                }
-            }
-            
-            // Fallback to defaults if profile is empty
-            if (seedKeywords.isEmpty()) {
-                seedKeywords.addAll(listOf("Technology", "Science", "Nature", "News", "Music", "Education"))
+            // Recent-based seeds (Related Videos)
+            if (watchHistory.isNotEmpty()) {
+                relatedVideoSeeds.addAll(watchHistory.take(3).map { it.videoId })
             }
 
-            // 2. Fetch Candidate Videos with Throttling (3 at a time)
-            val topics = seedKeywords.distinct().take(12) // Get more candidates
+            // Subscription-based seeds (Sample channels)
+            val subTopicSeeds = if (subscriptions.isNotEmpty()) {
+                subscriptions.shuffled().take(3).map { it.name }
+            } else emptyList()
+
+            // 3. Fetch Candidates from 3 sources
             val candidates = mutableListOf<VideoItem>()
-            
-            topics.chunked(3).forEach { chunk ->
+
+            // Source A: Keyword Search (Broad)
+            val searchTopics = (seedKeywords + subTopicSeeds).distinct().take(8)
+            searchTopics.chunked(2).forEach { chunk ->
                 val deferred = chunk.map { topic ->
                     async {
                         try {
                             searchRepository.search(topic).items
                                 .filterIsInstance<SearchItem.Video>()
                                 .map { it.video }
-                        } catch (e: Exception) {
-                            emptyList<VideoItem>()
-                        }
+                        } catch (e: Exception) { emptyList() }
                     }
                 }
                 candidates.addAll(deferred.awaitAll().flatten())
             }
 
-            // 3. Filtering & Diversification
-            // Filter out ANY video the user has already watched (global filtering)
+            // Source B: Related Videos (Deep/Specific)
+            // Enhanced: Take related videos from top 5 most recent history items
+            val highPrioritySeeds = watchHistory.take(5).map { it.videoId }
+            highPrioritySeeds.chunked(2).forEach { chunk ->
+                val deferred = chunk.map { videoId ->
+                    async {
+                        try {
+                            videoRepository.getStreamBundle(videoId).relatedVideos
+                        } catch (e: Exception) { emptyList() }
+                    }
+                }
+                candidates.addAll(deferred.awaitAll().flatten())
+            }
+
+            // 4. Filtering (Critical for Accuracy and User Experience)
             val watchedIds = watchHistory.map { it.videoId }.toSet()
+            val blacklist = libraryRepository.getBlacklistStatic().map { it.id }.toSet()
+            
             val filteredCandidates = candidates
                 .distinctBy { it.id }
-                .filter { it.id !in watchedIds }
-            
-            // Interleave results from different topics to ensure diversity
-            val shuffledRecommendations = filteredCandidates.shuffled().take(60)
+                .filter { (it.id !in watchedIds) && (it.id !in blacklist) }
 
-            Result.success(shuffledRecommendations)
+            // 5. Scoring & Ranking
+            // Simple scoring: Matches interest keywords +1, From subscribed channel +2
+            val scoredVideos = filteredCandidates.map { video ->
+                var score = 0f
+                
+                // Keyword match bonus
+                topInterests.forEach { interest ->
+                    if (video.title.contains(interest.keyword, ignoreCase = true)) {
+                        score += interest.weight * 0.5f
+                    }
+                }
+                
+                // Subscription bonus
+                if (subscriptions.any { it.channelId == video.uploaderUrl || it.name == video.uploaderName }) {
+                    score += 5f
+                }
+
+                // Recency/View bonus (Heuristic)
+                if (video.uploadDate?.contains("day", ignoreCase = true) == true || 
+                    video.uploadDate?.contains("hour", ignoreCase = true) == true) {
+                    score += 1f
+                }
+
+                video to score
+            }.sortedByDescending { it.second }
+
+            // 6. Diversification & Smart Shuffle
+            // We use a pool of the top 150 scored videos.
+            // Shuffling the top results ensures the feed feels fresh on every open.
+            val topPool = scoredVideos.take(150).map { it.first }
+            
+            // Smart Shuffle logic: prioritize the top 40% of the pool but shuffle them
+            val finalRecommendations = if (topPool.size >= 40) {
+                val highPriority = topPool.take(30).shuffled()
+                val mediumPriority = topPool.drop(30).shuffled()
+                (highPriority + mediumPriority).take(60)
+            } else {
+                // Refined Fallback: Pull from a wider variety of "Trending" topics if candidates are low
+                val fallbacks = mutableListOf<VideoItem>()
+                val fallbackTopics = listOf("Trending", "New Music", "Popular News", "Tech Reviews").shuffled()
+                
+                fallbackTopics.take(3).forEach { topic ->
+                    try {
+                        fallbacks.addAll(
+                            searchRepository.search(topic).items
+                                .filterIsInstance<SearchItem.Video>()
+                                .map { it.video }
+                        )
+                    } catch (e: Exception) { /* ignore */ }
+                }
+
+                (topPool + fallbacks)
+                    .distinctBy { it.id }
+                    .filter { (it.id !in watchedIds) && (it.id !in blacklist) }
+                    .shuffled()
+                    .take(60)
+            }
+
+            Result.success(finalRecommendations)
         } catch (e: Exception) {
             Result.failure(e)
         }
-    }
-
-    private fun extractKeywords(text: String): List<String> {
-        val stopWords = setOf("the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "with", "is", "are", "was", "were", "of")
-        return text.lowercase()
-            .split(Regex("[^a-zA-Z0-9]+"))
-            .filter { it.length > 2 && it !in stopWords }
     }
 }

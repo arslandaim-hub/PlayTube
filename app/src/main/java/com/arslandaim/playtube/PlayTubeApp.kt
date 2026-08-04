@@ -25,7 +25,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.schabi.newpipe.extractor.NewPipe
 import javax.inject.Inject
 
@@ -72,6 +74,24 @@ class PlayTubeApp : Application(), Configuration.Provider, SingletonImageLoader.
 
         createNotificationChannel()
         observeConnectivity()
+        prewarmNetwork()
+    }
+
+    private fun prewarmNetwork() {
+        applicationScope.launch(Dispatchers.IO) {
+            try {
+                // Pre-warm DNS and connections for YouTube and Google Video
+                val youtubeRequest = Request.Builder().url("https://www.youtube.com").head().build()
+                val gVideoRequest = Request.Builder().url("https://www.googlevideo.com").head().build()
+                
+                // Use newCall.enqueue or execute to warm up the connection pool
+                okHttpClient.newCall(youtubeRequest).execute().close()
+                okHttpClient.newCall(gVideoRequest).execute().close()
+                android.util.Log.d("PlayTubeApp", "Network pre-warmed successfully")
+            } catch (e: Exception) {
+                android.util.Log.w("PlayTubeApp", "Network pre-warming failed: ${e.message}")
+            }
+        }
     }
 
     private fun observeConnectivity() {

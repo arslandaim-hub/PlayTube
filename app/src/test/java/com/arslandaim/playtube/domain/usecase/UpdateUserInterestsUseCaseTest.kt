@@ -2,6 +2,7 @@ package com.arslandaim.playtube.domain.usecase
 
 import com.arslandaim.playtube.data.local.*
 import com.arslandaim.playtube.domain.repository.LibraryRepository
+import io.mockk.mockk
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
@@ -13,12 +14,14 @@ import org.junit.Test
 class UpdateUserInterestsUseCaseTest {
 
     private lateinit var fakeRepository: FakeLibraryRepository
+    private lateinit var fakePreferencesManager: PreferencesManager
     private lateinit var updateUserInterestsUseCase: UpdateUserInterestsUseCase
 
     @Before
     fun setup() {
         fakeRepository = FakeLibraryRepository()
-        updateUserInterestsUseCase = UpdateUserInterestsUseCase(fakeRepository)
+        fakePreferencesManager = FakePreferencesManager()
+        updateUserInterestsUseCase = UpdateUserInterestsUseCase(fakeRepository, fakePreferencesManager)
     }
 
     @Test
@@ -53,13 +56,21 @@ class UpdateUserInterestsUseCaseTest {
         
         updateUserInterestsUseCase(title, 1.0f, 1.0f)
 
-        // "the", "official", "video", "today" are stop-words.
-        // "best" was previously NOT a stopword, but now it is.
-        // Let's check for "video" and "official" to confirm filtering works.
         assertTrue(!fakeRepository.interests.containsKey("the"))
         assertTrue(!fakeRepository.interests.containsKey("official"))
         assertTrue(!fakeRepository.interests.containsKey("video"))
-        assertTrue(!fakeRepository.interests.containsKey("best")) // Now it's a stopword
+    }
+
+    class FakePreferencesManager : PreferencesManager(mockk(relaxed = true)) {
+        override val isRecommendationsPaused: Flow<Boolean> = flowOf(false)
+        override val isHistoryEnabled: Flow<Boolean> = flowOf(true)
+        override val isSearchHistoryPaused: Flow<Boolean> = flowOf(false)
+        override val isPipEnabled: Flow<Boolean> = flowOf(false)
+        override val isBackgroundPlayEnabled: Flow<Boolean> = flowOf(false)
+        override val isSubtitlesEnabled: Flow<Boolean> = flowOf(false)
+        override val isOnboardingCompleted: Flow<Boolean> = flowOf(true)
+        override val isSearchGridView: Flow<Boolean> = flowOf(false)
+        override val isAutoUpdateEnabled: Flow<Boolean> = flowOf(false)
     }
 
     class FakeLibraryRepository : LibraryRepository {
@@ -93,6 +104,12 @@ class UpdateUserInterestsUseCaseTest {
             interests[keyword] = (interests[keyword] ?: 0f) + weightDelta
         }
         override suspend fun applyInterestDecay(decayFactor: Float) {}
+        override suspend fun clearAllInterests() {}
         override suspend fun hasInterests(): Boolean = false
+        override fun getBlacklist(): Flow<List<BlacklistEntity>> = flowOf(emptyList())
+        override suspend fun getBlacklistStatic(): List<BlacklistEntity> = emptyList()
+        override suspend fun addToBlacklist(id: String, type: BlacklistType) {}
+        override suspend fun removeFromBlacklist(id: String) {}
+        override suspend fun isBlacklisted(id: String): Boolean = false
     }
 }

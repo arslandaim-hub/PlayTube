@@ -16,7 +16,8 @@ class LibraryRepositoryImpl @Inject constructor(
     private val playlistFavoriteDao: PlaylistFavoriteDao,
     private val subscriptionDao: SubscriptionDao,
     private val searchHistoryDao: SearchHistoryDao,
-    private val userInterestDao: UserInterestDao
+    private val userInterestDao: UserInterestDao,
+    private val blacklistDao: BlacklistDao
 ) : LibraryRepository {
 
     override fun getHistory(): Flow<List<HistoryEntity>> = historyDao.getAllHistory()
@@ -38,6 +39,13 @@ class LibraryRepositoryImpl @Inject constructor(
 
     override suspend fun clearHistory() {
         historyDao.clearHistory()
+    }
+
+    override suspend fun getWatchProgressForVideos(videoIds: List<String>): Map<String, Float?> {
+        if (videoIds.isEmpty()) return emptyMap()
+        return historyDao.getWatchProgressForVideos(videoIds).associate { 
+            it.videoId to if (it.durationMs > 0) it.progressMs.toFloat() / it.durationMs else null 
+        }
     }
 
     override fun getFavorites(): Flow<List<FavoriteEntity>> = favoriteDao.getAllFavorites()
@@ -110,5 +118,23 @@ class LibraryRepositoryImpl @Inject constructor(
         userInterestDao.purgeLowInterests()
     }
 
+    override suspend fun clearAllInterests() {
+        userInterestDao.clearInterests()
+    }
+
     override suspend fun hasInterests(): Boolean = userInterestDao.getInterestsCount() > 0
+
+    override fun getBlacklist(): Flow<List<BlacklistEntity>> = blacklistDao.getAllBlacklisted()
+
+    override suspend fun getBlacklistStatic(): List<BlacklistEntity> = blacklistDao.getAllBlacklistedStatic()
+
+    override suspend fun addToBlacklist(id: String, type: BlacklistType) {
+        blacklistDao.insert(BlacklistEntity(id, type))
+    }
+
+    override suspend fun removeFromBlacklist(id: String) {
+        blacklistDao.deleteById(id)
+    }
+
+    override suspend fun isBlacklisted(id: String): Boolean = blacklistDao.isBlacklisted(id)
 }

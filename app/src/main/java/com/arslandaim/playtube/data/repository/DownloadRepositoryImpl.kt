@@ -60,7 +60,7 @@ class DownloadRepositoryImpl @Inject constructor(
             playlistTitle = playlistTitle
         )
         downloadDao.insertDownload(entity)
-        enqueueDownloadWork(videoId, url, audioUrl, title, format)
+        enqueueDownloadWork(videoId, url, audioUrl, title, format, quality)
     }
 
     private fun enqueueDownloadWork(
@@ -68,14 +68,16 @@ class DownloadRepositoryImpl @Inject constructor(
         url: String?,
         audioUrl: String?,
         title: String,
-        format: String?
+        format: String?,
+        quality: String?
     ) {
         val data = workDataOf(
             "videoId" to videoId,
             "url" to url,
             "title" to title,
             "audioUrl" to audioUrl,
-            "format" to format
+            "format" to format,
+            "quality" to quality
         )
 
         val constraints = Constraints.Builder()
@@ -114,7 +116,7 @@ class DownloadRepositoryImpl @Inject constructor(
         entity?.let {
             if (it.status == DownloadStatus.PAUSED || it.status == DownloadStatus.FAILED) {
                 downloadDao.updateDownload(it.copy(status = DownloadStatus.WAITING))
-                enqueueDownloadWork(it.videoId, it.videoUrl, it.audioUrl, it.title, it.format)
+                enqueueDownloadWork(it.videoId, it.videoUrl, it.audioUrl, it.title, it.format, it.quality)
             }
         }
     }

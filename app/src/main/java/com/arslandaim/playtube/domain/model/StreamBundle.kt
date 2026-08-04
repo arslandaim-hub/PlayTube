@@ -20,8 +20,17 @@ data class StreamBundle(
     val uploadDate: String?,
     val thumbnailUrl: String?,
     val isLive: Boolean = false,
+    val isUpcoming: Boolean = false,
+    val scheduledStartTime: String? = null,
     val relatedVideos: List<VideoItem> = emptyList(),
     val nextRelatedVideosPage: Page? = null,
     val bestAudioStreamUrl: String? = null,
-    val subtitles: List<SubtitleItem> = emptyList()
-)
+    val subtitles: List<SubtitleItem> = emptyList(),
+    val extractedAt: Long = System.currentTimeMillis()
+) {
+    fun isExpired(): Boolean {
+        // YouTube stream URLs typically expire in 6 hours. We use 5.5 hours to be safe.
+        val expiryTimeMs = 5.5 * 60 * 60 * 1000
+        return System.currentTimeMillis() - extractedAt > expiryTimeMs
+    }
+}

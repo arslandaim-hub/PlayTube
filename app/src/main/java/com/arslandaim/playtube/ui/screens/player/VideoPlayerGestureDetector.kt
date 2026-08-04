@@ -29,7 +29,7 @@ fun VideoPlayerGestureDetector(
     onDragCancel: () -> Unit = {},
     onVerticalSwipeLeft: (Float) -> Unit = {},
     onVerticalSwipeRight: (Float) -> Unit = {},
-    content: @Composable () -> Unit
+    content: @Composable () -> Unit,
 ) {
     val doubleTapTimeout = 300L
     
@@ -50,7 +50,7 @@ fun VideoPlayerGestureDetector(
                                 tapCount++
                                 tapJob?.cancel()
                                 
-                                val isLeftSide = down.position.x < size.width / 2
+                                val isLeftSide = (down.position.x < size.width / 2)
                                 
                                 if (tapCount >= 2) {
                                     // Multi-tap detected

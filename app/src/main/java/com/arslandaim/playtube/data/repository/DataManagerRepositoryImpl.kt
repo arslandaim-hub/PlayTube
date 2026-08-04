@@ -7,21 +7,21 @@ package com.arslandaim.playtube.data.repository
 
 import android.content.Context
 import android.net.Uri
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.arslandaim.playtube.data.local.*
 import com.arslandaim.playtube.domain.repository.DataManagerRepository
 import com.arslandaim.playtube.domain.repository.ImportProgress
 import com.arslandaim.playtube.domain.usecase.UpdateUserInterestsUseCase
-import com.arslandaim.playtube.utils.VideoUtils
+import com.arslandaim.playtube.workers.ImportWorker
 import com.google.gson.Gson
 import com.google.gson.stream.JsonReader
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.util.zip.ZipEntry
@@ -35,106 +35,127 @@ class DataManagerRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val database: PlayTubeDatabase,
     private val preferencesManager: PreferencesManager,
-    private val updateUserInterestsUseCase: UpdateUserInterestsUseCase,
     private val gson: Gson
 ) : DataManagerRepository {
 
     override fun importTakeoutHistory(uri: Uri): Flow<ImportProgress> = flow {
-        emit(ImportProgress.Loading(0f, "Analyzing file..."))
+        emit(ImportProgress.Loading(0f, "Queuing background import..."))
         
-        var importedCount = 0
-        try {
-            context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                val reader = JsonReader(InputStreamReader(inputStream, "UTF-8"))
-                reader.beginArray()
-                
-                val batchSize = 100
-                val currentBatch = mutableListOf<HistoryEntity>()
-                
-                while (reader.hasNext()) {
-                    val item = gson.fromJson<TakeoutHistoryItem>(reader, TakeoutHistoryItem::class.java)
-                    val videoId = VideoUtils.extractVideoId(item.titleUrl)
-                    
-                    if (videoId.isNotBlank() && item.title != null) {
-                        val entity = HistoryEntity(
-                            videoId = videoId,
-                            title = item.title.removePrefix("Watched "),
-                            thumbnailUrl = VideoUtils.getBestThumbnailUrl(videoId),
-                            uploaderName = item.subtitles?.firstOrNull()?.name ?: "Unknown",
-                            timestamp = parseTakeoutTime(item.time)
-                        )
-                        currentBatch.add(entity)
-                        
-                        // Intelligent Weighting
-                        updateUserInterestsUseCase(entity.title, 0.3f, 1.0f)
-                    }
+        val workRequest = OneTimeWorkRequestBuilder<ImportWorker>()
+            .setInputData(workDataOf(
+                ImportWorker.KEY_URI to uri.toString(),
+                ImportWorker.KEY_TYPE to ImportWorker.TYPE_HISTORY
+            ))
+            .build()
+        
+        val workManager = WorkManager.getInstance(context)
+        workManager.enqueue(workRequest)
 
-                    if (currentBatch.size >= batchSize) {
-                        database.historyDao().insertAllIgnore(currentBatch)
-                        importedCount += currentBatch.size
-                        currentBatch.clear()
-                        emit(ImportProgress.Loading(0.5f, "Imported $importedCount items..."))
-                    }
+        // Observe the work status and emit progress
+        val workInfoFlow = workManager.getWorkInfoByIdFlow(workRequest.id)
+        
+        workInfoFlow.collect { workInfo ->
+            if (workInfo == null) return@collect
+            
+            val progress = workInfo.progress.getFloat(ImportWorker.PROGRESS_KEY, 0f)
+            val status = workInfo.progress.getString(ImportWorker.STATUS_KEY) ?: "Importing..."
+            
+            when (workInfo.state) {
+                androidx.work.WorkInfo.State.RUNNING -> {
+                    emit(ImportProgress.Loading(progress, status))
                 }
-                
-                if (currentBatch.isNotEmpty()) {
-                    database.historyDao().insertAllIgnore(currentBatch)
-                    importedCount += currentBatch.size
+                androidx.work.WorkInfo.State.SUCCEEDED -> {
+                    val count = workInfo.outputData.getInt(ImportWorker.COUNT_KEY, 0)
+                    emit(ImportProgress.Success(count))
+                    currentCoroutineContext().cancel()
                 }
-                
-                reader.endArray()
+                androidx.work.WorkInfo.State.FAILED -> {
+                    val error = workInfo.outputData.getString("error") ?: "Background import failed"
+                    emit(ImportProgress.Error(error))
+                    currentCoroutineContext().cancel()
+                }
+                else -> {}
             }
-            emit(ImportProgress.Success(importedCount))
-        } catch (e: Exception) {
-            emit(ImportProgress.Error(e.message ?: "Unknown error during history import"))
+        }
+    }.catch { e -> 
+        if (e !is CancellationException) {
+            emit(ImportProgress.Error(e.message ?: "Unknown error"))
         }
     }.flowOn(Dispatchers.IO)
 
     override fun importTakeoutSubscriptions(uri: Uri): Flow<ImportProgress> = flow {
-        emit(ImportProgress.Loading(0f, "Parsing subscriptions..."))
+        emit(ImportProgress.Loading(0f, "Queuing background import..."))
         
-        var importedCount = 0
-        try {
-            context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                val reader = inputStream.bufferedReader()
-                reader.readLine() // Skip CSV header
-                
-                val batchSize = 50
-                val currentBatch = mutableListOf<SubscriptionEntity>()
-                
-                reader.forEachLine { line ->
-                    val parts = line.split(",")
-                    if (parts.size >= 2) {
-                        val channelId = parts[0].trim().removePrefix("\"").removeSuffix("\"")
-                        val channelTitle = parts[1].trim().removePrefix("\"").removeSuffix("\"")
-                        
-                        if (channelId.startsWith("UC")) {
-                            currentBatch.add(
-                                SubscriptionEntity(
-                                    channelId = channelId,
-                                    name = channelTitle
-                                )
-                            )
-                        }
-                    }
-                    
-                    if (currentBatch.size >= batchSize) {
-                        runBlocking {
-                            database.subscriptionDao().insertAllIgnore(currentBatch)
-                        }
-                        importedCount += currentBatch.size
-                        currentBatch.clear()
-                    }
+        val workRequest = OneTimeWorkRequestBuilder<ImportWorker>()
+            .setInputData(workDataOf(
+                ImportWorker.KEY_URI to uri.toString(),
+                ImportWorker.KEY_TYPE to ImportWorker.TYPE_SUBSCRIPTIONS
+            ))
+            .build()
+        
+        val workManager = WorkManager.getInstance(context)
+        workManager.enqueue(workRequest)
+
+        val workInfoFlow = workManager.getWorkInfoByIdFlow(workRequest.id)
+        
+        workInfoFlow.collect { workInfo ->
+            if (workInfo == null) return@collect
+            
+            val progress = workInfo.progress.getFloat(ImportWorker.PROGRESS_KEY, 0f)
+            val status = workInfo.progress.getString(ImportWorker.STATUS_KEY) ?: "Importing..."
+            
+            when (workInfo.state) {
+                androidx.work.WorkInfo.State.RUNNING -> {
+                    emit(ImportProgress.Loading(progress, status))
                 }
-                
-                database.subscriptionDao().insertAllIgnore(currentBatch)
-                importedCount += currentBatch.size
+                androidx.work.WorkInfo.State.SUCCEEDED -> {
+                    val count = workInfo.outputData.getInt(ImportWorker.COUNT_KEY, 0)
+                    emit(ImportProgress.Success(count))
+                    currentCoroutineContext().cancel()
+                }
+                androidx.work.WorkInfo.State.FAILED -> {
+                    val error = workInfo.outputData.getString("error") ?: "Background import failed"
+                    emit(ImportProgress.Error(error))
+                    currentCoroutineContext().cancel()
+                }
+                else -> {}
             }
-            emit(ImportProgress.Success(importedCount))
-        } catch (e: Exception) {
-            emit(ImportProgress.Error(e.message ?: "Unknown error during subscription import"))
+        }
+    }.catch { e ->
+        if (e !is CancellationException) {
+            emit(ImportProgress.Error(e.message ?: "Unknown error"))
         }
     }.flowOn(Dispatchers.IO)
+
+    private fun getStreamForFile(uri: Uri, targetFileName: String): java.io.InputStream? {
+        val cr = context.contentResolver
+        val mimeType = cr.getType(uri)
+        val isZip = mimeType == "application/zip" || 
+                    uri.path?.endsWith(".zip", ignoreCase = true) == true ||
+                    mimeType == "application/x-zip-compressed"
+        
+        if (!isZip) return try { cr.openInputStream(uri) } catch (e: Exception) { null }
+        
+        // Handle ZIP
+        return try {
+            val zipInputStream = ZipInputStream(cr.openInputStream(uri))
+            var entry = zipInputStream.nextEntry
+            while (entry != null) {
+                // Google Takeout often nests files like "Takeout/YouTube and YouTube Music/history/watch-history.json"
+                val name = entry.name
+                if (name.endsWith(targetFileName, ignoreCase = true)) {
+                    return zipInputStream // Caller must close it
+                }
+                zipInputStream.closeEntry()
+                entry = zipInputStream.nextEntry
+            }
+            zipInputStream.close()
+            null
+        } catch (e: Exception) {
+            android.util.Log.e("DataManager", "Error opening ZIP stream", e)
+            null
+        }
+    }
 
     override suspend fun createBackup(uri: Uri): Result<Unit> = withContext(Dispatchers.IO) {
         try {
@@ -144,6 +165,7 @@ class DataManagerRepositoryImpl @Inject constructor(
             val subscriptions = database.subscriptionDao().getAllSubscriptionsStatic()
             val searchHistory = database.searchHistoryDao().getAllSearchHistoryStatic()
             val userInterests = database.userInterestDao().getAllInterestsStatic()
+            val blacklist = database.blacklistDao().getAllBlacklistedStatic()
             
             val prefs = PlayTubePreferences(
                 isHistoryEnabled = preferencesManager.isHistoryEnabled.first(),
@@ -152,11 +174,13 @@ class DataManagerRepositoryImpl @Inject constructor(
                 isBackgroundPlayEnabled = preferencesManager.isBackgroundPlayEnabled.first(),
                 isSubtitlesEnabled = preferencesManager.isSubtitlesEnabled.first(),
                 isOnboardingCompleted = preferencesManager.isOnboardingCompleted.first(),
-                isSearchGridView = preferencesManager.isSearchGridView.first()
+                isSearchGridView = preferencesManager.isSearchGridView.first(),
+                isAutoUpdateEnabled = preferencesManager.isAutoUpdateEnabled.first(),
+                isRecommendationsPaused = preferencesManager.isRecommendationsPaused.first()
             )
 
             val backup = PlayTubeBackup(
-                version = 1,
+                version = 2,
                 timestamp = System.currentTimeMillis(),
                 history = history,
                 favorites = favorites,
@@ -164,6 +188,7 @@ class DataManagerRepositoryImpl @Inject constructor(
                 subscriptions = subscriptions,
                 searchHistory = searchHistory,
                 userInterests = userInterests,
+                blacklist = blacklist,
                 preferences = prefs
             )
 
@@ -193,6 +218,7 @@ class DataManagerRepositoryImpl @Inject constructor(
                     if (entry?.name == "backup.json") {
                         val reader = InputStreamReader(zis)
                         val backup = gson.fromJson(reader, PlayTubeBackup::class.java)
+                            ?: return@withContext Result.failure(Exception("Failed to parse backup file"))
                         
                         database.runInTransaction {
                             database.historyDao().clearHistorySync()
@@ -200,7 +226,10 @@ class DataManagerRepositoryImpl @Inject constructor(
                             database.playlistFavoriteDao().clearPlaylistFavorites()
                             database.subscriptionDao().clearSubscriptions()
                             database.searchHistoryDao().clearAllSearchHistorySync()
-                            database.userInterestDao().clearInterests()
+                            database.userInterestDao().clearInterestsSync()
+                            database.blacklistDao().getAllBlacklistedStaticSync().forEach { 
+                                database.blacklistDao().deleteSync(it) 
+                            }
 
                             database.historyDao().insertAllIgnoreSync(backup.history)
                             database.favoriteDao().insertAllIgnoreSync(backup.favorites)
@@ -208,16 +237,23 @@ class DataManagerRepositoryImpl @Inject constructor(
                             database.subscriptionDao().insertAllIgnoreSync(backup.subscriptions)
                             database.searchHistoryDao().insertAllIgnoreSync(backup.searchHistory)
                             database.userInterestDao().insertAllIgnoreSync(backup.userInterests)
+                            backup.blacklist?.let { list ->
+                                list.forEach { database.blacklistDao().insertSync(it) }
+                            }
                         }
 
-                        // Restore preferences
-                        preferencesManager.setHistoryEnabled(backup.preferences.isHistoryEnabled)
-                        preferencesManager.setSearchHistoryPaused(backup.preferences.isSearchHistoryPaused)
-                        preferencesManager.setPipEnabled(backup.preferences.isPipEnabled)
-                        preferencesManager.setBackgroundPlayEnabled(backup.preferences.isBackgroundPlayEnabled)
-                        preferencesManager.setSubtitlesEnabled(backup.preferences.isSubtitlesEnabled)
-                        preferencesManager.setOnboardingCompleted(backup.preferences.isOnboardingCompleted)
-                        preferencesManager.setSearchGridView(backup.preferences.isSearchGridView)
+                        // Restore preferences outside transaction as DataStore is not part of Room transaction
+                        coroutineScope {
+                            launch { preferencesManager.setHistoryEnabled(backup.preferences.isHistoryEnabled) }
+                            launch { preferencesManager.setSearchHistoryPaused(backup.preferences.isSearchHistoryPaused) }
+                            launch { preferencesManager.setPipEnabled(backup.preferences.isPipEnabled) }
+                            launch { preferencesManager.setBackgroundPlayEnabled(backup.preferences.isBackgroundPlayEnabled) }
+                            launch { preferencesManager.setSubtitlesEnabled(backup.preferences.isSubtitlesEnabled) }
+                            launch { preferencesManager.setOnboardingCompleted(backup.preferences.isOnboardingCompleted) }
+                            launch { preferencesManager.setSearchGridView(backup.preferences.isSearchGridView) }
+                            launch { preferencesManager.setAutoUpdateEnabled(backup.preferences.isAutoUpdateEnabled) }
+                            launch { preferencesManager.setRecommendationsPaused(backup.preferences.isRecommendationsPaused) }
+                        }
                     }
                 }
             }
@@ -258,6 +294,7 @@ data class PlayTubeBackup(
     val subscriptions: List<SubscriptionEntity>,
     val searchHistory: List<SearchHistoryEntity>,
     val userInterests: List<UserInterestEntity>,
+    val blacklist: List<BlacklistEntity>? = emptyList(),
     val preferences: PlayTubePreferences
 )
 
@@ -268,5 +305,7 @@ data class PlayTubePreferences(
     val isBackgroundPlayEnabled: Boolean,
     val isSubtitlesEnabled: Boolean,
     val isOnboardingCompleted: Boolean,
-    val isSearchGridView: Boolean
+    val isSearchGridView: Boolean,
+    val isAutoUpdateEnabled: Boolean = false,
+    val isRecommendationsPaused: Boolean = false
 )

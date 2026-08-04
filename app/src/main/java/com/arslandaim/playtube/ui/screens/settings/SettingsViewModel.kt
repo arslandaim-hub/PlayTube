@@ -40,6 +40,12 @@ class SettingsViewModel @Inject constructor(
     val isBackgroundPlayEnabled: StateFlow<Boolean> = preferencesManager.isBackgroundPlayEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    val isAutoUpdateEnabled: StateFlow<Boolean> = preferencesManager.isAutoUpdateEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val isRecommendationsPaused: StateFlow<Boolean> = preferencesManager.isRecommendationsPaused
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     fun setHistoryEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesManager.setHistoryEnabled(enabled)
@@ -61,6 +67,18 @@ class SettingsViewModel @Inject constructor(
     fun setBackgroundPlayEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesManager.setBackgroundPlayEnabled(enabled)
+        }
+    }
+
+    fun setRecommendationsPaused(paused: Boolean) {
+        viewModelScope.launch {
+            preferencesManager.setRecommendationsPaused(paused)
+        }
+    }
+
+    fun clearLearnedInterests() {
+        viewModelScope.launch {
+            libraryRepository.clearAllInterests()
         }
     }
 

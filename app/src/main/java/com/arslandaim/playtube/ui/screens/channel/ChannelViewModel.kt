@@ -13,13 +13,9 @@ import com.arslandaim.playtube.domain.model.ChannelDetails
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.domain.model.StreamBundle
 import com.arslandaim.playtube.domain.repository.LibraryRepository
-import com.arslandaim.playtube.domain.usecase.GetChannelDetailsUseCase
-import com.arslandaim.playtube.domain.usecase.IsSubscribedUseCase
-import com.arslandaim.playtube.domain.usecase.ToggleSubscriptionUseCase
-import com.arslandaim.playtube.domain.usecase.DownloadVideoUseCase
-import com.arslandaim.playtube.domain.usecase.GetVideoStreamsUseCase
-import com.arslandaim.playtube.domain.usecase.ToggleFavoriteUseCase
+import com.arslandaim.playtube.domain.usecase.*
 import com.arslandaim.playtube.ui.components.DownloadDialogState
+import com.arslandaim.playtube.utils.PlayTubeError
 import com.arslandaim.playtube.utils.VideoUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -98,7 +94,7 @@ class ChannelViewModel @Inject constructor(
                     }
                 }
                 .onFailure { exception ->
-                    _internalUiState.value = ChannelUiState.Error(exception.message ?: "Unknown error")
+                    _internalUiState.value = ChannelUiState.Error(PlayTubeError.fromThrowable(exception))
                 }
         }
     }
@@ -106,26 +102,38 @@ class ChannelViewModel @Inject constructor(
     fun loadNextPage() {
         val url = currentChannelUrl
         val page = nextPage
-        if (isFetchingNextPage || page == null || url == null) return
+        val currentState = _internalUiState.value
+        
+        if (isFetchingNextPage || page == null || url == null || currentState !is ChannelUiState.Success) return
 
         isFetchingNextPage = true
+        _internalUiState.value = currentState.copy(isFetchingNextPage = true)
+
         viewModelScope.launch {
             try {
                 val result = videoRepository.fetchNextChannelVideosPage(url, page)
-                val currentState = _internalUiState.value
-                if (currentState is ChannelUiState.Success) {
+                val updatedState = _internalUiState.value
+                if (updatedState is ChannelUiState.Success) {
                     nextPage = result.nextPage
-                    val updatedDetails = currentState.details.copy(
-                        videos = currentState.details.videos + result.items,
+                    val updatedDetails = updatedState.details.copy(
+                        videos = (updatedState.details.videos + result.items).distinctBy { it.id },
                         nextVideosPage = result.nextPage
                     )
                     currentDetails = updatedDetails
-                    _internalUiState.value = ChannelUiState.Success(updatedDetails)
+                    _internalUiState.value = ChannelUiState.Success(
+                        details = updatedDetails,
+                        isFetchingNextPage = false
+                    )
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+                val errorState = _internalUiState.value
+                if (errorState is ChannelUiState.Success) {
+                    _internalUiState.value = errorState.copy(isFetchingNextPage = false)
+                }
+            } finally {
+                isFetchingNextPage = false
             }
-            isFetchingNextPage = false
         }
     }
 
@@ -169,6 +177,13 @@ class ChannelViewModel @Inject constructor(
 
     fun prepareDownload(video: VideoItem) {
         viewModelScope.launch {
+            // Optimistic Cache Check
+            val cachedBundle = videoRepository.getCachedStreamBundle(video.id)
+            if (cachedBundle != null && !cachedBundle.videoStreams.isEmpty()) {
+                _downloadState.value = DownloadDialogState.ShowDialog(video, cachedBundle)
+                return@launch
+            }
+
             _downloadState.value = DownloadDialogState.Loading(video)
             getVideoStreamsUseCase(video.id)
                 .onSuccess { bundle ->
@@ -221,6 +236,9 @@ class ChannelViewModel @Inject constructor(
 
 sealed interface ChannelUiState {
     object Loading : ChannelUiState
-    data class Success(val details: ChannelDetails) : ChannelUiState
-    data class Error(val message: String) : ChannelUiState
+    data class Success(
+        val details: ChannelDetails,
+        val isFetchingNextPage: Boolean = false
+    ) : ChannelUiState
+    data class Error(val error: PlayTubeError) : ChannelUiState
 }

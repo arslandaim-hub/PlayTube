@@ -35,7 +35,13 @@ fun DataManagementScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
-        viewModel.snackbarMessage.collect { message ->
+        viewModel.importSnackbarMessage.collect { message ->
+            snackbarHostState.showSnackbar(message)
+        }
+    }
+    
+    LaunchedEffect(Unit) {
+        viewModel.localSnackbarMessage.collect { message ->
             snackbarHostState.showSnackbar(message)
         }
     }
@@ -89,16 +95,16 @@ fun DataManagementScreen(
                 SettingsGroup(title = "YouTube Takeout Import") {
                     SettingsItem(
                         title = "Import Watch History",
-                        subtitle = "Select your watch-history.json file",
+                        subtitle = "Select your watch-history.json or Takeout ZIP",
                         icon = Icons.Default.History,
-                        onClick = { historyPicker.launch(arrayOf("application/json")) }
+                        onClick = { historyPicker.launch(arrayOf("application/json", "application/zip")) }
                     )
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp)
                     SettingsItem(
                         title = "Import Subscriptions",
-                        subtitle = "Select your subscriptions.csv file",
+                        subtitle = "Select your subscriptions.csv or Takeout ZIP",
                         icon = Icons.Default.Subscriptions,
-                        onClick = { subscriptionsPicker.launch(arrayOf("text/comma-separated-values", "text/csv")) }
+                        onClick = { subscriptionsPicker.launch(arrayOf("text/comma-separated-values", "text/csv", "application/zip")) }
                     )
                 }
             }
@@ -139,6 +145,13 @@ fun DataManagementScreen(
                                     Text(progress.status, style = MaterialTheme.typography.bodyMedium)
                                     Spacer(modifier = Modifier.height(8.dp))
                                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "You can safely leave this page. The import will continue in the background.",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
                                 }
                                 is ImportProgress.Success -> {
                                     Icon(Icons.Default.CheckCircle, "Success", tint = Color.Green)
