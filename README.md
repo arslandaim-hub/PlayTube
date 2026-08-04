@@ -8,9 +8,25 @@
 
 <img src="fastlane/metadata/android/en-US/images/PlaytubefeatureGraphic.png" alt="PlayTube Feature Graphic" width="100%">
 
+<!-- STATUS BADGES -->
+<p align="center">
+  <a href="https://github.com/arslandaim-hub/PlayTube/releases/latest">
+    <img src="https://img.shields.io/github/v/release/arslandaim-hub/PlayTube?style=flat-square&color=10b981" alt="Latest Release">
+  </a>
+  <a href="https://github.com/arslandaim-hub/PlayTube/stargazers">
+    <img src="https://img.shields.io/github/stars/arslandaim-hub/PlayTube?style=flat-square&color=fbbf24" alt="GitHub Stars">
+  </a>
+  <a href="https://github.com/arslandaim-hub/PlayTube/network/members">
+    <img src="https://img.shields.io/github/forks/arslandaim-hub/PlayTube?style=flat-square&color=fbbf24" alt="GitHub Forks">
+  </a>
+  <a href="https://github.com/arslandaim-hub/PlayTube/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/arslandaim-hub/PlayTube?style=flat-square&color=3b82f6" alt="License">
+  </a>
+  <img src="https://img.shields.io/badge/Android-API%2024%2B-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android Support">
+  <img src="https://img.shields.io/badge/Kotlin-100%25-B125EA?style=flat-square&logo=kotlin&logoColor=white" alt="Kotlin">
+</p>
+
 <br>
-<br><br>
-<div align="center">
 
 <a href="https://github.com/arslandaim-hub/PlayTube/releases/latest">
   <img src="https://img.shields.io/badge/GET%20IT%20ON-GitHub-000000?style=for-the-badge&logo=github&logoColor=white" height="50" alt="Get it on GitHub">
@@ -101,14 +117,7 @@ If you enjoy using PlayTube and would like to support its continued development,
   </a>
 </div>
 
-
-
-## 📌 Important Notes
+## 📌 Important
 
 *   **Subscriptions:** The Subscriptions tab on the home screen only populates when you subscribe to a channel. Videos in this tab are strictly from your subscribed channels.
 *   **Recommendations:** The home page suggests videos based on your search history. If you pause your search history in the settings, the app will stop suggesting search-related videos on the home screen.
-<!--
-<p align="center">
-  <img src="https://img.shields.io/github/downloads/arslandaim-hub/PlayTube/total?style=for-the-badge&logo=github" alt="Downloads">
-</p>
--->
