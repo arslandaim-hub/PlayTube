@@ -1,0 +1,18 @@
+##  What's New in v1.3.4
+
+*  Added **Incognito Mode**, allowing you to browse without affecting personalized recommendations.
+*  Added **multi-language subtitle** support.
+*  Refined the **Subscriptions** feed and improved channel navigation.
+*  Added a dedicated **Search** tab to the bottom navigation for quicker access.
+*  Added **Recommendation Engine** controls in Settings to pause learning or clear learned data.
+*  Added support for importing **Google Takeout ZIP** files.
+
+###  Fixes & Improvements
+
+*  Fixed **Local Network Support** on Android 17 devices.
+*  Added **IPv4 fallback**, resolving the "No Videos" issue on HyperOS and some other devices.
+*  Fixed subtitle positioning.
+*  Fixed the black screen issue when pausing videos.
+*  General bug fixes and performance improvements.
+
+ 
