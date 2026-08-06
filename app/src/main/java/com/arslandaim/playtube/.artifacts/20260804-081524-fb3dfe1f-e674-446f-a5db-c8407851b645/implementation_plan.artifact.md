@@ -1,28 +1,41 @@
-# Fix Autoplay & Silent Pre-loaded Video
+# Implementation Plan - Online Status Banner
 
-This plan fixes two issues: the player advancing to the next video even when autoplay is disabled, and pre-loaded videos having no audio.
-
-## Root Cause Analysis
-
-1.  **Autoplay Logic Error**: `PlayerViewModel` currently uses `player.addMediaItem(1, mediaItem)` to preload the next video. However, ExoPlayer automatically advances to the next item in the queue when the current one ends, regardless of our internal `_isAutoplayEnabled` state. The manual `loadVideo` call in the listener is redundant and potentially creates a race condition.
-2.  **Missing Audio in Preload**: `prepareNextMediaItem` uses `MediaItem.Builder().setUri(stream.url)...build()`. This only sets the video stream URL. In PlayTube's architecture, high-quality streams are often "adaptive" (separate video and audio). The current preloading logic forgets to fetch and merge the audio track for these adaptive streams.
+This plan adds a transient "Online" banner that appears just below the Top App Bar for 3 seconds when the internet connection is restored.
 
 ## Proposed Changes
 
-### ViewModel Layer
+### UI & Animation Layer
 
-#### [PlayerViewModel.kt](file:///C:/Users/AK/AndroidStudioProjects/PlayTube/app/src/main/java/com/arslandaim/playtube/ui/screens/player/PlayerViewModel.kt)
+#### [MainActivity.kt](file:///C:/Users/AK/AndroidStudioProjects/PlayTube/app/src/main/java/com/arslandaim/playtube/MainActivity.kt)
 
-- **Disable Native Advancement**: Set `player.repeatMode = Player.REPEAT_MODE_OFF` and ensure the queue only advanced when we explicitly allow it. Actually, a better way is to NOT add the next item to the queue if autoplay is off.
-- **Refine Preloading**: Update `prepareNextMediaItem` to use the correct `MediaSource` construction logic (similar to `setMediaSource`) which merges audio for adaptive streams.
-- **Fix Transition Logic**: Ensure the listener respects the `_isAutoplayEnabled` flag correctly and prevents automatic queue advancement if disabled.
+- **State Observation**: Observe the `isOffline` state to detect the transition from offline to online.
+- **Timer Logic**: Use a `LaunchedEffect` with `snapshotFlow` or similar to detect when `isOffline` becomes `false` after having been `true`.
+- **Implement `OnlineTopBanner`**: Create a compact green banner component.
+    - Style: Material 3 `successContainer` or a custom green variant.
+    - Message: "Back Online".
+- **Placement**: Anchor the banner inside the `TopAppBar` column, ensuring it appears below the bar but above the main content.
 
 ```kotlin
-// Revised prepareNextMediaItem
-private fun prepareNextMediaItem(video: VideoItem, bundle: StreamBundle) {
-    if (!_isAutoplayEnabled.value) return // Don't preload if user doesn't want autoplay
+// Detection Logic
+var showOnlineBanner by remember { mutableStateOf(false) }
+var wasPreviouslyOffline by remember { mutableStateOf(false) }
 
-    // ... logic to build full MediaItem with audio merging ...
+LaunchedEffect(isOffline) {
+    if (!isOffline && wasPreviouslyOffline) {
+        showOnlineBanner = true
+        delay(3000L) // 3 second timer
+        showOnlineBanner = false
+    }
+    wasPreviouslyOffline = isOffline
+}
+
+// UI Integration in the Scaffold topBar Column
+AnimatedVisibility(
+    visible = showOnlineBanner,
+    enter = expandVertically() + fadeIn(),
+    exit = shrinkVertically() + fadeOut()
+) {
+    OnlineTopBanner()
 }
 ```
 
@@ -31,6 +44,10 @@ private fun prepareNextMediaItem(video: VideoItem, bundle: StreamBundle) {
 ## Verification Plan
 
 ### Manual Verification
-- **Autoplay OFF**: Start a video, disable autoplay. Wait for it to end. Verify that it stops on the end screen/last frame and does NOT start the next video.
-- **Autoplay ON**: Enable autoplay. Wait for video to end. Verify that the next video starts automatically AND has sound.
-- **Manual Skip**: Start a video, click "Next". Verify the next video has sound (verifies that pre-loaded items are correctly configured with audio).
+- **Reconnection Check**:
+    1. Start the app offline (Bottom banner should appear/timer out).
+    2. Enable Wi-Fi.
+    3. Verify a green "Back Online" banner appears under the Top App Bar.
+    4. Verify it disappears automatically after 3 seconds.
+- **Initial Launch**: Verify the banner does NOT appear when the app is launched with a working connection (it should only trigger on restoration).
+- **Z-Index/Layout**: Ensure it doesn't push down the Top App Bar or overlap icons in a jarring way.

@@ -93,8 +93,8 @@ fun PlayerOverlay(
             .fillMaxSize()
             .zIndex(100f) // Ensure it's above everything
     ) {
-        // Handle System Back Press: Minimize when expanded
-        BackHandler(enabled = isExpanded) {
+        // SSOT Back Interception: Depend strictly on manager visibility to prevent bleed-through
+        BackHandler(enabled = visibility == MiniPlayerVisibility.Expanded) {
             onMinimize()
         }
 

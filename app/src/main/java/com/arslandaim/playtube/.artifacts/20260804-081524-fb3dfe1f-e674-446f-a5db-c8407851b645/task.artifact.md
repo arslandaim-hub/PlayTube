@@ -1,14 +1,17 @@
-# Task: Fix Autoplay and Silent Next Video
+# Task: Implementation of Transient Banners & Resume Fix
 
 - [x] Research and Planning
-    - [x] Analyze `PlayerViewModel` queue logic
-    - [x] Identify cause of silent pre-loaded videos (missing audio merge)
-    - [x] Identify cause of forced autoplay (ExoPlayer queue behavior)
+    - [x] Analyze Top Bar structure for "Online" banner
+    - [x] Design restoration detection logic
+    - [x] Investigate "Black Screen" on resume for local videos
     - [x] Create implementation plan
 - [x] Implementation
-    - [x] Update `prepareNextMediaItem` to merge audio for adaptive streams
-    - [x] Refactor autoplay logic to strictly respect the `_isAutoplayEnabled` flag
+    - [x] Add 3s timer for "Online" banner
+    - [x] Add 5s timer for "Offline" banner
+    - [x] Shrink both banners for a more compact look
+    - [x] Fix overlap by increasing Z-index to 200f
+    - [x] Robustify `PlayerView` update block to force surface re-attach
 - [ ] Verification
-    - [ ] Verify autoplay OFF behavior
-    - [ ] Verify autoplay ON transitions have audio
-    - [ ] Verify manual skip has audio
+    - [ ] Verify banner timers work as expected
+    - [ ] Verify banners appear above mini-player
+    - [ ] Verify local videos resume correctly after long pauses

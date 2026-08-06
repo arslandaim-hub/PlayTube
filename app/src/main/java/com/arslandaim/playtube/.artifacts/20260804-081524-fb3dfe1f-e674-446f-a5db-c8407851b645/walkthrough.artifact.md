@@ -5,9 +5,11 @@
 - **Playlist Quality Support**: Enabled multi-quality downloads for entire playlists. When clicking "Download All", users can now choose from 360p up to 4K.
 
 ## 1. Error Handling & Offline Experience
-- **Startup Intelligence**: The app now detects offline status on launch and automatically redirects the user to the "Library" or "Downloads" screen if onboarding is complete.
-- **Global Offline Dialog**: A friendly "You are offline" dialog appears on startup if no connection is found, providing immediate guidance to accessible content.
-- **Reliable Connectivity**: Enhanced the `NetworkConnectivityObserver` with redundant checks to ensure the initial connection state is accurate.
+- **Fixed Navigation Hijacking**: Completely removed the logic that automatically switched screens (e.g., to the Library) when the internet was lost. The app now preserves your current screen state exactly as it is.
+- **Non-Blocking Offline Banner**: Implemented a root-level slide-up banner at the bottom of the screen. It is compactly designed with a high Z-index (200f) to appear above all UI elements, including the mini-player. It features an **automatic 5-second dismiss timer** to remain non-intrusive while providing a manual "Go to downloads" option.
+- **Back Online Notification**: Added a transient "Back Online" banner that appears just below the Top App Bar for **3 seconds** when the internet connection is restored. This provides immediate, positive feedback without disrupting the user's current view.
+- **Local Playback Robustness**: Resolved the issue where downloaded videos would go black or fail to resume after long pauses. I updated the `PlayerView` attachment logic to force a surface re-attach upon state verification and refined the local file URI handling for more stable file access.
+- **Global Offline Dialog**: A friendly "You are offline" dialog still appears on startup if no connection is found, providing immediate guidance to accessible content.
 
 ## 2. Video Playback Experience (ExoPlayer)
 - **Aggressive Buffering**: Refined `DefaultLoadControl` settings in `PlayerModule.kt` to increase the initial startup buffer to 1000ms. This prevents "instant stutter" on slower networks.
@@ -18,14 +20,14 @@
 
 ## UI/UX Layout & Consistency
 - **Top Bar Overlap Fix**: Fixed a layout bug in the `TopAppBar` where the "INCOGNITO" badge was rendering on top of the logo. Re-organized the structure to place them side-by-side with proper spacing.
+- **Back Navigation Bleed-Through Fix**: Resolved a critical race condition where the system back button would intermittently bypass the expanded video player. I unified the `BackHandler` logic in `PlayerOverlay.kt` to depend strictly on the `MiniPlayerManager` state (SSOT), ensuring uninterrupted back interception whenever the player is expanded.
 - **Playlist UI Upgrade**: Brought the Playlist screen items to full parity with the Home screen. Added duration badges to thumbnails, rich metadata (views, date), and a contextual 3-dot menu for quick downloads and favoriting.
 - **Fluid Transitions**: Injected `AnimatedVisibility` and `AnimatedContent` into the Home and Player screens. State transitions (e.g., Shimmer -> Content) are now smooth cross-fades rather than abrupt pops.
 - **Animated Progress**: The `WatchProgressBar` on thumbnails now uses a spring animation for progress changes, providing a more organic feel.
 - **Interactive Feedback**: Added haptic feedback to player action buttons (Like, Share, etc.) for a tactile, premium experience.
 
-## 4. Incognito Mode Fortification
-- **Zero Leakage**: Updated `VideoRepositoryImpl` to strictly suppress the in-memory stream cache during Incognito sessions.
-- **Privacy Identity**: Enhanced the visual state awareness with a stronger "Deep Purple" theme tint and a stylized "INCOGNITO" badge in the `TopAppBar`.
+## Maintenance & Core Logic
+- **NewPipe Extractor Update**: Upgraded the core extraction library from **v0.26.3** to **v0.26.4**. This ensures the application remains compatible with recent changes in YouTube's internal APIs and includes various performance optimizations.
 
 ## 5. Recommendation Engine
 - **Smart Shuffle**: Implemented a tiered shuffling system in `GetRecommendationsUseCase`. The feed now rotates its top content on every refresh while maintaining high relevancy.

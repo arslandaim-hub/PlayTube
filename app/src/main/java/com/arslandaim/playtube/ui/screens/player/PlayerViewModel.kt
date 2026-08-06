@@ -606,7 +606,7 @@ class PlayerViewModel @Inject constructor(
                             .build()
 
                         val mediaItem = MediaItem.Builder()
-                            .setUri(android.net.Uri.fromFile(localFile))
+                            .setUri(localFile.toURI().toString())
                             .setMediaId(videoId)
                             .setMediaMetadata(metadata)
                             .build()

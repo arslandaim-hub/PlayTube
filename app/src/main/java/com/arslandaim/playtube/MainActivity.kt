@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.*
@@ -42,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.flow.collectLatest
@@ -177,16 +179,12 @@ class MainActivity : ComponentActivity() {
             val darkTheme = isSystemInDarkTheme()
             val isBackgroundPlayEnabled by mainViewModel.isBackgroundPlayEnabled.collectAsState()
             val isOnboardingCompleted by mainViewModel.isOnboardingCompleted.collectAsState()
-            val isOffline by mainViewModel.isOffline.collectAsState()
 
             if (isOnboardingCompleted == null) return@setContent
             
-            // Startup Redirection: If offline on launch, default to Library/Downloads
-            val startDestination = remember(isOnboardingCompleted, isOffline) {
-                if (isOnboardingCompleted == false) Screen.Onboarding.route
-                else if (isOffline) Screen.Library.route
-                else Screen.Home.route
-            }
+            // Standard Navigation: Always attempt to load the intended screen. 
+            // Automatic screen switching on network loss is strictly prohibited.
+            val startDestination = if (isOnboardingCompleted == true) Screen.Home.route else Screen.Onboarding.route
 
             // Connect to MediaSession ONLY if background play is enabled
             if (isBackgroundPlayEnabled) {
@@ -219,14 +217,14 @@ class MainActivity : ComponentActivity() {
 
             PlayTubeTheme(darkTheme = darkTheme) {
                 val navController = rememberNavController()
-                val connectivityStatus by connectivityObserver.observe().collectAsState(initial = ConnectivityObserver.Status.Available)
 
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
                 val playerVisibility by miniPlayerManager.visibilityState.collectAsState()
                 val isExpanded = playerVisibility == com.arslandaim.playtube.ui.screens.player.MiniPlayerVisibility.Expanded
                 val currentVideo by miniPlayerManager.currentVideo.collectAsState()
-                val isIncognitoMode by mainViewModel.isIncognitoMode.collectAsState()
+                                val isIncognitoMode by mainViewModel.isIncognitoMode.collectAsState()
+                val isOffline by mainViewModel.isOffline.collectAsState()
 
                 isPlayerScreen = currentRoute?.startsWith("player") == true
                 var isBarsVisible by remember { mutableStateOf(true) }
@@ -316,21 +314,27 @@ class MainActivity : ComponentActivity() {
                             containerColor = if (isIncognitoMode) glassColor.copy(alpha = 1f) else MaterialTheme.colorScheme.surface
                         ) {
                             Column(modifier = Modifier.fillMaxWidth().statusBarsPadding()) {
-                                val hideBannerRoutes = listOf(
-                                    Screen.Home.route,
-                                    Screen.Subscriptions.route,
-                                    Screen.Search.route
-                                )
-                                if (currentRoute !in hideBannerRoutes) {
-                                    OfflineStatusBar(
-                                        status = connectivityStatus,
-                                        onNavigateToDownloads = {
-                                            navController.navigate(Screen.Downloads.route) {
-                                                launchSingleTop = true
-                                            }
-                                        }
-                                    )
+                                // Restoration Banner: Appears for 3s when connection returns
+                                var showOnlineBanner by remember { mutableStateOf(false) }
+                                var wasPreviouslyOffline by remember { mutableStateOf(false) }
+                                
+                                LaunchedEffect(isOffline) {
+                                    if (!isOffline && wasPreviouslyOffline) {
+                                        showOnlineBanner = true
+                                        kotlinx.coroutines.delay(3000L) // 3 second timer
+                                        showOnlineBanner = false
+                                    }
+                                    wasPreviouslyOffline = isOffline
                                 }
+
+                                AnimatedVisibility(
+                                    visible = showOnlineBanner,
+                                    enter = expandVertically() + fadeIn(),
+                                    exit = shrinkVertically() + fadeOut()
+                                ) {
+                                    OnlineTopBanner()
+                                }
+
                                 if (showBars || barsVisibilityProgress > 0f) {
                                     Box(modifier = Modifier
                                         .fillMaxWidth()
@@ -514,6 +518,46 @@ class MainActivity : ComponentActivity() {
                     content = { /* PlayerView is handled inside PlayerOverlay/PlayerScreen for now(I will do something later) */ }
                 )
 
+                // Global Non-Blocking Offline Bottom Banner
+                // Rendered at the end with high Z-index to ensure it stays on top of everything
+                var showBanner by remember { mutableStateOf(false) }
+                
+                LaunchedEffect(isOffline) {
+                    if (isOffline) {
+                        showBanner = true
+                        kotlinx.coroutines.delay(5000L) // 5 second timer
+                        showBanner = false
+                    } else {
+                        showBanner = false
+                    }
+                }
+
+                val isMiniPlayerActive = playerVisibility == com.arslandaim.playtube.ui.screens.player.MiniPlayerVisibility.Minimized
+                
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(200f) // Guaranteed above mini-player (100f) and everything else
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = if (showBars) BOTTOM_BAR_HEIGHT + 24.dp else 16.dp)
+                            .then(if (isMiniPlayerActive) Modifier.padding(bottom = 80.dp) else Modifier)
+                            .navigationBarsPadding(),
+                        contentAlignment = Alignment.BottomCenter
+                    ) {
+                        OfflineBottomBanner(
+                            visible = showBanner,
+                            onNavigateToDownloads = {
+                                navController.navigate(Screen.Downloads.route) {
+                                    launchSingleTop = true
+                                }
+                            }
+                        )
+                    }
+                }
+
                 // Global Offline Dialog for Startup
                 val showOfflineDialog by mainViewModel.showOfflineDialog.collectAsState()
                 if (showOfflineDialog) {
@@ -647,43 +691,100 @@ fun PlayTubeBottomBar(navController: androidx.navigation.NavHostController) {
 // Legacy MiniPlayer removed
 
 @Composable
-fun OfflineStatusBar(
-    status: ConnectivityObserver.Status,
-    onNavigateToDownloads: () -> Unit = {}
+fun OfflineBottomBanner(
+    visible: Boolean,
+    onNavigateToDownloads: () -> Unit
 ) {
-    val isOffline = status == ConnectivityObserver.Status.Lost || status == ConnectivityObserver.Status.Unavailable
-    
     AnimatedVisibility(
-        visible = isOffline,
-        enter = expandVertically(),
-        exit = shrinkVertically()
+        visible = visible,
+        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
     ) {
-        Box(
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.errorContainer)
-                .clickable { onNavigateToDownloads() }
-                .padding(vertical = 6.dp, horizontal = 16.dp),
-            contentAlignment = Alignment.Center
+                .padding(horizontal = 24.dp),
+            shape = RoundedCornerShape(10.dp),
+            color = MaterialTheme.colorScheme.errorContainer,
+            tonalElevation = 6.dp,
+            shadowElevation = 10.dp,
+            border = androidx.compose.foundation.BorderStroke(
+                width = 0.5.dp,
+                color = MaterialTheme.colorScheme.error.copy(alpha = 0.2f)
+            )
         ) {
             Row(
+                modifier = Modifier
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Icon(
-                    imageVector = Icons.Default.LibraryMusic,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onErrorContainer
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.no_internet) + ". Tap to view downloads.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.WifiOff,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "No internet",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+                
+                TextButton(
+                    onClick = onNavigateToDownloads,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    modifier = Modifier.height(28.dp),
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text(
+                        text = "Go to downloads",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Black)
+                    )
+                }
             }
+        }
+    }
+}
+
+// Legacy components removed
+
+@Composable
+fun OnlineTopBanner() {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 32.dp, vertical = 4.dp),
+        color = Color(0xFF2E7D32), // High-contrast success green
+        shape = RoundedCornerShape(20.dp),
+        tonalElevation = 6.dp,
+        shadowElevation = 4.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "Back Online",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                color = Color.White
+            )
         }
     }
 }

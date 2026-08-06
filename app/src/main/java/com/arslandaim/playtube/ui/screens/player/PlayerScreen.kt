@@ -1042,6 +1042,10 @@ private fun VideoPlayerView(
             if (view.player != player) {
                 view.player = player
             }
+            // Force a surface re-attach for local videos if state is READY but surface is missing
+            if (player.playbackState == Player.STATE_READY && !player.isPlaying) {
+                view.onResume()
+            }
             view.subtitleView?.visibility = android.view.View.GONE
         },
         onRelease = { view ->
