@@ -7,7 +7,7 @@
 **Fast, private, and feature-rich YouTube client for Android. No Ads, tracking, or data collection.**
 
 <img src="fastlane/metadata/android/en-US/images/PlaytubefeatureGraphic.png" alt="PlayTube Feature Graphic" width="100%">
-
+<br></br>
 <!-- STATUS BADGES -->
 <p align="center">
   <a href="https://github.com/arslandaim-hub/PlayTube/releases/latest">
@@ -27,7 +27,6 @@
 </p>
 
 <br>
-
 <a href="https://github.com/arslandaim-hub/PlayTube/releases/latest">
   <img src="https://img.shields.io/badge/GET%20IT%20ON-GitHub-000000?style=for-the-badge&logo=github&logoColor=white" height="50" alt="Get it on GitHub">
 </a>
@@ -117,7 +116,7 @@ If you enjoy using PlayTube and would like to support its continued development,
   </a>
 </div>
 
-## 📌 Important
+<!--
 
-*   **Subscriptions:** The Subscriptions tab on the home screen only populates when you subscribe to a channel. Videos in this tab are strictly from your subscribed channels.
-*   **Recommendations:** The home page suggests videos based on your search history. If you pause your search history in the settings, the app will stop suggesting search-related videos on the home screen.
+![Total Downloads](https://img.shields.io/github/downloads/arslandaim-hub/PlayTube/total?style=for-the-badge&color=blue&logo=github)
+>--
