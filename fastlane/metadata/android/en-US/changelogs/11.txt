@@ -1,0 +1,5 @@
+WHAT'S NEW IN v1.3.6
+
+Fixed many bugs causing memory leakage.
+Minor UI changes.
+Performance improvements.
