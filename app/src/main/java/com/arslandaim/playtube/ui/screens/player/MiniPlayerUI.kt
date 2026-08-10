@@ -32,25 +32,13 @@ import com.arslandaim.playtube.domain.model.VideoItem
 fun MiniPlayerUI(
     video: VideoItem,
     player: Player,
+    isPlaying: Boolean,
     isIncognito: Boolean = false,
     onMaximize: () -> Unit,
+    onPlayPause: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var isPlaying by remember { mutableStateOf(player.isPlaying) }
-
-    DisposableEffect(player) {
-        val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(playing: Boolean) {
-                isPlaying = playing
-            }
-        }
-        player.addListener(listener)
-        onDispose {
-            player.removeListener(listener)
-        }
-    }
-
     val incognitoTint = Color(0xFF673AB7).copy(alpha = 0.12f)
     val baseSurfaceColor = MaterialTheme.colorScheme.surface
     val containerColor = if (isIncognito) {
@@ -96,6 +84,7 @@ fun MiniPlayerUI(
                 ThumbnailImage(
                     videoId = video.id,
                     thumbnailUrl = video.thumbnailUrl,
+                    quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.Low,
                     modifier = Modifier
                         .height(48.dp) // Slightly larger
                         .aspectRatio(16f / 9f)
@@ -124,9 +113,7 @@ fun MiniPlayerUI(
                 }
                 
                 IconButton(
-                    onClick = {
-                        if (isPlaying) player.pause() else player.play()
-                    },
+                    onClick = onPlayPause,
                     modifier = Modifier.size(36.dp)
                 ) {
                     Icon(

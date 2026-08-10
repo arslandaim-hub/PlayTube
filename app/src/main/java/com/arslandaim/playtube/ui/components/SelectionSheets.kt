@@ -19,8 +19,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.arslandaim.playtube.R
 import com.arslandaim.playtube.domain.model.StreamItem
 import com.arslandaim.playtube.domain.model.SubtitleItem
 
@@ -29,8 +31,9 @@ import com.arslandaim.playtube.domain.model.SubtitleItem
 fun QualitySelectionSheet(
     videoStreams: List<StreamItem>,
     currentQuality: String?,
+    preferredQuality: String,
     onDismiss: () -> Unit,
-    onQualitySelected: (StreamItem) -> Unit
+    onQualitySelected: (StreamItem?) -> Unit
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -38,19 +41,38 @@ fun QualitySelectionSheet(
     ) {
         Column(modifier = Modifier.padding(bottom = 32.dp)) {
             Text(
-                text = "Video Quality",
+                text = stringResource(R.string.video_quality),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
             
             LazyColumn {
+                item {
+                    ListItem(
+                        headlineContent = { 
+                            Text(
+                                text = if (preferredQuality == "Auto" && currentQuality != null) 
+                                    "Auto ($currentQuality)" 
+                                else "Auto"
+                            ) 
+                        },
+                        leadingContent = { 
+                            RadioButton(
+                                selected = preferredQuality == "Auto",
+                                onClick = null 
+                            ) 
+                        },
+                        modifier = Modifier.clickable { onQualitySelected(null) }
+                    )
+                }
+
                 items(videoStreams) { stream ->
                     ListItem(
                         headlineContent = { Text(text = "${stream.quality} (${stream.format})") },
                         leadingContent = { 
                             RadioButton(
-                                selected = stream.quality == currentQuality,
+                                selected = preferredQuality == stream.quality,
                                 onClick = null 
                             ) 
                         },
@@ -77,7 +99,7 @@ fun PlaybackSpeedSelectionSheet(
     ) {
         Column(modifier = Modifier.padding(bottom = 32.dp)) {
             Text(
-                text = "Playback Speed",
+                text = stringResource(R.string.playback_speed),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -86,7 +108,7 @@ fun PlaybackSpeedSelectionSheet(
             LazyColumn {
                 items(speeds) { speed ->
                     ListItem(
-                        headlineContent = { Text(text = if (speed == 1.0f) "Normal" else "${speed}x") },
+                        headlineContent = { Text(text = if (speed == 1.0f) stringResource(R.string.normal_speed) else "${speed}x") },
                         leadingContent = { 
                             RadioButton(
                                 selected = speed == currentSpeed,
@@ -119,7 +141,7 @@ fun DownloadSelectionSheet(
         ) {
             item {
                 Text(
-                    text = "Select Download Quality",
+                    text = stringResource(R.string.download_quality),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -128,7 +150,7 @@ fun DownloadSelectionSheet(
             
             if (videoStreams.isNotEmpty()) {
                 item {
-                    SectionHeader(title = "Video", icon = Icons.Default.VideoFile)
+                    SectionHeader(title = stringResource(R.string.video), icon = Icons.Default.VideoFile)
                 }
                 items(videoStreams) { stream ->
                     StreamListItem(stream = stream, onDownload = onDownload)
@@ -153,7 +175,7 @@ fun SubtitleSelectionSheet(
     ) {
         Column(modifier = Modifier.padding(bottom = 32.dp)) {
             Text(
-                text = "Subtitles",
+                text = stringResource(R.string.subtitles),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -162,7 +184,7 @@ fun SubtitleSelectionSheet(
             LazyColumn {
                 item {
                     ListItem(
-                        headlineContent = { Text(text = "Off") },
+                        headlineContent = { Text(text = stringResource(R.string.off)) },
                         leadingContent = { 
                             RadioButton(
                                 selected = !isCcEnabled,
@@ -178,7 +200,7 @@ fun SubtitleSelectionSheet(
                     val languageName = locale.displayLanguage.replaceFirstChar { it.uppercase() }
                     ListItem(
                         headlineContent = { 
-                            Text(text = if (subtitle.isAutoGenerated) "$languageName (Auto-generated)" else languageName) 
+                            Text(text = if (subtitle.isAutoGenerated) stringResource(R.string.language_auto_generated, languageName, stringResource(R.string.auto_generated)) else languageName) 
                         },
                         supportingContent = { Text(text = subtitle.languageTag) },
                         leadingContent = { 
@@ -209,7 +231,7 @@ fun PlaylistDownloadSelectionSheet(
     ) {
         Column(modifier = Modifier.padding(bottom = 32.dp)) {
             Text(
-                text = "Select Playlist Download Quality",
+                text = stringResource(R.string.playlist_download_quality),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)

@@ -7,6 +7,7 @@ package com.arslandaim.playtube.di
 
 import android.content.Context
 import com.arslandaim.playtube.data.network.IPv4OnlyDns
+import com.arslandaim.playtube.utils.Constants
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import dagger.Module
@@ -20,6 +21,9 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import okhttp3.Cache
+import okhttp3.Cookie
+import okhttp3.CookieJar
+import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -41,21 +45,34 @@ object NetworkModule {
             maxRequestsPerHost = 40
         }
 
-        val pool = okhttp3.ConnectionPool(10, 3, TimeUnit.MINUTES)
+        val pool = okhttp3.ConnectionPool(30, 5, TimeUnit.MINUTES)
+
+        val cookieJar = object : CookieJar {
+            private val cookieStore = mutableMapOf<String, List<Cookie>>()
+
+            override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+                cookieStore[url.host] = cookies
+            }
+
+            override fun loadForRequest(url: HttpUrl): List<Cookie> {
+                return cookieStore[url.host] ?: emptyList()
+            }
+        }
 
         return OkHttpClient.Builder()
             .cache(cache)
+            .cookieJar(cookieJar)
             .connectionPool(pool)
             .dispatcher(dispatcher)
             .addInterceptor { chain ->
                 val request = chain.request().newBuilder()
-                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36")
+                    .header("User-Agent", Constants.DEFAULT_USER_AGENT)
                     .build()
                 chain.proceed(request)
             }
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .fastFallback(true)
             .dns(IPv4OnlyDns())

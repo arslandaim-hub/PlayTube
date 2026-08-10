@@ -9,10 +9,23 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
 sealed class Screen(val route: String) {
-    object Home : Screen("home")
-    object Subscriptions : Screen("subscriptions")
-    object Library : Screen("library")
-    object Search : Screen("search")
+    open val navigationRoute: String get() = route
+    open val isTopLevel: Boolean get() = false
+
+    object Home : Screen("home") {
+        override val isTopLevel: Boolean get() = true
+    }
+    object Subscriptions : Screen("subscriptions") {
+        override val isTopLevel: Boolean get() = true
+    }
+    object Library : Screen("library") {
+        override val isTopLevel: Boolean get() = true
+    }
+    object Search : Screen("search?query={query}") {
+        override val navigationRoute: String get() = "search"
+        override val isTopLevel: Boolean get() = true
+        fun createRoute(query: String? = null) = if (query != null) "search?query=${URLEncoder.encode(query, StandardCharsets.UTF_8.toString())}" else navigationRoute
+    }
     object Settings : Screen("settings")
     object History : Screen("history")
     object SubscriptionsList : Screen("subscriptions_list")
@@ -32,4 +45,21 @@ sealed class Screen(val route: String) {
     }
     object Onboarding : Screen("onboarding")
     object DataManagement : Screen("data_management")
+
+    companion object {
+        private val screens by lazy {
+            listOf(
+                Home, Subscriptions, Library, Search, Settings, History,
+                SubscriptionsList, Downloads, Channel, Player, Playlist,
+                Onboarding, DataManagement
+            )
+        }
+
+        fun fromRoute(route: String?): Screen? {
+            val baseRoute = route?.split("?")?.firstOrNull()?.split("/")?.firstOrNull() ?: return null
+            return screens.find { 
+                it.route.split("?").firstOrNull()?.split("/")?.firstOrNull() == baseRoute 
+            }
+        }
+    }
 }

@@ -56,8 +56,8 @@ fun DownloadsScreen(
         AlertDialog(
             onDismissRequest = { showCleanupConfirm = false },
             icon = { Icon(Icons.Default.CleaningServices, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-            title = { Text("Smart Cleanup") },
-            text = { Text("This will remove all downloaded videos that you have already finished watching (>90%). This action cannot be undone.") },
+            title = { Text(stringResource(R.string.smart_cleanup_title)) },
+            text = { Text(stringResource(R.string.smart_cleanup_desc)) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -65,7 +65,7 @@ fun DownloadsScreen(
                         showCleanupConfirm = false
                     }
                 ) {
-                    Text("Clean Now")
+                    Text(stringResource(R.string.clean_now))
                 }
             },
             dismissButton = {
@@ -114,7 +114,7 @@ fun DownloadsScreen(
                                 TextField(
                                     value = searchQuery,
                                     onValueChange = { viewModel.onOfflineSearchQueryChange(it) },
-                                    placeholder = { Text("Search offline...") },
+                                    placeholder = { Text(stringResource(R.string.search_offline)) },
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = TextFieldDefaults.colors(
                                         focusedContainerColor = Color.Transparent,
@@ -125,7 +125,7 @@ fun DownloadsScreen(
                                     singleLine = true
                                 )
                             } else {
-                                Text("Downloads", fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.downloads), fontWeight = FontWeight.Bold)
                             }
                         },
                         navigationIcon = {

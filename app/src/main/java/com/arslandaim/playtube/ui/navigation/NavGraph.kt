@@ -14,6 +14,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.arslandaim.playtube.MainViewModel
 import com.arslandaim.playtube.ui.screens.home.HomeScreen
 import com.arslandaim.playtube.ui.screens.home.HomeViewModel
 import com.arslandaim.playtube.ui.screens.onboarding.InterestsSelectionScreen
@@ -259,10 +260,23 @@ fun NavGraph(
                 }
             )
         }
-        composable(Screen.Search.route) {
+        composable(Screen.Search.route) { backStackEntry ->
+            val query = backStackEntry.arguments?.getString("query")
             val viewModel: SearchViewModel = hiltViewModel()
+            val mainViewModel: MainViewModel = hiltViewModel(activity)
+            val updateViewModel: UpdateViewModel = hiltViewModel(activity)
+            
+            androidx.compose.runtime.LaunchedEffect(query) {
+                if (!query.isNullOrBlank() && query != "{query}") {
+                    viewModel.onQueryChange(query)
+                    viewModel.search(query)
+                }
+            }
+
             SearchScreen(
                 viewModel = viewModel,
+                mainViewModel = mainViewModel,
+                updateViewModel = updateViewModel,
                 libraryViewModel = libraryViewModel,
                 onBarsVisibilityChange = onBarsVisibilityChange,
                 onVideoClick = { video ->
@@ -276,6 +290,11 @@ fun NavGraph(
                 },
                 onNavigateToDownloads = {
                     navController.navigate(Screen.Downloads.route) {
+                        launchSingleTop = true
+                    }
+                },
+                onNavigateToSettings = {
+                    navController.navigate(Screen.Settings.route) {
                         launchSingleTop = true
                     }
                 },

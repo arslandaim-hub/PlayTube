@@ -9,14 +9,20 @@ object VideoUtils {
     fun extractVideoId(url: String?): String {
         if (url == null) return ""
         val trimmed = url.trim()
-        if (!trimmed.contains("/") && !trimmed.contains("=")) return trimmed // Already an ID
         
-        return when {
+        val id = when {
             trimmed.contains("v=") -> trimmed.substringAfter("v=").substringBefore("&")
-            trimmed.contains("/shorts/") -> trimmed.substringAfter("/shorts/").substringBefore("?")
-            trimmed.contains("youtu.be/") -> trimmed.substringAfter("youtu.be/").substringBefore("?")
-            else -> trimmed.substringAfterLast("/")
+            trimmed.contains("/shorts/") -> trimmed.substringAfter("/shorts/").substringBefore("?").substringBefore("/")
+            trimmed.contains("/embed/") -> trimmed.substringAfter("/embed/").substringBefore("?").substringBefore("/")
+            trimmed.contains("/v/") -> trimmed.substringAfter("/v/").substringBefore("?").substringBefore("/")
+            trimmed.contains("youtu.be/") -> trimmed.substringAfter("youtu.be/").substringBefore("?").substringBefore("/")
+            trimmed.contains("/vi/") -> trimmed.substringAfter("/vi/").substringBefore("/")
+            !trimmed.contains("/") && !trimmed.contains("=") -> trimmed // Already an ID
+            else -> trimmed.substringAfterLast("/").substringBefore("?")
         }.trim()
+
+        // YouTube video IDs are 11 characters.
+        return if (id.length == 11) id else ""
     }
 
     fun extractPlaylistId(url: String?): String {
@@ -30,30 +36,42 @@ object VideoUtils {
         }.trim()
     }
 
-    fun getHighResThumbnail(videoId: String): String {
-        return "https://img.youtube.com/vi/$videoId/hqdefault.jpg"
+    private const val THUMB_BASE_URL = "https://i.ytimg.com/vi"
+
+    fun getHq720ThumbnailUrl(videoId: String): String {
+        return "$THUMB_BASE_URL/$videoId/hq720.jpg"
     }
 
     fun getMaxResThumbnail(videoId: String): String {
-        return "https://img.youtube.com/vi/$videoId/maxresdefault.jpg"
+        return "$THUMB_BASE_URL/$videoId/maxresdefault.jpg"
+    }
+
+    fun getSdResThumbnailUrl(videoId: String): String {
+        return "$THUMB_BASE_URL/$videoId/sddefault.jpg"
+    }
+
+    fun getHighResThumbnail(videoId: String): String {
+        return "$THUMB_BASE_URL/$videoId/hqdefault.jpg"
+    }
+
+    fun getMediumResThumbnail(videoId: String): String {
+        return "$THUMB_BASE_URL/$videoId/mqdefault.jpg"
+    }
+
+    fun getLowResThumbnail(videoId: String): String {
+        return "$THUMB_BASE_URL/$videoId/default.jpg"
     }
 
     fun getBestThumbnailUrl(videoId: String): String {
-        // Prioritize maxresdefault (1280x720) for high-DPI displays.
-        // Fallback to hqdefault (480x360) is handled in the UI layer via Coil.
         return getMaxResThumbnail(videoId)
+    }
+
+    fun getThumbnailForList(videoId: String): String {
+        return getHighResThumbnail(videoId)
     }
 
     fun getFallbackThumbnailUrl(videoId: String): String {
         return getHighResThumbnail(videoId)
-    }
-
-    fun getMediumResThumbnail(videoId: String): String {
-        return "https://img.youtube.com/vi/$videoId/mqdefault.jpg"
-    }
-
-    fun getLowResThumbnail(videoId: String): String {
-        return "https://img.youtube.com/vi/$videoId/default.jpg"
     }
 
     fun formatNumber(number: Long): String {
@@ -207,6 +225,7 @@ object VideoUtils {
             else -> 0L
         }
         
+        if (multiplier == 0L) return 0L
         return now - (amount * multiplier)
     }
 }

@@ -19,16 +19,15 @@ import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import com.arslandaim.playtube.domain.repository.DownloadRepository
 import com.arslandaim.playtube.utils.ConnectivityObserver
+import com.arslandaim.playtube.utils.PTLog
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.schabi.newpipe.extractor.NewPipe
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -40,7 +39,7 @@ class PlayTubeApp : Application(), Configuration.Provider, SingletonImageLoader.
     @Inject lateinit var connectivityObserver: ConnectivityObserver
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-
+    
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
@@ -69,29 +68,27 @@ class PlayTubeApp : Application(), Configuration.Provider, SingletonImageLoader.
             )
         }
 
-        // Initialize NewPipe Extractor
-        NewPipe.init(YouTubeDownloader(okHttpClient))
-
         createNotificationChannel()
         observeConnectivity()
         prewarmNetwork()
     }
 
     private fun prewarmNetwork() {
-        applicationScope.launch(Dispatchers.IO) {
-            try {
-                // Pre-warm DNS and connections for YouTube and Google Video
-                val youtubeRequest = Request.Builder().url("https://www.youtube.com").head().build()
-                val gVideoRequest = Request.Builder().url("https://www.googlevideo.com").head().build()
-                
-                // Use newCall.enqueue or execute to warm up the connection pool
-                okHttpClient.newCall(youtubeRequest).execute().close()
-                okHttpClient.newCall(gVideoRequest).execute().close()
-                android.util.Log.d("PlayTubeApp", "Network pre-warmed successfully")
-            } catch (e: Exception) {
-                android.util.Log.w("PlayTubeApp", "Network pre-warming failed: ${e.message}")
+        val youtubeRequest = Request.Builder().url("https://www.youtube.com").head().build()
+        val gVideoRequest = Request.Builder().url("https://www.googlevideo.com").head().build()
+
+        val callback = object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                PTLog.w("PlayTubeApp", "Network pre-warming failed for ${call.request().url}: ${e.message}")
+            }
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                response.close()
+                PTLog.d("PlayTubeApp", "Network pre-warmed for ${call.request().url}")
             }
         }
+
+        okHttpClient.newCall(youtubeRequest).enqueue(callback)
+        okHttpClient.newCall(gVideoRequest).enqueue(callback)
     }
 
     private fun observeConnectivity() {

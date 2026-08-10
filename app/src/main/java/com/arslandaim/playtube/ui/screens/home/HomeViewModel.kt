@@ -89,7 +89,7 @@ class HomeViewModel @Inject constructor(
     private suspend fun fetchTrending(isRefresh: Boolean) {
         try {
             // First, try to get personalized recommendations
-            val recommendations = getRecommendationsUseCase().getOrDefault(emptyList())
+            val recommendations = getRecommendationsUseCase(forceRefresh = isRefresh).getOrDefault(emptyList())
             
             // Second, fetch actual trending from YouTube with pagination support
             val trendingResult = getTrendingVideosUseCase().getOrNull()

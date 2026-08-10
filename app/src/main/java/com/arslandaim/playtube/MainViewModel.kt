@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -26,6 +27,9 @@ class MainViewModel @Inject constructor(
     private val connectivityObserver: ConnectivityObserver
 ) : ViewModel() {
 
+    private val _uiState = MutableStateFlow(MainUiState())
+    val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
+
     val connectivityStatus: StateFlow<ConnectivityObserver.Status> = connectivityObserver.observe()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ConnectivityObserver.Status.Available)
 
@@ -34,13 +38,13 @@ class MainViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val isPipEnabled: StateFlow<Boolean> = preferencesManager.isPipEnabled
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     val isBackgroundPlayEnabled: StateFlow<Boolean> = preferencesManager.isBackgroundPlayEnabled
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     val isIncognitoMode: StateFlow<Boolean> = preferencesManager.isIncognitoMode
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     val isOnboardingCompleted: StateFlow<Boolean?> = preferencesManager.isOnboardingCompleted
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -68,4 +72,22 @@ class MainViewModel @Inject constructor(
     fun dismissOfflineDialog() {
         _showOfflineDialog.value = false
     }
+
+    fun setBarsVisibility(visible: Boolean) {
+        _uiState.update { it.copy(isBarsVisible = visible) }
+    }
+
+    fun setPipMode(enabled: Boolean) {
+        _uiState.update { it.copy(isInPipMode = enabled) }
+    }
+
+    fun setPlayerScreen(isPlayer: Boolean) {
+        _uiState.update { it.copy(isPlayerScreen = isPlayer) }
+    }
 }
+
+data class MainUiState(
+    val isBarsVisible: Boolean = true,
+    val isInPipMode: Boolean = false,
+    val isPlayerScreen: Boolean = false
+)

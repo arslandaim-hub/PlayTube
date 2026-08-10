@@ -6,11 +6,15 @@
 package com.arslandaim.playtube.data.local
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 import com.arslandaim.playtube.domain.model.VideoItem
 
-@Entity(tableName = "history")
+@Entity(
+    tableName = "history",
+    indices = [Index(value = ["timestamp"])]
+)
 data class HistoryEntity(
     @PrimaryKey val videoId: String,
     val title: String,

@@ -19,7 +19,7 @@ import androidx.room.RoomDatabase
         UserInterestEntity::class,
         BlacklistEntity::class
     ],
-    version = 10
+    version = 11
 )
 abstract class PlayTubeDatabase : RoomDatabase() {
     abstract fun downloadDao(): DownloadDao

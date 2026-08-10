@@ -66,6 +66,7 @@ private fun HistoryContent(
     onVideoClick: (VideoItem) -> Unit,
     onDiscoverVideos: () -> Unit
 ) {
+    val historyClearedMessage = stringResource(R.string.history_cleared)
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var showClearHistoryDialog by remember { mutableStateOf(false) }
@@ -77,7 +78,7 @@ private fun HistoryContent(
         topBar = {
             GlassSurface(tonalElevation = 0.dp) {
                 TopAppBar(
-                    title = { Text("History", fontWeight = FontWeight.Bold) },
+                    title = { Text(stringResource(R.string.history), fontWeight = FontWeight.Bold) },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -104,7 +105,7 @@ private fun HistoryContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(text = "Pause watch history", style = MaterialTheme.typography.bodyLarge)
+                Text(text = stringResource(R.string.pause_watch_history), style = MaterialTheme.typography.bodyLarge)
                 Switch(
                     checked = !isHistoryEnabled,
                     onCheckedChange = { paused ->
@@ -129,10 +130,13 @@ private fun HistoryContent(
                     contentPadding = PaddingValues(bottom = 100.dp)
                 ) {
                     items(history, key = { it.videoId + it.timestamp }) { item ->
+                        val currentOnClick = remember(item.videoId, onVideoClick) {
+                            { onVideoClick(item.toVideoItem()) }
+                        }
                         Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                             HistoryItemRow(
                                 item = item,
-                                onClick = { onVideoClick(item.toVideoItem()) }
+                                onClick = currentOnClick
                             )
                         }
                     }
@@ -144,25 +148,25 @@ private fun HistoryContent(
     if (showClearHistoryDialog) {
         AlertDialog(
             onDismissRequest = { showClearHistoryDialog = false },
-            title = { Text("Clear watch history?") },
-            text = { Text("Are you sure you want to clear your entire watch history? This action cannot be undone.") },
+            title = { Text(stringResource(R.string.clear_history_title)) },
+            text = { Text(stringResource(R.string.clear_history_desc)) },
             confirmButton = {
                 TextButton(
                     onClick = {
                         onClearHistory()
                         showClearHistoryDialog = false
                         scope.launch {
-                            snackbarHostState.showSnackbar("History cleared")
+                            snackbarHostState.showSnackbar(historyClearedMessage)
                         }
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Text("Clear")
+                    Text(stringResource(R.string.clear))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showClearHistoryDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )

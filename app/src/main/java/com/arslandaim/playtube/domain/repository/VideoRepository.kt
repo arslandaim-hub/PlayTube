@@ -6,6 +6,7 @@
 package com.arslandaim.playtube.domain.repository
 
 import com.arslandaim.playtube.domain.model.ChannelDetails
+import com.arslandaim.playtube.domain.model.ChannelInfoBasic
 import com.arslandaim.playtube.domain.model.PaginatedList
 import com.arslandaim.playtube.domain.model.PlaylistDetails
 import com.arslandaim.playtube.domain.model.StreamBundle
@@ -18,6 +19,7 @@ interface VideoRepository {
     suspend fun preloadStreamBundle(videoId: String)
     suspend fun fetchNextRelatedPage(videoId: String, page: Page): PaginatedList<VideoItem>
     suspend fun getChannelDetails(channelUrl: String): ChannelDetails
+    suspend fun getChannelInfo(channelUrl: String): ChannelInfoBasic
     suspend fun fetchNextChannelVideosPage(channelUrl: String, page: Page): PaginatedList<VideoItem>
     suspend fun getTrendingVideos(): PaginatedList<VideoItem>
     suspend fun fetchNextTrendingPage(page: Page): PaginatedList<VideoItem>

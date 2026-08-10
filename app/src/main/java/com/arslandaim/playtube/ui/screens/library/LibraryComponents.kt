@@ -173,6 +173,7 @@ fun ModernHistoryCard(item: HistoryEntity, onClick: () -> Unit) {
             ThumbnailImage(
                 videoId = item.videoId,
                 thumbnailUrl = item.thumbnailUrl,
+                quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.High,
                 modifier = Modifier.fillMaxSize()
             )
             
@@ -259,8 +260,9 @@ fun ModernPlaylistCard(
                 .clip(RoundedCornerShape(16.dp))
         ) {
             ThumbnailImage(
-                videoId = playlist.playlistId,
+                videoId = "",
                 thumbnailUrl = playlist.thumbnailUrl,
+                quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.High,
                 modifier = Modifier.fillMaxSize()
             )
             Surface(
@@ -318,6 +320,7 @@ fun ModernDownloadCard(
             ThumbnailImage(
                 videoId = download.videoId,
                 thumbnailUrl = download.thumbnailUrl,
+                quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.High,
                 modifier = Modifier.fillMaxSize()
             )
             
@@ -374,8 +377,9 @@ fun ModernPlaylistRow(
                 .clip(RoundedCornerShape(12.dp))
         ) {
             ThumbnailImage(
-                videoId = VideoUtils.extractPlaylistId(playlist.id),
+                videoId = "",
                 thumbnailUrl = playlist.thumbnailUrl,
+                quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.High,
                 modifier = Modifier.fillMaxSize()
             )
             Surface(
@@ -498,6 +502,7 @@ fun VideoRow(
             ThumbnailImage(
                 videoId = videoId,
                 thumbnailUrl = thumbnailUrl,
+                quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.High,
                 modifier = Modifier.fillMaxSize()
             )
             

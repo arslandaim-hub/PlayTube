@@ -23,6 +23,10 @@ val DarkSurface = Color(0xFF1E1E1E)
 val DarkOnSurface = Color(0xFFFFFFFF)
 val DarkOnSurfaceVariant = Color(0xFFAAAAAA)
 
+// Special Colors
+val IncognitoPurple = Color(0xFF673AB7)
+val OnlineGreen = Color(0xFF2E7D32)
+
 // Standard Alpha for Glass/Surface effects
 const val GlassAlpha = 0.90f
 const val ScrimAlpha = 0.4f

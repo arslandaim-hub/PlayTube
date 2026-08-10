@@ -15,6 +15,7 @@ import com.arslandaim.playtube.domain.repository.DataManagerRepository
 import com.arslandaim.playtube.domain.repository.ImportProgress
 import com.arslandaim.playtube.domain.usecase.UpdateUserInterestsUseCase
 import com.arslandaim.playtube.workers.ImportWorker
+import com.arslandaim.playtube.utils.PTLog
 import com.google.gson.Gson
 import com.google.gson.stream.JsonReader
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -152,7 +153,7 @@ class DataManagerRepositoryImpl @Inject constructor(
             zipInputStream.close()
             null
         } catch (e: Exception) {
-            android.util.Log.e("DataManager", "Error opening ZIP stream", e)
+            PTLog.e("DataManager", "Error opening ZIP stream", e)
             null
         }
     }

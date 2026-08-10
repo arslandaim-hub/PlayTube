@@ -11,6 +11,9 @@ import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.domain.model.SearchItem
 import com.arslandaim.playtube.domain.model.PlaylistItem
 import com.arslandaim.playtube.domain.repository.SearchRepository
+import com.arslandaim.playtube.data.network.NewPipeInitializer
+import com.arslandaim.playtube.utils.Constants
+import com.arslandaim.playtube.utils.PTLog
 import com.arslandaim.playtube.utils.VideoUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -21,8 +24,11 @@ import org.schabi.newpipe.extractor.channel.ChannelInfoItem
 import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
 import javax.inject.Inject
 
-class SearchRepositoryImpl @Inject constructor() : SearchRepository {
+class SearchRepositoryImpl @Inject constructor(
+    private val initializer: NewPipeInitializer
+) : SearchRepository {
     override suspend fun search(query: String, sort: SearchSort): PaginatedList<SearchItem> {
+        initializer.ensureInitialized()
         return withContext(Dispatchers.IO) {
             try {
                 val youtubeService = ServiceList.YouTube
@@ -36,9 +42,9 @@ class SearchRepositoryImpl @Inject constructor() : SearchRepository {
                     SearchSort.RATING -> "rating"
                 }
 
-                val contentFilter = if (sort == SearchSort.UPLOAD_DATE) listOf("videos") else listOf("all")
+                val contentFilter = if (sort == SearchSort.UPLOAD_DATE) Constants.YouTube.SEARCH_FILTERS_UPLOAD_DATE else Constants.YouTube.SEARCH_FILTERS
                 
-                android.util.Log.d("SearchRepository", "Searching for: $query with sort filter: $sortFilter and content filter: $contentFilter")
+                PTLog.d("SearchRepository", "Searching for: $query with sort filter: $sortFilter and content filter: $contentFilter")
                 
                 val extractor = youtubeService.getSearchExtractor(
                     query,
@@ -74,6 +80,7 @@ class SearchRepositoryImpl @Inject constructor() : SearchRepository {
 
                 PaginatedList(items, if (page.hasNextPage()) page.nextPage else null)
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 e.printStackTrace()
                 PaginatedList(emptyList(), null)
             }
@@ -81,6 +88,7 @@ class SearchRepositoryImpl @Inject constructor() : SearchRepository {
     }
 
     override suspend fun fetchNextPage(query: String, sort: SearchSort, page: Page): PaginatedList<SearchItem> {
+        initializer.ensureInitialized()
         return withContext(Dispatchers.IO) {
             try {
                 val youtubeService = ServiceList.YouTube
@@ -92,9 +100,9 @@ class SearchRepositoryImpl @Inject constructor() : SearchRepository {
                     SearchSort.RATING -> "rating"
                 }
 
-                val contentFilter = if (sort == SearchSort.UPLOAD_DATE) listOf("videos") else listOf("all")
+                val contentFilter = if (sort == SearchSort.UPLOAD_DATE) Constants.YouTube.SEARCH_FILTERS_UPLOAD_DATE else Constants.YouTube.SEARCH_FILTERS
                 
-                android.util.Log.d("SearchRepository", "Fetching next page for: $query with sort filter: $sortFilter and content filter: $contentFilter")
+                PTLog.d("SearchRepository", "Fetching next page for: $query with sort filter: $sortFilter and content filter: $contentFilter")
                 
                 val extractor = youtubeService.getSearchExtractor(
                     query,
@@ -129,6 +137,7 @@ class SearchRepositoryImpl @Inject constructor() : SearchRepository {
 
                 PaginatedList(items, if (nextPage.hasNextPage()) nextPage.nextPage else null)
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 e.printStackTrace()
                 PaginatedList(emptyList(), null)
             }
@@ -143,7 +152,7 @@ class SearchRepositoryImpl @Inject constructor() : SearchRepository {
         return VideoItem(
             id = videoId,
             title = item.name ?: "Unknown Title",
-            thumbnailUrl = VideoUtils.getBestThumbnailUrl(videoId),
+            thumbnailUrl = VideoUtils.getThumbnailForList(videoId),
             uploaderName = item.uploaderName ?: "Unknown Channel",
             uploaderUrl = item.uploaderUrl ?: "",
             uploaderThumbnailUrl = item.uploaderAvatars?.firstOrNull()?.url,
@@ -156,6 +165,7 @@ class SearchRepositoryImpl @Inject constructor() : SearchRepository {
     }
 
     override suspend fun getSearchSuggestions(query: String): List<String> {
+        initializer.ensureInitialized()
         return withContext(Dispatchers.IO) {
             try {
                 val youtubeService = ServiceList.YouTube

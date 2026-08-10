@@ -11,8 +11,10 @@ import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -22,53 +24,148 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 open class PreferencesManager @Inject constructor(@ApplicationContext context: Context) {
     private val dataStore = context.dataStore
 
-    open val isHistoryEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
-        preferences[HISTORY_ENABLED] ?: true
-    }
+    open val isHistoryEnabled: Flow<Boolean> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }.map { preferences ->
+            preferences[HISTORY_ENABLED] ?: true
+        }
 
-    open val isSearchHistoryPaused: Flow<Boolean> = dataStore.data.map { preferences ->
-        preferences[SEARCH_HISTORY_PAUSED] ?: false
-    }
+    open val isSearchHistoryPaused: Flow<Boolean> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }.map { preferences ->
+            preferences[SEARCH_HISTORY_PAUSED] ?: false
+        }
 
-    open val isPipEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
-        preferences[PIP_ENABLED] ?: false
-    }
+    open val isPipEnabled: Flow<Boolean> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }.map { preferences ->
+            preferences[PIP_ENABLED] ?: false
+        }
 
-    open val isBackgroundPlayEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
-        preferences[BACKGROUND_PLAY_ENABLED] ?: false
-    }
+    open val isBackgroundPlayEnabled: Flow<Boolean> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }.map { preferences ->
+            preferences[BACKGROUND_PLAY_ENABLED] ?: false
+        }
 
-    open val isSubtitlesEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
-        preferences[SUBTITLES_ENABLED] ?: false
-    }
+    open val isSubtitlesEnabled: Flow<Boolean> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }.map { preferences ->
+            preferences[SUBTITLES_ENABLED] ?: false
+        }
 
-    open val isOnboardingCompleted: Flow<Boolean> = dataStore.data.map { preferences ->
-        preferences[ONBOARDING_COMPLETED] ?: false
-    }
+    open val isOnboardingCompleted: Flow<Boolean> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }.map { preferences ->
+            preferences[ONBOARDING_COMPLETED] ?: false
+        }
 
-    open val isSearchGridView: Flow<Boolean> = dataStore.data.map { preferences ->
-        preferences[SEARCH_GRID_VIEW] ?: false
-    }
+    open val isSearchGridView: Flow<Boolean> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }.map { preferences ->
+            preferences[SEARCH_GRID_VIEW] ?: false
+        }
 
-    open val isAutoUpdateEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
-        preferences[AUTO_UPDATE_ENABLED] ?: false
-    }
+    open val isAutoUpdateEnabled: Flow<Boolean> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }.map { preferences ->
+            preferences[AUTO_UPDATE_ENABLED] ?: false
+        }
 
-    open val isRecommendationsPaused: Flow<Boolean> = dataStore.data.map { preferences ->
-        preferences[RECOMMENDATIONS_PAUSED] ?: false
-    }
+    open val isRecommendationsPaused: Flow<Boolean> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }.map { preferences ->
+            preferences[RECOMMENDATIONS_PAUSED] ?: false
+        }
 
-    open val isAutoplayEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
-        preferences[AUTOPLAY_ENABLED] ?: true
-    }
+    open val isAutoplayEnabled: Flow<Boolean> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }.map { preferences ->
+            preferences[AUTOPLAY_ENABLED] ?: true
+        }
 
-    open val isIncognitoMode: Flow<Boolean> = dataStore.data.map { preferences ->
-        preferences[INCOGNITO_MODE] ?: false
-    }
+    open val isIncognitoMode: Flow<Boolean> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }.map { preferences ->
+            preferences[INCOGNITO_MODE] ?: false
+        }
 
-    open val preferredSubtitleLanguage: Flow<String?> = dataStore.data.map { preferences ->
-        preferences[PREFERRED_SUBTITLE_LANGUAGE]
-    }
+    open val preferredSubtitleLanguage: Flow<String?> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }.map { preferences ->
+            preferences[PREFERRED_SUBTITLE_LANGUAGE]
+        }
+
+    open val preferredQuality: Flow<String> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }.map { preferences ->
+            preferences[PREFERRED_QUALITY] ?: "Auto"
+        }
 
     suspend fun setHistoryEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
@@ -143,6 +240,12 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
         }
     }
 
+    suspend fun setPreferredQuality(quality: String) {
+        dataStore.edit { preferences ->
+            preferences[PREFERRED_QUALITY] = quality
+        }
+    }
+
     companion object {
         val HISTORY_ENABLED = booleanPreferencesKey("history_enabled")
         val SEARCH_HISTORY_PAUSED = booleanPreferencesKey("search_history_paused")
@@ -156,5 +259,6 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
         val AUTOPLAY_ENABLED = booleanPreferencesKey("autoplay_enabled")
         val INCOGNITO_MODE = booleanPreferencesKey("incognito_mode")
         val PREFERRED_SUBTITLE_LANGUAGE = stringPreferencesKey("preferred_subtitle_language")
+        val PREFERRED_QUALITY = stringPreferencesKey("preferred_quality")
     }
 }

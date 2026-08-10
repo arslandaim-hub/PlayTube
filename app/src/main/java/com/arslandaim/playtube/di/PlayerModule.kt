@@ -18,6 +18,9 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.upstream.BandwidthMeter
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
+import com.arslandaim.playtube.utils.Constants
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -35,9 +38,16 @@ object PlayerModule {
     @OptIn(UnstableApi::class)
     @Provides
     @Singleton
+    fun provideBandwidthMeter(@ApplicationContext context: Context): BandwidthMeter {
+        return DefaultBandwidthMeter.getSingletonInstance(context)
+    }
+
+    @OptIn(UnstableApi::class)
+    @Provides
+    @Singleton
     fun provideVideoCache(@ApplicationContext context: Context): SimpleCache {
         val cacheDirectory = File(context.cacheDir, "video_cache")
-        val evictor = LeastRecentlyUsedCacheEvictor(500L * 1024L * 1024L) // 500MB
+        val evictor = LeastRecentlyUsedCacheEvictor(Constants.VIDEO_CACHE_SIZE)
         val databaseProvider = StandaloneDatabaseProvider(context)
         
         // SimpleCache constructor performs disk I/O to initialize the index.
@@ -53,12 +63,13 @@ object PlayerModule {
     fun provideHttpDataSourceFactory(
         okHttpClient: OkHttpClient
     ): DataSource.Factory {
-        val userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
+        val userAgent = Constants.DEFAULT_USER_AGENT
         return OkHttpDataSource.Factory(okHttpClient)
             .setUserAgent(userAgent)
             .setDefaultRequestProperties(mapOf(
                 "Accept-Language" to "en-US,en;q=0.9",
-                "Referer" to "https://www.youtube.com/"
+                "Referer" to "${Constants.YouTube.BASE_URL}/",
+                "Cookie" to Constants.YouTube.CONSENT_COOKIE
             ))
     }
 
@@ -68,14 +79,18 @@ object PlayerModule {
     fun provideDataSourceFactory(
         @ApplicationContext context: Context,
         @Named("HttpDataSourceFactory") httpDataSourceFactory: DataSource.Factory,
-        cache: SimpleCache
+        cacheProvider: javax.inject.Provider<SimpleCache>
     ): DataSource.Factory {
-        val defaultDataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
-        
-        return CacheDataSource.Factory()
-            .setCache(cache)
-            .setUpstreamDataSourceFactory(defaultDataSourceFactory)
-            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        return DataSource.Factory {
+            val cache = cacheProvider.get()
+            val defaultDataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
+            
+            CacheDataSource.Factory()
+                .setCache(cache)
+                .setUpstreamDataSourceFactory(defaultDataSourceFactory)
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                .createDataSource()
+        }
     }
 
     @OptIn(UnstableApi::class)
@@ -87,16 +102,20 @@ object PlayerModule {
     ): ExoPlayer {
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                20000, // Min buffer 20s (Increased for stability)
-                60000, // Max buffer 60s (Balanced for memory)
-                1000,  // Buffer to start playback 1s (Prevent instant stutter)
-                1500   // Buffer after rebuffer 1.5s
+                30000,  // Min buffer: 30s
+                120000, // Max buffer: 120s
+                2500,   // Buffer for playback: 2.5s
+                5000    // Buffer for playback after rebuffer: 5s
             )
             .setBackBuffer(15000, true) // 15s back buffer for smooth rewinding
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
-        return ExoPlayer.Builder(context)
+        val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(context)
+            .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            .forceEnableMediaCodecAsynchronousQueueing()
+
+        return ExoPlayer.Builder(context, renderersFactory)
             .setAudioAttributes(
                 androidx.media3.common.AudioAttributes.Builder()
                     .setUsage(androidx.media3.common.C.USAGE_MEDIA)

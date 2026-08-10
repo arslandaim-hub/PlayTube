@@ -12,6 +12,7 @@ import com.arslandaim.playtube.data.local.DownloadEntity
 import com.arslandaim.playtube.data.local.DownloadStatus
 import com.arslandaim.playtube.domain.repository.DownloadRepository
 import com.arslandaim.playtube.workers.DownloadWorker
+import com.arslandaim.playtube.utils.PTLog
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import java.io.File
@@ -154,7 +155,7 @@ class DownloadRepositoryImpl @Inject constructor(
                     file.delete()
                 }
             } catch (e: Exception) {
-                android.util.Log.e("DownloadRepository", "Failed to delete file: ${entity.filePath}", e)
+                PTLog.e("DownloadRepository", "Failed to delete file: ${entity.filePath}", e)
             }
         }
         downloadDao.clearAll()

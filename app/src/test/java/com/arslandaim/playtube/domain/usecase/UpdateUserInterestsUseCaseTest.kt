@@ -20,7 +20,10 @@ class UpdateUserInterestsUseCaseTest {
     @Before
     fun setup() {
         fakeRepository = FakeLibraryRepository()
-        fakePreferencesManager = FakePreferencesManager()
+        fakePreferencesManager = mockk(relaxed = true) {
+            io.mockk.every { isRecommendationsPaused } returns flowOf(false)
+            io.mockk.every { isIncognitoMode } returns flowOf(false)
+        }
         updateUserInterestsUseCase = UpdateUserInterestsUseCase(fakeRepository, fakePreferencesManager)
     }
 
@@ -61,18 +64,6 @@ class UpdateUserInterestsUseCaseTest {
         assertTrue(!fakeRepository.interests.containsKey("video"))
     }
 
-    class FakePreferencesManager : PreferencesManager(mockk(relaxed = true)) {
-        override val isRecommendationsPaused: Flow<Boolean> = flowOf(false)
-        override val isHistoryEnabled: Flow<Boolean> = flowOf(true)
-        override val isSearchHistoryPaused: Flow<Boolean> = flowOf(false)
-        override val isPipEnabled: Flow<Boolean> = flowOf(false)
-        override val isBackgroundPlayEnabled: Flow<Boolean> = flowOf(false)
-        override val isSubtitlesEnabled: Flow<Boolean> = flowOf(false)
-        override val isOnboardingCompleted: Flow<Boolean> = flowOf(true)
-        override val isSearchGridView: Flow<Boolean> = flowOf(false)
-        override val isAutoUpdateEnabled: Flow<Boolean> = flowOf(false)
-    }
-
     class FakeLibraryRepository : LibraryRepository {
         val interests = mutableMapOf<String, Float>()
 
@@ -82,6 +73,7 @@ class UpdateUserInterestsUseCaseTest {
         override suspend fun updateWatchProgress(videoId: String, progressMs: Long, durationMs: Long) {}
         override suspend fun removeFromHistory(videoId: String) {}
         override suspend fun clearHistory() {}
+        override suspend fun getWatchProgressForVideos(videoIds: List<String>): Map<String, Float?> = emptyMap()
         override fun getFavorites(): Flow<List<FavoriteEntity>> = flowOf(emptyList())
         override fun isFavorite(videoId: String): Flow<Boolean> = flowOf(false)
         override suspend fun addToFavorites(favorite: FavoriteEntity) {}

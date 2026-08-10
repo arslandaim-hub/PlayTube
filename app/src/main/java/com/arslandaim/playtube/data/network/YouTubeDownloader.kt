@@ -5,6 +5,7 @@
 */
 package com.arslandaim.playtube.data.network
 
+import com.arslandaim.playtube.utils.Constants
 import okhttp3.OkHttpClient
 import okhttp3.Request as OkHttpRequest
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -25,6 +26,11 @@ class YouTubeDownloader(private val client: OkHttpClient) : Downloader() {
         val okHttpRequestBuilder = OkHttpRequest.Builder()
             .url(url)
             .method(method, data?.toRequestBody())
+
+        // Bypass YouTube Consent/GDPR redirection in Europe
+        if (url.contains("youtube.com") || url.contains("googlevideo.com")) {
+            okHttpRequestBuilder.addHeader("Cookie", Constants.YouTube.CONSENT_COOKIE)
+        }
 
         headers.forEach { (key, values) ->
             values.forEach { value ->

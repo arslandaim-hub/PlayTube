@@ -330,11 +330,12 @@ private fun SubscriptionFilterBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         item(key = "all") {
+            val currentOnSelected = remember(onChannelSelected) { { onChannelSelected(null) } }
             ChannelBubble(
                 name = "All",
                 thumbnailUrl = null,
                 isSelected = selectedChannelId == null,
-                onClick = { onChannelSelected(null) }
+                onClick = currentOnSelected
             )
         }
 
@@ -342,11 +343,14 @@ private fun SubscriptionFilterBar(
             items = subscriptions,
             key = { it.channelId }
         ) { sub ->
+            val currentOnSelected = remember(sub.channelId, onChannelSelected) {
+                { onChannelSelected(sub.channelId) }
+            }
             ChannelBubble(
                 name = sub.name,
                 thumbnailUrl = sub.thumbnailUrl,
                 isSelected = selectedChannelId == sub.channelId,
-                onClick = { onChannelSelected(sub.channelId) }
+                onClick = currentOnSelected
             )
         }
 
@@ -422,6 +426,7 @@ private fun ChannelBubble(
                 com.arslandaim.playtube.ui.components.ThumbnailImage(
                     videoId = "",
                     thumbnailUrl = thumbnailUrl,
+                    quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.Medium,
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)

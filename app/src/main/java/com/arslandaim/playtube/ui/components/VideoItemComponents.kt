@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.graphicsLayer
@@ -50,19 +51,68 @@ import coil3.request.crossfade
 import com.arslandaim.playtube.utils.VideoUtils
 import android.content.res.Configuration
 
+enum class ThumbnailQuality {
+    Low, Medium, High, Ultra
+}
+
 @Composable
 fun ThumbnailImage(
     videoId: String,
     thumbnailUrl: String,
     modifier: Modifier = Modifier,
+    quality: ThumbnailQuality = ThumbnailQuality.Medium,
     contentScale: ContentScale = ContentScale.Crop,
     filterQuality: FilterQuality = FilterQuality.High
 ) {
-    var currentUrl by remember(thumbnailUrl) { mutableStateOf(thumbnailUrl) }
-    var isLoading by remember { mutableStateOf(true) }
+    val context = LocalContext.current
+    
+    // Structured fallback chain based on requested quality
+    val sourceUrls = remember(videoId, thumbnailUrl, quality) {
+        // Attempt to extract ID if the provided URL is a YouTube image
+        val extractedId = if (thumbnailUrl.contains("ytimg.com") || thumbnailUrl.contains("youtube.com")) {
+            VideoUtils.extractVideoId(thumbnailUrl)
+        } else null
+        
+        val effectiveId = videoId.ifBlank { extractedId ?: "" }
+        
+        if (effectiveId.isBlank()) {
+            listOf(thumbnailUrl)
+        } else {
+            when (quality) {
+                ThumbnailQuality.Ultra -> listOf(
+                    VideoUtils.getMaxResThumbnail(effectiveId),
+                    VideoUtils.getHq720ThumbnailUrl(effectiveId),
+                    VideoUtils.getSdResThumbnailUrl(effectiveId),
+                    VideoUtils.getHighResThumbnail(effectiveId)
+                )
+                ThumbnailQuality.High -> listOf(
+                    VideoUtils.getMaxResThumbnail(effectiveId),
+                    VideoUtils.getHq720ThumbnailUrl(effectiveId),
+                    VideoUtils.getSdResThumbnailUrl(effectiveId),
+                    VideoUtils.getHighResThumbnail(effectiveId)
+                )
+                ThumbnailQuality.Medium -> listOf(
+                    VideoUtils.getSdResThumbnailUrl(effectiveId),
+                    VideoUtils.getHighResThumbnail(effectiveId),
+                    VideoUtils.getMediumResThumbnail(effectiveId)
+                )
+                ThumbnailQuality.Low -> listOf(
+                    VideoUtils.getMediumResThumbnail(effectiveId),
+                    VideoUtils.getLowResThumbnail(effectiveId)
+                )
+            }
+        }
+    }
+    
+    var currentUrlIndex by remember(videoId, thumbnailUrl, quality) { mutableIntStateOf(0) }
+    var isLoaded by remember(videoId, thumbnailUrl, quality) { mutableStateOf(false) }
 
-    Box(modifier = modifier) {
-        if (isLoading) {
+    BoxWithConstraints(modifier = modifier) {
+        val width = constraints.maxWidth
+        val height = constraints.maxHeight
+
+        // Shimmer only if we don't have even the basic version yet
+        if (!isLoaded) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -71,19 +121,21 @@ fun ThumbnailImage(
         }
 
         AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(currentUrl)
+            model = ImageRequest.Builder(context)
+                .data(sourceUrls.getOrNull(currentUrlIndex))
                 .crossfade(true)
+                .size(width, height)
+                .precision(coil3.size.Precision.INEXACT)
                 .build(),
-            onLoading = { isLoading = true },
-            onSuccess = { isLoading = false },
+            onSuccess = {
+                isLoaded = true
+            },
             onError = {
-                val fallback = VideoUtils.getFallbackThumbnailUrl(videoId)
-                if (currentUrl != fallback) {
-                    currentUrl = fallback
-                    isLoading = true
+                if (currentUrlIndex < sourceUrls.size - 1) {
+                    currentUrlIndex++
                 } else {
-                    isLoading = false
+                    // All fallbacks failed
+                    isLoaded = true // Stop shimmering
                 }
             },
             contentDescription = null,
@@ -91,6 +143,21 @@ fun ThumbnailImage(
             contentScale = contentScale,
             filterQuality = filterQuality
         )
+        
+        // Background low-res pre-loader for fast feedback
+        if (!isLoaded && sourceUrls.size > 1 && currentUrlIndex == 0) {
+            val fallbackUrl = sourceUrls.last()
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(fallbackUrl)
+                    .size(width / 4, height / 4) // Much smaller for pre-load
+                    .precision(coil3.size.Precision.INEXACT)
+                    .build(),
+                onSuccess = { /* Warm up cache */ },
+                contentDescription = null,
+                modifier = Modifier.size(1.dp).alpha(0f)
+            )
+        }
     }
 }
 
@@ -230,8 +297,9 @@ fun PremiumPlaylistCard(
             color = MaterialTheme.colorScheme.surfaceVariant
         ) {
             ThumbnailImage(
-                videoId = VideoUtils.extractPlaylistId(playlist.id),
+                videoId = "",
                 thumbnailUrl = playlist.thumbnailUrl,
+                quality = ThumbnailQuality.High,
                 modifier = Modifier.fillMaxSize()
             )
             
@@ -262,7 +330,7 @@ fun PremiumPlaylistCard(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "VIDEOS",
+                            text = stringResource(R.string.videos).uppercase(),
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White.copy(alpha = 0.8f)
                         )
@@ -364,15 +432,31 @@ fun VideoList(
                 key = { video -> video.id },
                 contentType = { "video" }
             ) { video ->
+                val currentOnFavoriteClick = remember(video, onFavoriteClick) {
+                    if (onFavoriteClick != null) { { onFavoriteClick(video) } } else null
+                }
+                val currentOnNotInterestedClick = remember(video, onNotInterestedClick) {
+                    if (onNotInterestedClick != null) { { onNotInterestedClick(video) } } else null
+                }
+                val currentOnDownloadClick = remember(video, onDownloadClick) {
+                    if (onDownloadClick != null) { { onDownloadClick(video) } } else null
+                }
+                val currentOnChannelClick = remember(video, onChannelClick) {
+                    if (onChannelClick != null && video.uploaderUrl != null) { { onChannelClick(video.uploaderUrl) } } else null
+                }
+                val currentOnClick = remember(video, onVideoClick) {
+                    { onVideoClick(video) }
+                }
+
                 VideoItemRow(
                     video = video,
                     isDownloaded = downloadedIds.contains(video.id),
                     isFavorite = favoriteIds.contains(video.id),
-                    onFavoriteClick = if (onFavoriteClick != null) { { onFavoriteClick(video) } } else null,
-                    onNotInterestedClick = if (onNotInterestedClick != null) { { onNotInterestedClick(video) } } else null,
-                    onDownloadClick = if (onDownloadClick != null) { { onDownloadClick(video) } } else null,
-                    onChannelClick = if (onChannelClick != null && video.uploaderUrl != null) { { onChannelClick(video.uploaderUrl) } } else null,
-                    onClick = { onVideoClick(video) }
+                    onFavoriteClick = currentOnFavoriteClick,
+                    onNotInterestedClick = currentOnNotInterestedClick,
+                    onDownloadClick = currentOnDownloadClick,
+                    onChannelClick = currentOnChannelClick,
+                    onClick = currentOnClick
                 )
             }
             
@@ -414,15 +498,31 @@ fun VideoList(
                 key = { video -> video.id },
                 contentType = { "video" }
             ) { video ->
+                val currentOnFavoriteClick = remember(video, onFavoriteClick) {
+                    if (onFavoriteClick != null) { { onFavoriteClick(video) } } else null
+                }
+                val currentOnNotInterestedClick = remember(video, onNotInterestedClick) {
+                    if (onNotInterestedClick != null) { { onNotInterestedClick(video) } } else null
+                }
+                val currentOnDownloadClick = remember(video, onDownloadClick) {
+                    if (onDownloadClick != null) { { onDownloadClick(video) } } else null
+                }
+                val currentOnChannelClick = remember(video, onChannelClick) {
+                    if (onChannelClick != null && video.uploaderUrl != null) { { onChannelClick(video.uploaderUrl) } } else null
+                }
+                val currentOnClick = remember(video, onVideoClick) {
+                    { onVideoClick(video) }
+                }
+
                 VideoItemRow(
                     video = video,
                     isDownloaded = downloadedIds.contains(video.id),
                     isFavorite = favoriteIds.contains(video.id),
-                    onFavoriteClick = if (onFavoriteClick != null) { { onFavoriteClick(video) } } else null,
-                    onNotInterestedClick = if (onNotInterestedClick != null) { { onNotInterestedClick(video) } } else null,
-                    onDownloadClick = if (onDownloadClick != null) { { onDownloadClick(video) } } else null,
-                    onChannelClick = if (onChannelClick != null && video.uploaderUrl != null) { { onChannelClick(video.uploaderUrl) } } else null,
-                    onClick = { onVideoClick(video) }
+                    onFavoriteClick = currentOnFavoriteClick,
+                    onNotInterestedClick = currentOnNotInterestedClick,
+                    onDownloadClick = currentOnDownloadClick,
+                    onChannelClick = currentOnChannelClick,
+                    onClick = currentOnClick
                 )
             }
 
@@ -480,6 +580,7 @@ fun VideoItemRow(
             ThumbnailImage(
                 videoId = video.id,
                 thumbnailUrl = video.thumbnailUrl,
+                quality = ThumbnailQuality.High,
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
@@ -644,7 +745,7 @@ fun VideoItemRow(
                                 }
                                 if (onNotInterestedClick != null) {
                                     DropdownMenuItem(
-                                        text = { Text("Not interested") },
+                                        text = { Text(stringResource(R.string.not_interested)) },
                                         leadingIcon = { 
                                             Icon(
                                                 imageVector = Icons.Default.Block, 

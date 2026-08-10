@@ -478,8 +478,9 @@ fun ModernPlaylistItem(
                     .clip(RoundedCornerShape(12.dp))
             ) {
                 ThumbnailImage(
-                    videoId = VideoUtils.extractPlaylistId(playlist.id),
+                    videoId = "",
                     thumbnailUrl = playlist.thumbnailUrl,
+                    quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.High,
                     modifier = Modifier.fillMaxSize()
                 )
                 // Playlist Overlay

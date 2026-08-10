@@ -128,8 +128,14 @@ class SubscriptionsFeedViewModel @Inject constructor(
 
         if (channelId != null) {
             // Check cache or initiate fetch
-            val cachedState = _channelFeedsCache[channelId]
-            if (cachedState == null || cachedState.value.videos.isEmpty()) {
+            if (!_channelFeedsCache.containsKey(channelId) && _channelFeedsCache.size >= 20) {
+                // Remove oldest/first entry to bound memory
+                _channelFeedsCache.keys().asSequence().firstOrNull()?.let { 
+                    _channelFeedsCache.remove(it) 
+                }
+            }
+            val cachedState = _channelFeedsCache.getOrPut(channelId) { MutableStateFlow(FeedState()) }
+            if (cachedState.value.videos.isEmpty()) {
                 loadSubscriptionsFeed()
             }
         } else {
@@ -237,6 +243,8 @@ class SubscriptionsFeedViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 _isThoroughSearching.value = false
+                _snackbarMessage.emit("Failed to sync subscriptions: ${PlayTubeError.fromThrowable(e).getMessage()}")
+                _allFeedState.update { it.copy(error = PlayTubeError.fromThrowable(e)) }
             }
         }
     }

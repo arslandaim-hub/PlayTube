@@ -42,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
@@ -130,8 +131,10 @@ fun PlayerScreen(
     val duration by viewModel.duration.collectAsStateWithLifecycle()
     val downloadState by viewModel.downloadState.collectAsStateWithLifecycle()
     val isRecovering by viewModel.isRecovering.collectAsStateWithLifecycle()
+    val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
     val isIncognito by viewModel.isIncognitoMode.collectAsStateWithLifecycle()
     val isAutoplayEnabled by viewModel.isAutoplayEnabled.collectAsStateWithLifecycle()
+    val preferredQuality by viewModel.preferredQuality.collectAsStateWithLifecycle()
     val sleepTimerRemainingTime by viewModel.sleepTimerRemainingTime.collectAsStateWithLifecycle()
     val shouldCloseAppOnTimerFinish by viewModel.shouldCloseAppOnTimerFinish.collectAsStateWithLifecycle()
     val syncTransition = rememberSyncShimmerTransition()
@@ -174,63 +177,69 @@ fun PlayerScreen(
         favorites.map { it.videoId }.toSet()
     }
     
-    PlayerContent(
-        videoId = videoId,
-        initialTitle = initialTitle,
-        initialThumbnail = initialThumbnail,
-        uiState = uiState,
-        isFavorite = isFavorite,
-        isSubscribed = isSubscribed,
-        playbackSpeed = playbackSpeed,
-        currentQuality = currentQuality,
-        isBuffering = isBuffering,
-        isRecovering = isRecovering,
-        isIncognito = isIncognito,
-        downloadedIds = downloadedIds,
-        favoriteIds = favoriteIds,
-        seekAmount = seekAmount,
-        showSeekFeedback = showSeekFeedback,
-        isSeekForward = isSeekForward,
-        isCcEnabled = isCcEnabled,
-        availableSubtitles = availableSubtitles,
-        selectedSubtitleLanguage = selectedSubtitleLanguage,
-        currentPosition = currentPosition,
-        bufferedPosition = bufferedPosition,
-        duration = duration,
-        downloadState = downloadState,
-        player = viewModel.player,
-        activeCues = activeCues,
-        syncTransition = syncTransition,
-        snackbarMessage = viewModel.snackbarMessage,
-        onToggleFavorite = { viewModel.toggleFavorite(it) },
-        onToggleSubscription = viewModel::toggleSubscription,
-        onSetQuality = viewModel::setQuality,
-        onSetPlaybackSpeed = viewModel::setPlaybackSpeed,
-        onToggleSubtitles = viewModel::toggleSubtitles,
-        onSetSubtitleLanguage = viewModel::setSubtitleLanguage,
-        onSkipNext = viewModel::playNext,
-        onSkipPrevious = viewModel::playPrevious,
-        onDownloadConfirm = viewModel::download,
-        onDownloadClick = { viewModel.prepareDownload(it) },
-        onDismissDownload = viewModel::dismissDownloadDialog,
-        onLoadMore = viewModel::loadNextRelatedPage,
-        onSeekForward = viewModel::seekForward,
-        onSeekBackward = viewModel::seekBackward,
-        onSeekTo = viewModel::seekTo,
-        onShareVideo = viewModel::shareVideo,
-        onBack = onBack,
-        onVideoClick = onVideoClick,
-        onChannelClick = onChannelClick,
-        onRetry = { viewModel.currentVideoItem?.let { viewModel.loadVideo(it) } },
-        isAutoplayEnabled = isAutoplayEnabled,
-        onAutoplayChange = viewModel::setAutoplayEnabled,
-        sleepTimerRemainingTime = sleepTimerRemainingTime,
-        shouldCloseAppOnTimerFinish = shouldCloseAppOnTimerFinish,
-        onStartSleepTimer = viewModel.sleepTimerManager::startTimer,
-        onSetEndOfVideoSleepTimer = viewModel.sleepTimerManager::setEndOfVideo,
-        onCancelSleepTimer = viewModel.sleepTimerManager::cancelTimer,
-        onSetShouldCloseApp = viewModel.sleepTimerManager::setShouldCloseApp
-    )
+    // Memoize subtitle list to prevent redundant recompositions when other states change
+    val memoizedSubtitles = remember(availableSubtitles) { availableSubtitles }
+    
+        PlayerContent(
+            videoId = videoId,
+            initialTitle = initialTitle,
+            initialThumbnail = initialThumbnail,
+            uiState = uiState,
+            isFavorite = isFavorite,
+            isSubscribed = isSubscribed,
+            playbackSpeed = playbackSpeed,
+            currentQuality = currentQuality,
+            isBuffering = isBuffering,
+            isRecovering = isRecovering,
+            isPlaying = isPlaying,
+            isIncognito = isIncognito,
+            preferredQuality = preferredQuality,
+            downloadedIds = downloadedIds,
+            favoriteIds = favoriteIds,
+            seekAmount = seekAmount,
+            showSeekFeedback = showSeekFeedback,
+            isSeekForward = isSeekForward,
+            isCcEnabled = isCcEnabled,
+            availableSubtitles = memoizedSubtitles,
+            selectedSubtitleLanguage = selectedSubtitleLanguage,
+            currentPosition = { currentPosition },
+            bufferedPosition = { bufferedPosition },
+            duration = { duration },
+            downloadState = downloadState,
+            player = viewModel.player,
+            activeCues = activeCues,
+            syncTransition = syncTransition,
+            snackbarMessage = viewModel.snackbarMessage,
+            onToggleFavorite = { viewModel.toggleFavorite(it) },
+            onToggleSubscription = viewModel::toggleSubscription,
+            onSetQuality = viewModel::setQuality,
+            onSetPlaybackSpeed = viewModel::setPlaybackSpeed,
+            onToggleSubtitles = viewModel::toggleSubtitles,
+            onSetSubtitleLanguage = viewModel::setSubtitleLanguage,
+            onPlayPause = viewModel::togglePlayPause,
+            onSkipNext = viewModel::playNext,
+            onSkipPrevious = viewModel::playPrevious,
+            onDownloadConfirm = viewModel::download,
+            onDownloadClick = { viewModel.prepareDownload(it) },
+            onDismissDownload = viewModel::dismissDownloadDialog,
+            onLoadMore = viewModel::loadNextRelatedPage,
+            onSeekForward = viewModel::seekForward,
+            onSeekBackward = viewModel::seekBackward,
+            onSeekTo = viewModel::seekTo,
+            onShareVideo = viewModel::shareVideo,
+            onBack = onBack,
+            onVideoClick = onVideoClick,
+            onChannelClick = onChannelClick,
+            onRetry = { viewModel.currentVideoItem?.let { viewModel.loadVideo(it) } },
+            isAutoplayEnabled = isAutoplayEnabled,
+            onAutoplayChange = viewModel::setAutoplayEnabled,
+            sleepTimerRemainingTime = sleepTimerRemainingTime,
+            shouldCloseAppOnTimerFinish = shouldCloseAppOnTimerFinish,
+            onStartSleepTimer = viewModel.sleepTimerManager::startTimer,
+            onSetEndOfVideoSleepTimer = viewModel.sleepTimerManager::setEndOfVideo,
+            onCancelSleepTimer = viewModel.sleepTimerManager::cancelTimer,
+            onSetShouldCloseApp = viewModel.sleepTimerManager::setShouldCloseApp
+        )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -246,7 +255,9 @@ private fun PlayerContent(
     currentQuality: String?,
     isBuffering: Boolean,
     isRecovering: Boolean,
+    isPlaying: Boolean,
     isIncognito: Boolean,
+    preferredQuality: String,
     downloadedIds: Set<String>,
     favoriteIds: Set<String>,
     seekAmount: Int,
@@ -255,9 +266,9 @@ private fun PlayerContent(
     isCcEnabled: Boolean,
     availableSubtitles: List<com.arslandaim.playtube.domain.model.SubtitleItem>,
     selectedSubtitleLanguage: String?,
-    currentPosition: Long,
-    bufferedPosition: Long,
-    duration: Long,
+    currentPosition: () -> Long,
+    bufferedPosition: () -> Long,
+    duration: () -> Long,
     downloadState: DownloadDialogState,
     player: Player,
     activeCues: List<Cue>,
@@ -265,10 +276,11 @@ private fun PlayerContent(
     snackbarMessage: SharedFlow<String>,
     onToggleFavorite: (VideoItem?) -> Unit,
     onToggleSubscription: () -> Unit,
-    onSetQuality: (com.arslandaim.playtube.domain.model.StreamItem) -> Unit,
+    onSetQuality: (com.arslandaim.playtube.domain.model.StreamItem?) -> Unit,
     onSetPlaybackSpeed: (Float) -> Unit,
     onToggleSubtitles: () -> Unit,
     onSetSubtitleLanguage: (String?) -> Unit,
+    onPlayPause: () -> Unit,
     onSkipNext: () -> Unit,
     onSkipPrevious: () -> Unit,
     onDownloadConfirm: (VideoItem, StreamBundle, String?, String?, String?, Boolean) -> Unit,
@@ -351,6 +363,7 @@ private fun PlayerContent(
             QualitySelectionSheet(
                 videoStreams = it.bundle.videoStreams,
                 currentQuality = currentQuality,
+                preferredQuality = preferredQuality,
                 onDismiss = { showQualityDialog = false },
                 onQualitySelected = { stream ->
                     onSetQuality(stream)
@@ -429,10 +442,10 @@ private fun PlayerContent(
                 )
                 val currentLangName = selectedSubtitleLanguage?.let { 
                     java.util.Locale.forLanguageTag(it).displayLanguage.replaceFirstChar { c -> c.uppercase() } 
-                } ?: "Off"
+                } ?: stringResource(R.string.off)
                 ListItem(
-                    headlineContent = { Text("Subtitles") },
-                    supportingContent = { Text(if (isCcEnabled) currentLangName else "Off") },
+                    headlineContent = { Text(stringResource(R.string.subtitles)) },
+                    supportingContent = { Text(if (isCcEnabled) currentLangName else stringResource(R.string.off)) },
                     leadingContent = { Icon(Icons.Default.ClosedCaption, null) },
                     modifier = Modifier.clickable {
                         showSettingsSheet = false
@@ -486,12 +499,12 @@ private fun PlayerContent(
                 val isEndOfVideo = sleepTimerRemainingTime == -1
 
                 ListItem(
-                    headlineContent = { Text("Duration: ${if (isEndOfVideo) "End of Video" else if (selectedMinutes == 0) "Off" else "$selectedMinutes minutes"}") },
+                    headlineContent = { Text("${stringResource(R.string.duration)}: ${if (isEndOfVideo) stringResource(R.string.timer_end_of_video) else if (selectedMinutes == 0) stringResource(R.string.off) else stringResource(R.string.timer_minutes_placeholder, selectedMinutes)}") },
                     trailingContent = {
                         if (!isEndOfVideo && selectedMinutes > 0) {
                             val timeFormat = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
                             Text(
-                                text = "Ends at ${timeFormat.format(System.currentTimeMillis() + selectedMinutes * 60000)}",
+                                text = stringResource(R.string.ends_at, timeFormat.format(System.currentTimeMillis() + selectedMinutes * 60000)),
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
@@ -518,8 +531,8 @@ private fun PlayerContent(
                 )
 
                 ListItem(
-                    headlineContent = { Text("Close app on finish") },
-                    supportingContent = { Text("Conserve battery by closing PlayTube") },
+                    headlineContent = { Text(stringResource(R.string.close_app_on_finish)) },
+                    supportingContent = { Text(stringResource(R.string.close_app_desc)) },
                     trailingContent = {
                         Switch(
                             checked = shouldCloseAppOnTimerFinish,
@@ -540,7 +553,7 @@ private fun PlayerContent(
                         .fillMaxWidth()
                         .padding(16.dp)
                 ) {
-                    Text("Apply")
+                    Text(stringResource(R.string.apply))
                 }
             }
         }
@@ -572,15 +585,27 @@ private fun PlayerContent(
             if (uiState is PlayerUiState.Success || initialThumbnail != null) {
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
-                        .data((uiState as? PlayerUiState.Success)?.bundle?.thumbnailUrl ?: initialThumbnail)
+                        .data(VideoUtils.getLowResThumbnail(videoId))
                         .crossfade(true)
                         .build(),
                     contentDescription = null,
                     modifier = Modifier
                         .fillMaxSize()
-                        .graphicsLayer { alpha = 0.15f } // Faded for text readability
-                        .blur(80.dp), // Strong blur for immersive feel
-                    contentScale = ContentScale.Crop
+                        .graphicsLayer {
+                            alpha = 0.15f
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                renderEffect = android.graphics.RenderEffect.createBlurEffect(
+                                    100f, 100f, android.graphics.Shader.TileMode.CLAMP
+                                ).asComposeRenderEffect()
+                            }
+                        }
+                        .then(
+                            if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
+                                Modifier.blur(80.dp)
+                            } else Modifier
+                        ),
+                    contentScale = ContentScale.Crop,
+                    filterQuality = FilterQuality.Low
                 )
             }
 
@@ -606,6 +631,7 @@ private fun PlayerContent(
                                     is PlayerUiState.Success -> uiState.bundle.thumbnailUrl
                                     else -> null
                                 } ?: initialThumbnail ?: VideoUtils.getBestThumbnailUrl(videoId),
+                                quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.Ultra,
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop,
                                 filterQuality = FilterQuality.High
@@ -758,8 +784,14 @@ private fun PlayerContent(
                             // Persistent Progress Bar (Always visible at the very bottom)
                             val isLive = (uiState as? PlayerUiState.Success)?.bundle?.isLive == true
                             PersistentProgressBar(
-                                progress = if (isLive) 1f else if (duration > 0) currentPosition.toFloat() / duration else 0f,
-                                bufferedProgress = if (isLive) 1f else if (duration > 0) bufferedPosition.toFloat() / duration else 0f,
+                                progress = {
+                                    val dur = duration()
+                                    if (isLive) 1f else if (dur > 0) currentPosition().toFloat() / dur else 0f
+                                },
+                                bufferedProgress = {
+                                    val dur = duration()
+                                    if (isLive) 1f else if (dur > 0) bufferedPosition().toFloat() / dur else 0f
+                                },
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
                                     .fillMaxWidth()
@@ -773,14 +805,14 @@ private fun PlayerContent(
                                 exit = androidx.compose.animation.fadeOut()
                             ) {
                                 PlayerControlsOverlay(
-                                    isPlaying = player.isPlaying,
+                                    isPlaying = isPlaying,
                                     currentPosition = currentPosition,
                                     duration = duration,
                                     isLive = isLive,
                                     isCcEnabled = isCcEnabled,
                                     isIncognito = isIncognito,
                                     hasSubtitles = (uiState as? PlayerUiState.Success)?.bundle?.subtitles?.isNotEmpty() == true,
-                                    onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
+                                    onPlayPause = onPlayPause,
                                     onSkipNext = onSkipNext,
                                     onSkipPrevious = onSkipPrevious,
                                     onSeekTo = onSeekTo,
@@ -1042,10 +1074,6 @@ private fun VideoPlayerView(
             if (view.player != player) {
                 view.player = player
             }
-            // Force a surface re-attach for local videos if state is READY but surface is missing
-            if (player.playbackState == Player.STATE_READY && !player.isPlaying) {
-                view.onResume()
-            }
             view.subtitleView?.visibility = android.view.View.GONE
         },
         onRelease = { view ->
@@ -1058,8 +1086,8 @@ private fun VideoPlayerView(
 
 @Composable
 private fun PersistentProgressBar(
-    progress: Float,
-    bufferedProgress: Float,
+    progress: () -> Float,
+    bufferedProgress: () -> Float,
     modifier: Modifier = Modifier
 ) {
     Canvas(
@@ -1068,7 +1096,6 @@ private fun PersistentProgressBar(
             .height(2.dp)
     ) {
         val width = size.width
-        val height = size.height
         
         // Background
         drawRect(
@@ -1079,13 +1106,13 @@ private fun PersistentProgressBar(
         // Buffered (Preloaded) line
         drawRect(
             color = Color.White.copy(alpha = 0.3f),
-            size = size.copy(width = width * bufferedProgress.coerceIn(0f, 1f))
+            size = size.copy(width = width * bufferedProgress().coerceIn(0f, 1f))
         )
         
         // Playback progress line
         drawRect(
             color = Color.Red,
-            size = size.copy(width = width * progress.coerceIn(0f, 1f))
+            size = size.copy(width = width * progress().coerceIn(0f, 1f))
         )
     }
 }
@@ -1094,8 +1121,8 @@ private fun PersistentProgressBar(
 @Composable
 private fun PlayerControlsOverlay(
     isPlaying: Boolean,
-    currentPosition: Long,
-    duration: Long,
+    currentPosition: () -> Long,
+    duration: () -> Long,
     isLive: Boolean,
     isCcEnabled: Boolean,
     isIncognito: Boolean,
@@ -1199,12 +1226,12 @@ private fun PlayerControlsOverlay(
                     }
                 } else {
                     Text(
-                        text = VideoUtils.formatDuration(currentPosition / 1000),
+                        text = VideoUtils.formatDuration(currentPosition() / 1000),
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         color = Color.White
                     )
                     Text(
-                        text = VideoUtils.formatDuration(duration / 1000),
+                        text = VideoUtils.formatDuration(duration() / 1000),
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         color = Color.White.copy(alpha = 0.7f)
                     )
@@ -1212,10 +1239,12 @@ private fun PlayerControlsOverlay(
             }
             
             if (!isLive) {
+                val currentPos = currentPosition()
+                val totalDuration = duration()
                 Slider(
-                    value = currentPosition.toFloat(),
+                    value = currentPos.toFloat(),
                     onValueChange = { onSeekTo(it.toLong()) },
-                    valueRange = 0f..duration.toFloat().coerceAtLeast(1f),
+                    valueRange = 0f..totalDuration.toFloat().coerceAtLeast(1f),
                     thumb = {
                         Box(
                             modifier = Modifier.size(20.dp),

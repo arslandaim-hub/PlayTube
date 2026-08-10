@@ -21,12 +21,16 @@ class GetRecommendationsUseCase @Inject constructor(
     private val videoRepository: VideoRepository,
     private val libraryRepository: LibraryRepository
 ) {
-    suspend operator fun invoke(): Result<List<VideoItem>> = coroutineScope {
-        try {
-            // 1. Check if Recommendations are Paused or Learned Data should be ignored
-            // For now, if paused, we still show generic/trending but stop updating interests.
-            // If the profile is empty, we use a larger default set.
+    private var cachedRecommendations: List<VideoItem>? = null
+    private var lastFetchTime = 0L
+    private val CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
 
+    suspend operator fun invoke(forceRefresh: Boolean = false): Result<List<VideoItem>> = coroutineScope {
+        if (!forceRefresh && cachedRecommendations != null && (System.currentTimeMillis() - lastFetchTime < CACHE_DURATION)) {
+            return@coroutineScope Result.success(cachedRecommendations!!)
+        }
+
+        try {
             // 2. Multi-Seed Strategy
             val topInterests = libraryRepository.getTopInterests(20)
             val subscriptions = libraryRepository.getSubscriptions().first()
@@ -37,7 +41,7 @@ class GetRecommendationsUseCase @Inject constructor(
             
             // Interest-based seeds (Keywords)
             if (topInterests.isNotEmpty()) {
-                seedKeywords.addAll(topInterests.take(10).map { it.keyword })
+                seedKeywords.addAll(topInterests.take(5).map { it.keyword }) // Reduced from 10 to 5 for speed
             }
             
             // Recent-based seeds (Related Videos)
@@ -47,15 +51,15 @@ class GetRecommendationsUseCase @Inject constructor(
 
             // Subscription-based seeds (Sample channels)
             val subTopicSeeds = if (subscriptions.isNotEmpty()) {
-                subscriptions.shuffled().take(3).map { it.name }
+                subscriptions.shuffled().take(2).map { it.name } // Reduced from 3 to 2
             } else emptyList()
 
             // 3. Fetch Candidates from 3 sources
             val candidates = mutableListOf<VideoItem>()
 
             // Source A: Keyword Search (Broad)
-            val searchTopics = (seedKeywords + subTopicSeeds).distinct().take(8)
-            searchTopics.chunked(2).forEach { chunk ->
+            val searchTopics = (seedKeywords + subTopicSeeds).distinct().take(6) // Reduced from 8 to 6
+            searchTopics.chunked(3).forEach { chunk -> // Increased chunk size for parallelization
                 val deferred = chunk.map { topic ->
                     async {
                         try {
@@ -69,20 +73,17 @@ class GetRecommendationsUseCase @Inject constructor(
             }
 
             // Source B: Related Videos (Deep/Specific)
-            // Enhanced: Take related videos from top 5 most recent history items
-            val highPrioritySeeds = watchHistory.take(5).map { it.videoId }
-            highPrioritySeeds.chunked(2).forEach { chunk ->
-                val deferred = chunk.map { videoId ->
-                    async {
-                        try {
-                            videoRepository.getStreamBundle(videoId).relatedVideos
-                        } catch (e: Exception) { emptyList() }
-                    }
+            val highPrioritySeeds = watchHistory.take(3).map { it.videoId } // Reduced from 5 to 3
+            highPrioritySeeds.forEach { videoId ->
+                val deferred = async {
+                    try {
+                        videoRepository.getStreamBundle(videoId).relatedVideos
+                    } catch (e: Exception) { emptyList() }
                 }
-                candidates.addAll(deferred.awaitAll().flatten())
+                candidates.addAll(deferred.await())
             }
 
-            // 4. Filtering (Critical for Accuracy and User Experience)
+            // 4. Filtering
             val watchedIds = watchHistory.map { it.videoId }.toSet()
             val blacklist = libraryRepository.getBlacklistStatic().map { it.id }.toSet()
             
@@ -91,23 +92,19 @@ class GetRecommendationsUseCase @Inject constructor(
                 .filter { (it.id !in watchedIds) && (it.id !in blacklist) }
 
             // 5. Scoring & Ranking
-            // Simple scoring: Matches interest keywords +1, From subscribed channel +2
             val scoredVideos = filteredCandidates.map { video ->
                 var score = 0f
                 
-                // Keyword match bonus
                 topInterests.forEach { interest ->
                     if (video.title.contains(interest.keyword, ignoreCase = true)) {
                         score += interest.weight * 0.5f
                     }
                 }
                 
-                // Subscription bonus
                 if (subscriptions.any { it.channelId == video.uploaderUrl || it.name == video.uploaderName }) {
                     score += 5f
                 }
 
-                // Recency/View bonus (Heuristic)
                 if (video.uploadDate?.contains("day", ignoreCase = true) == true || 
                     video.uploadDate?.contains("hour", ignoreCase = true) == true) {
                     score += 1f
@@ -117,21 +114,17 @@ class GetRecommendationsUseCase @Inject constructor(
             }.sortedByDescending { it.second }
 
             // 6. Diversification & Smart Shuffle
-            // We use a pool of the top 150 scored videos.
-            // Shuffling the top results ensures the feed feels fresh on every open.
-            val topPool = scoredVideos.take(150).map { it.first }
+            val topPool = scoredVideos.take(120).map { it.first }
             
-            // Smart Shuffle logic: prioritize the top 40% of the pool but shuffle them
             val finalRecommendations = if (topPool.size >= 40) {
                 val highPriority = topPool.take(30).shuffled()
                 val mediumPriority = topPool.drop(30).shuffled()
                 (highPriority + mediumPriority).take(60)
             } else {
-                // Refined Fallback: Pull from a wider variety of "Trending" topics if candidates are low
                 val fallbacks = mutableListOf<VideoItem>()
-                val fallbackTopics = listOf("Trending", "New Music", "Popular News", "Tech Reviews").shuffled()
+                val fallbackTopics = listOf("Trending", "New Music", "Popular News").shuffled()
                 
-                fallbackTopics.take(3).forEach { topic ->
+                fallbackTopics.take(2).forEach { topic ->
                     try {
                         fallbacks.addAll(
                             searchRepository.search(topic).items
@@ -148,6 +141,8 @@ class GetRecommendationsUseCase @Inject constructor(
                     .take(60)
             }
 
+            cachedRecommendations = finalRecommendations
+            lastFetchTime = System.currentTimeMillis()
             Result.success(finalRecommendations)
         } catch (e: Exception) {
             Result.failure(e)

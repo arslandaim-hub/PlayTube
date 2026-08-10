@@ -46,7 +46,6 @@ object DatabaseModule {
             "playtube_db"
         )
         .addMigrations(MIGRATION_9_10)
-        .fallbackToDestructiveMigrationOnDowngrade() // Optional but safe
         .build()
     }
 

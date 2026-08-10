@@ -87,6 +87,39 @@
     <string name="background_play">Background Play</string>
     <string name="background_play_desc">Keep audio playing when app is minimized</string>
 
+    <!-- Final Audit Additions -->
+    <string name="back_online">Back Online</string>
+    <string name="offline_dialog_text">You are currently offline. Checkout your downloads.</string>
+    <string name="go_to_downloads">Go to Downloads</string>
+    <string name="incognito_label">Incognito</string>
+    <string name="smart_cleanup_title">Smart Cleanup</string>
+    <string name="smart_cleanup_desc">This will remove all downloaded videos that you have already finished watching (>90%).</string>
+    <string name="clean_now">Clean Now</string>
+    <string name="clear_history_title">Clear watch history?</string>
+    <string name="clear_history_desc">Are you sure you want to clear your entire watch history? This action cannot be undone.</string>
+    <string name="pause_watch_history">Pause watch history</string>
+    <string name="not_interested">Not interested</string>
+    <string name="up_next">Up Next</string>
+    <string name="play_now">Play Now</string>
+    <string name="search_offline">Search offline...</string>
+    <string name="duration">Duration</string>
+    <string name="apply">Apply</string>
+    <string name="close_app_on_finish">Close app on finish</string>
+    <string name="close_app_desc">Conserve battery by closing PlayTube</string>
+    <string name="timer_minutes_placeholder">%d minutes</string>
+    <string name="subtitles">Subtitles</string>
+    <string name="off">Off</string>
+    <string name="history_cleared">History cleared</string>
+    <string name="ends_at">Ends at %s</string>
+    <string name="video_quality">Video Quality</string>
+    <string name="video">Video</string>
+    <string name="audio">Audio</string>
+    <string name="high_quality">High Quality</string>
+    <string name="download_quality">Download Quality</string>
+    <string name="playlist_download_quality">Playlist Download Quality</string>
+    <string name="auto_generated">Auto-generated</string>
+    <string name="language_auto_generated">%1$s (%2$s)</string>
+
     <!-- Sleep Timer -->
     <string name="sleep_timer">Sleep Timer</string>
     <string name="timer_off">Off</string>

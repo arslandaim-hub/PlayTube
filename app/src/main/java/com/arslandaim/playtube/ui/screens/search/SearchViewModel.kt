@@ -67,14 +67,14 @@ class SearchViewModel @Inject constructor(
     val isGridView: StateFlow<Boolean> = preferencesManager.isSearchGridView
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
-    private var isFetchingNextPage by mutableStateOf(false)
+    private val isFetchingNextPage = MutableStateFlow(false)
 
     val uiState: StateFlow<SearchUiState> = combine(
         _internalUiState,
         _searchSort,
         libraryRepository.getHistory(),
         libraryRepository.getSubscriptions(),
-        snapshotFlow { isFetchingNextPage }
+        isFetchingNextPage
     ) { state, sort, history, subs, isLoadingMore ->
         if (state is SearchUiState.Success) {
             val historyMap = history.associateBy({ it.videoId }, { if (it.durationMs > 0) it.progressMs.toFloat() / it.durationMs else null })
@@ -95,21 +95,21 @@ class SearchViewModel @Inject constructor(
             }
 
             // Step 2: Apply Local Sorting Fallback with Partitioning
-            // We separate videos from "static" items (Channels, Playlists) to ensure 
+            // We separate videos from "static" items (Channels, Playlists) to ensure
             // unsortable items stay pinned to the top rather than being buried.
             val sortedItems = if (sort == SearchSort.RELEVANCE) {
                 updatedItems // Use original mixed extractor order
             } else {
                 val (videos, staticItems) = updatedItems.partition { it is SearchItem.Video }
-                
+
                 val sortedVideos = when (sort) {
                     SearchSort.UPLOAD_DATE -> {
                         // Strict chronological sort matching subscription feed.
                         // We use withIndex to preserve original server order for items with identical timestamps
                         // (common when parsing textual dates like "2 hours ago").
                         videos.withIndex().sortedWith(
-                            compareByDescending<IndexedValue<SearchItem>> { 
-                                (it.value as SearchItem.Video).video.rawUploadDate ?: 0L 
+                            compareByDescending<IndexedValue<SearchItem>> {
+                                (it.value as SearchItem.Video).video.rawUploadDate ?: 0L
                             }.thenBy { it.index }
                         ).map { it.value }
                     }
@@ -227,6 +227,7 @@ class SearchViewModel @Inject constructor(
 
     private suspend fun performDeepSearch(query: String) {
         val allItems = mutableListOf<SearchItem>()
+        val currentKeys = mutableSetOf<String>()
         var currentPage: Page? = null
         val maxPages = 5 // Deep fetch 5 pages immediately for "Newest" sort
 
@@ -234,6 +235,7 @@ class SearchViewModel @Inject constructor(
             // Initial Page
             val initialResult = searchVideosUseCase(query, SearchSort.UPLOAD_DATE).getOrThrow()
             allItems.addAll(initialResult.items)
+            currentKeys.addAll(initialResult.items.map { it.uniqueKey })
             currentPage = initialResult.nextPage
 
             // Progressively fetch and update UI (similar to Subscriptions)
@@ -245,8 +247,9 @@ class SearchViewModel @Inject constructor(
                 delay(100) // Small delay to prevent rate limiting and allow UI to breathe
                 val nextResult = searchVideosUseCase.fetchNextPage(query, SearchSort.UPLOAD_DATE, currentPage).getOrThrow()
                 
-                val newItems = nextResult.items.filter { ni -> allItems.none { it.uniqueKey == ni.uniqueKey } }
+                val newItems = nextResult.items.filter { it.uniqueKey !in currentKeys }
                 allItems.addAll(newItems)
+                currentKeys.addAll(newItems.map { it.uniqueKey })
                 currentPage = nextResult.nextPage
                 
                 // Update UI incrementally so user sees results coming in
@@ -272,9 +275,9 @@ class SearchViewModel @Inject constructor(
         val currentQuery = _searchQuery.value
         val currentPage = nextPage
         // Re-enabled pagination for UPLOAD_DATE (Newest) to fetch more recent content
-        if (isFetchingNextPage || currentPage == null || currentQuery.isBlank()) return
+        if (isFetchingNextPage.value || currentPage == null || currentQuery.isBlank()) return
 
-        isFetchingNextPage = true
+        isFetchingNextPage.value = true
         viewModelScope.launch {
             searchVideosUseCase.fetchNextPage(currentQuery, _searchSort.value, currentPage)
                 .onSuccess { result ->
@@ -285,7 +288,7 @@ class SearchViewModel @Inject constructor(
                             // Strict de-duplication to prevent "accumulation" bugs
                             val currentKeys = currentState.items.map { it.uniqueKey }.toSet()
                             val filteredNewItems = result.items.filter { it.uniqueKey !in currentKeys }
-                            
+
                             currentState.copy(
                                 items = currentState.items + filteredNewItems
                             )
@@ -294,7 +297,7 @@ class SearchViewModel @Inject constructor(
                         }
                     }
                 }
-            isFetchingNextPage = false
+            isFetchingNextPage.value = false
         }
     }
 

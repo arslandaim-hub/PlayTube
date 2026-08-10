@@ -6,7 +6,6 @@
 package com.arslandaim.playtube.ui.components
 
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -17,11 +16,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.toSize
 
 /**
  * Shared infinite transition for all shimmer effects to ensure synchronization
@@ -35,14 +33,12 @@ fun rememberSyncShimmerTransition(): InfiniteTransition {
 fun Modifier.shimmerEffect(
     transition: InfiniteTransition? = null
 ): Modifier = composed {
-    var size by remember { mutableStateOf(androidx.compose.ui.geometry.Size.Zero) }
-    
-    // Use provided transition or fallback to a local one (less efficient)
+    // Use provided transition or fallback to a local one
     val actualTransition = transition ?: rememberInfiniteTransition(label = "shimmerLocal")
     
-    val startOffsetX by actualTransition.animateFloat(
-        initialValue = -2 * size.width,
-        targetValue = 2 * size.width,
+    val progress by actualTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(1200, easing = LinearEasing)
         ),
@@ -55,14 +51,20 @@ fun Modifier.shimmerEffect(
         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
     )
 
-    background(
-        brush = Brush.linearGradient(
-            colors = shimmerColors,
-            start = Offset(startOffsetX, 0f),
-            end = Offset(startOffsetX + size.width, size.height)
+    this.drawBehind {
+        val width = this.size.width
+        val height = this.size.height
+        
+        // Calculate offset based on progress: from -2*width to 2*width
+        val startOffsetX = (progress * 4 * width) - (2 * width)
+        
+        drawRect(
+            brush = Brush.linearGradient(
+                colors = shimmerColors,
+                start = Offset(startOffsetX, 0f),
+                end = Offset(startOffsetX + width, height)
+            )
         )
-    ).onGloballyPositioned {
-        size = it.size.toSize()
     }
 }
 

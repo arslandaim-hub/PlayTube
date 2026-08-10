@@ -26,6 +26,7 @@ import com.arslandaim.playtube.MainActivity
 import com.arslandaim.playtube.R
 import com.arslandaim.playtube.data.local.PreferencesManager
 import com.arslandaim.playtube.ui.screens.player.QueueManager
+import com.arslandaim.playtube.utils.PTLog
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import dagger.hilt.android.AndroidEntryPoint
@@ -121,7 +122,7 @@ class PlaybackService : MediaSessionService() {
     private inner class MediaSessionCallback : MediaSession.Callback {
         override fun onPostConnect(session: MediaSession, controller: MediaSession.ControllerInfo) {
             super.onPostConnect(session, controller)
-            android.util.Log.d("PlaybackService", "Controller connected: ${controller.packageName}")
+            PTLog.d("PlaybackService", "Controller connected: ${controller.packageName}")
         }
     }
 

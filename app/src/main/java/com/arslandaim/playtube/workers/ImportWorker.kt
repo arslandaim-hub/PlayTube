@@ -20,6 +20,7 @@ import com.arslandaim.playtube.data.local.PlayTubeDatabase
 import com.arslandaim.playtube.data.local.SubscriptionEntity
 import com.arslandaim.playtube.domain.repository.VideoRepository
 import com.arslandaim.playtube.domain.usecase.UpdateUserInterestsUseCase
+import com.arslandaim.playtube.utils.PTLog
 import com.arslandaim.playtube.utils.VideoUtils
 import com.google.gson.Gson
 import com.google.gson.stream.JsonReader
@@ -64,7 +65,7 @@ class ImportWorker @AssistedInject constructor(
                 else -> Result.failure()
             }
         } catch (e: Exception) {
-            android.util.Log.e("ImportWorker", "Import failed", e)
+            PTLog.e("ImportWorker", "Import failed", e)
             Result.failure(Data.Builder().putString("error", e.message).build())
         }
     }
@@ -156,7 +157,7 @@ class ImportWorker @AssistedInject constructor(
 
             val results = chunk.map { channelId ->
                 try {
-                    val details = videoRepository.getChannelDetails(channelId)
+                    val details = videoRepository.getChannelInfo(channelId)
                     SubscriptionEntity(
                         channelId = channelId,
                         name = details.name,

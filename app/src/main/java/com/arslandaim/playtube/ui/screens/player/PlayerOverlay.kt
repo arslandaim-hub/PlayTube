@@ -12,11 +12,14 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -30,6 +33,7 @@ fun PlayerOverlay(
     bottomBarHeight: androidx.compose.ui.unit.Dp = 0.dp,
     isIncognito: Boolean = false,
     viewModel: PlayerViewModel,
+    navController: NavHostController? = null,
     onClose: () -> Unit,
     onMaximize: () -> Unit,
     onMinimize: () -> Unit,
@@ -38,6 +42,12 @@ fun PlayerOverlay(
     content: @Composable (Modifier) -> Unit
 ) {
     val visibility by viewModel.miniPlayerManager.visibilityState.collectAsState()
+    val isPlaying by viewModel.isPlaying.collectAsState()
+    
+    // Track navigation state to force BackHandler re-registration
+    val navBackStackEntry by navController?.currentBackStackEntryAsState() ?: remember { mutableStateOf(null) }
+    val currentRoute = navBackStackEntry?.destination?.route
+
     if (visibility == MiniPlayerVisibility.Hidden) return
 
     // Keep a local copy of the last non-null video to prevent flicker during transitions
@@ -50,6 +60,18 @@ fun PlayerOverlay(
 
     val displayVideo = currentVideo ?: lastVideo
     if (displayVideo == null) return
+
+    var isMinimizing by remember { mutableStateOf(false) }
+    val localContext = androidx.compose.ui.platform.LocalContext.current
+
+    val safeMinimize = {
+        if (!isMinimizing) {
+            isMinimizing = true
+            (localContext as? android.app.Activity)?.requestedOrientation = 
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            onMinimize()
+        }
+    }
 
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
@@ -73,7 +95,12 @@ fun PlayerOverlay(
     val animatedY by animateFloatAsState(
         targetValue = targetY + offsetY,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy),
-        label = "PlayerY"
+        label = "PlayerY",
+        finishedListener = {
+            if (it == targetY) {
+                isMinimizing = false
+            }
+        }
     )
 
     val animatedX by animateFloatAsState(
@@ -93,9 +120,13 @@ fun PlayerOverlay(
             .fillMaxSize()
             .zIndex(100f) // Ensure it's above everything
     ) {
-        // SSOT Back Interception: Depend strictly on manager visibility to prevent bleed-through
-        BackHandler(enabled = visibility == MiniPlayerVisibility.Expanded) {
-            onMinimize()
+        // SSOT Back Interception: Maintain handler during minimize animation to prevent back-bleed
+        // Use key to force re-registration when player state or navigation route changes, 
+        // ensuring this handler is always the "most recent" in the dispatcher.
+        key(isExpanded, isMinimizing, currentRoute) {
+            BackHandler(enabled = isExpanded || isMinimizing) {
+                safeMinimize()
+            }
         }
 
         if (isExpanded) {
@@ -118,7 +149,7 @@ fun PlayerOverlay(
                             },
                             onDragEnd = {
                                 if (offsetY > screenHeight * 0.2f) {
-                                    onMinimize()
+                                    safeMinimize()
                                 }
                                 offsetY = 0f
                             },
@@ -133,7 +164,7 @@ fun PlayerOverlay(
                     initialTitle = displayVideo.title,
                     initialThumbnail = displayVideo.thumbnailUrl,
                     viewModel = viewModel,
-                    onBack = onMinimize,
+                    onBack = safeMinimize,
                     onVideoClick = onVideoClick,
                     onChannelClick = onChannelClick
                 )
@@ -169,8 +200,10 @@ fun PlayerOverlay(
                 MiniPlayerUI(
                     video = displayVideo,
                     player = viewModel.player,
+                    isPlaying = isPlaying,
                     isIncognito = isIncognito,
                     onMaximize = onMaximize,
+                    onPlayPause = viewModel::togglePlayPause,
                     onClose = onClose
                 )
             }
