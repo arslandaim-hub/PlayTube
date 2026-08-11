@@ -149,6 +149,24 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             playbackManager.mediaItemTransition.collect { videoId ->
                 if (videoId != null && videoId != currentVideoId) {
+                    // Pre-fill UI with basic metadata from player if available to avoid skeleton stall
+                    val metadata = player.mediaMetadata
+                    if (metadata.title != null) {
+                        val placeholderVideo = VideoItem(
+                            id = videoId,
+                            title = metadata.title.toString(),
+                            thumbnailUrl = metadata.artworkUri?.toString() ?: "",
+                            uploaderName = metadata.artist?.toString() ?: "",
+                            uploaderUrl = null,
+                            uploaderThumbnailUrl = null,
+                            viewCount = 0,
+                            uploadDate = null,
+                            rawUploadDate = null,
+                            duration = player.duration / 1000
+                        )
+                        updateUiWithPlaceholder(placeholderVideo)
+                        miniPlayerManager.updateMetadata(placeholderVideo)
+                    }
                     loadVideoMetadata(videoId)
                 }
             }
@@ -643,7 +661,6 @@ class PlayerViewModel @Inject constructor(
         loadingJob?.cancel()
         retryJob?.cancel()
         preloadingJob?.cancel()
-        playbackManager.cleanUp()
         super.onCleared()
     }
 }

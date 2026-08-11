@@ -57,13 +57,13 @@ class PlaybackManager @Inject constructor(
     private val _playbackError = MutableSharedFlow<PlaybackException>()
     val playbackError: SharedFlow<PlaybackException> = _playbackError.asSharedFlow()
 
-    private val _mediaItemTransition = MutableSharedFlow<String?>()
+    private val _mediaItemTransition = MutableSharedFlow<String?>(replay = 1)
     val mediaItemTransition: SharedFlow<String?> = _mediaItemTransition.asSharedFlow()
 
     private val _playbackEnded = MutableSharedFlow<Unit>()
     val playbackEnded: SharedFlow<Unit> = _playbackEnded.asSharedFlow()
 
-    private val managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var progressJob: Job? = null
 
     fun getBandwidthEstimate(): Long {
@@ -104,13 +104,20 @@ class PlaybackManager @Inject constructor(
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-            managerScope.launch { _mediaItemTransition.emit(mediaItem?.mediaId) }
+            managerScope.launch { 
+                _mediaItemTransition.emit(mediaItem?.mediaId) 
+            }
         }
     }
 
     init {
         player.addListener(playerListener)
         player.repeatMode = Player.REPEAT_MODE_OFF
+        
+        // Emit current media item if already exists (e.g. Service restoration)
+        player.currentMediaItem?.mediaId?.let { id ->
+            managerScope.launch { _mediaItemTransition.emit(id) }
+        }
     }
 
     fun play(videoId: String, bundle: StreamBundle, stream: StreamItem, startPosition: Long = 0) {
@@ -281,5 +288,7 @@ class PlaybackManager @Inject constructor(
     fun cleanUp() {
         player.removeListener(playerListener)
         managerScope.cancel()
+        // Re-initialize scope so the singleton can be used again if the process lives on
+        managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     }
 }

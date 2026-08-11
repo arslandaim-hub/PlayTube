@@ -33,6 +33,6 @@ object Constants {
         val SEARCH_FILTERS = listOf("all")
         val SEARCH_FILTERS_UPLOAD_DATE = listOf("videos")
         
-        const val CONSENT_COOKIE = "CONSENT=PENDING+999; CONSENT=YES+cb.20210328-17-p0.en+FX+456"
+        const val CONSENT_COOKIE = "CONSENT=YES+cb.20210328-17-p0.en+FX+456; SOCS=CAESEwgDEgk0ODE3Nzk3MjQaAmVuIAEaBgiA_LyaBg"
     }
 }

@@ -440,6 +440,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleDeepLink(intent: Intent, navController: NavHostController) {
+        if (intent.getBooleanExtra("OPEN_PLAYER", false)) {
+            miniPlayerManager.maximize()
+            intent.removeExtra("OPEN_PLAYER")
+        }
+
         val data: Uri = intent.data ?: return
         if (intent.action != Intent.ACTION_VIEW) return
         val url = data.toString()

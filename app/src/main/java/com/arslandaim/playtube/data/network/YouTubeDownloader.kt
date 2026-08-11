@@ -26,6 +26,8 @@ class YouTubeDownloader(private val client: OkHttpClient) : Downloader() {
         val okHttpRequestBuilder = OkHttpRequest.Builder()
             .url(url)
             .method(method, data?.toRequestBody())
+            .addHeader("Accept-Language", "en-US,en;q=0.9")
+            .addHeader("User-Agent", Constants.DEFAULT_USER_AGENT)
 
         // Bypass YouTube Consent/GDPR redirection in Europe
         if (url.contains("youtube.com") || url.contains("googlevideo.com")) {
