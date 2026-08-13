@@ -9,6 +9,7 @@ import android.app.Activity
 import android.content.pm.ActivityInfo
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -19,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.ClosedCaptionDisabled
@@ -26,6 +28,8 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Timer
@@ -68,8 +72,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arslandaim.playtube.R
 import com.arslandaim.playtube.ui.components.InfiniteScrollEffect
+import com.arslandaim.playtube.ui.components.player.ModernPlaybackProgress
+import com.arslandaim.playtube.ui.components.player.PersistentProgressBar
 import com.arslandaim.playtube.ui.components.DownloadSelectionSheet
 import com.arslandaim.playtube.ui.components.PlaybackSpeedSelectionSheet
+import com.arslandaim.playtube.ui.components.PitchSelectionSheet
 import com.arslandaim.playtube.ui.components.QualitySelectionSheet
 import com.arslandaim.playtube.ui.components.SubtitleSelectionSheet
 import com.arslandaim.playtube.ui.components.DownloadDialogState
@@ -97,6 +104,9 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -110,10 +120,12 @@ fun PlayerScreen(
     viewModel: PlayerViewModel,
     onBack: () -> Unit,
     onVideoClick: (VideoItem) -> Unit,
-    onChannelClick: (String) -> Unit
+    onChannelClick: (String) -> Unit,
+    onAddToPlaylistClick: (VideoItem) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val isFavorite by viewModel.isFavorite.collectAsStateWithLifecycle()
+    val isSaved by viewModel.isSaved.collectAsStateWithLifecycle()
     val isSubscribed by viewModel.isSubscribed.collectAsStateWithLifecycle()
     val playbackSpeed by viewModel.playbackSpeed.collectAsStateWithLifecycle()
     val currentQuality by viewModel.currentQuality.collectAsStateWithLifecycle()
@@ -137,6 +149,13 @@ fun PlayerScreen(
     val preferredQuality by viewModel.preferredQuality.collectAsStateWithLifecycle()
     val sleepTimerRemainingTime by viewModel.sleepTimerRemainingTime.collectAsStateWithLifecycle()
     val shouldCloseAppOnTimerFinish by viewModel.shouldCloseAppOnTimerFinish.collectAsStateWithLifecycle()
+    val subtitleFontSize by viewModel.subtitleFontSize.collectAsStateWithLifecycle()
+    val subtitleBackgroundOpacity by viewModel.subtitleBackgroundOpacity.collectAsStateWithLifecycle()
+    val playbackPitch by viewModel.playbackPitch.collectAsStateWithLifecycle()
+    val showStatsForNerds by viewModel.showStatsForNerds.collectAsStateWithLifecycle()
+    val playbackStats by viewModel.playbackStats.collectAsStateWithLifecycle()
+    val comments by viewModel.comments.collectAsStateWithLifecycle()
+    val isFetchingComments by viewModel.isFetchingComments.collectAsStateWithLifecycle()
     val syncTransition = rememberSyncShimmerTransition()
 
     var activeCues by remember { mutableStateOf<List<Cue>>(emptyList()) }
@@ -186,6 +205,7 @@ fun PlayerScreen(
             initialThumbnail = initialThumbnail,
             uiState = uiState,
             isFavorite = isFavorite,
+            isSaved = isSaved,
             isSubscribed = isSubscribed,
             playbackSpeed = playbackSpeed,
             currentQuality = currentQuality,
@@ -230,6 +250,7 @@ fun PlayerScreen(
             onBack = onBack,
             onVideoClick = onVideoClick,
             onChannelClick = onChannelClick,
+            onAddToPlaylistClick = onAddToPlaylistClick,
             onRetry = { viewModel.currentVideoItem?.let { viewModel.loadVideo(it) } },
             isAutoplayEnabled = isAutoplayEnabled,
             onAutoplayChange = viewModel::setAutoplayEnabled,
@@ -238,7 +259,18 @@ fun PlayerScreen(
             onStartSleepTimer = viewModel.sleepTimerManager::startTimer,
             onSetEndOfVideoSleepTimer = viewModel.sleepTimerManager::setEndOfVideo,
             onCancelSleepTimer = viewModel.sleepTimerManager::cancelTimer,
-            onSetShouldCloseApp = viewModel.sleepTimerManager::setShouldCloseApp
+            onSetShouldCloseApp = viewModel.sleepTimerManager::setShouldCloseApp,
+            playbackPitch = playbackPitch,
+            onSetPlaybackPitch = viewModel::setPlaybackPitch,
+            showStatsForNerds = showStatsForNerds,
+            playbackStats = playbackStats,
+            onToggleStats = viewModel::toggleStatsForNerds,
+            subtitleFontSize = subtitleFontSize,
+            subtitleBackgroundOpacity = subtitleBackgroundOpacity,
+            comments = comments,
+            isFetchingComments = isFetchingComments,
+            onLoadComments = viewModel::loadComments,
+            onLoadNextCommentsPage = viewModel::loadNextCommentsPage
         )
 }
 
@@ -250,6 +282,7 @@ private fun PlayerContent(
     initialThumbnail: String?,
     uiState: PlayerUiState,
     isFavorite: Boolean,
+    isSaved: Boolean,
     isSubscribed: Boolean,
     playbackSpeed: Float,
     currentQuality: String?,
@@ -294,6 +327,7 @@ private fun PlayerContent(
     onBack: () -> Unit,
     onVideoClick: (VideoItem) -> Unit,
     onChannelClick: (String) -> Unit,
+    onAddToPlaylistClick: (VideoItem) -> Unit,
     onRetry: () -> Unit,
     isAutoplayEnabled: Boolean,
     onAutoplayChange: (Boolean) -> Unit,
@@ -302,17 +336,34 @@ private fun PlayerContent(
     onStartSleepTimer: (Int) -> Unit,
     onSetEndOfVideoSleepTimer: () -> Unit,
     onCancelSleepTimer: () -> Unit,
-    onSetShouldCloseApp: (Boolean) -> Unit
+    onSetShouldCloseApp: (Boolean) -> Unit,
+    playbackPitch: Float,
+    onSetPlaybackPitch: (Float) -> Unit,
+    showStatsForNerds: Boolean,
+    playbackStats: com.arslandaim.playtube.ui.screens.player.PlaybackStats,
+    onToggleStats: () -> Unit,
+    subtitleFontSize: Float,
+    subtitleBackgroundOpacity: Float,
+    comments: List<com.arslandaim.playtube.domain.model.CommentItem>,
+    isFetchingComments: Boolean,
+    onLoadComments: () -> Unit,
+    onLoadNextCommentsPage: () -> Unit
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     var showQualityDialog by remember { mutableStateOf(false) }
     var showSubtitleSheet by remember { mutableStateOf(false) }
     var showSpeedSheet by remember { mutableStateOf(false) }
+    var showPitchSheet by remember { mutableStateOf(false) }
     var showSettingsSheet by remember { mutableStateOf(false) }
     var showSleepTimerSheet by remember { mutableStateOf(false) }
     var showDescriptionSheet by remember { mutableStateOf(false) }
+    var showCommentsSheet by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
+
+    LaunchedEffect(videoId) {
+        onLoadComments()
+    }
 
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
@@ -397,6 +448,17 @@ private fun PlayerContent(
         )
     }
 
+    if (showPitchSheet) {
+        PitchSelectionSheet(
+            currentPitch = playbackPitch,
+            onDismiss = { showPitchSheet = false },
+            onPitchSelected = { pitch ->
+                onSetPlaybackPitch(pitch)
+                showPitchSheet = false
+            }
+        )
+    }
+
     if (showDescriptionSheet) {
         val state = uiState as? PlayerUiState.Success
         state?.let {
@@ -423,6 +485,21 @@ private fun PlayerContent(
                     Spacer(modifier = Modifier.height(32.dp))
                 }
             }
+        }
+    }
+
+    if (showCommentsSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showCommentsSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            scrimColor = Color.Black.copy(alpha = 0.25f)
+        ) {
+            CommentsSheet(
+                comments = comments,
+                isFetching = isFetchingComments,
+                onLoadMore = onLoadNextCommentsPage,
+                onDismiss = { showCommentsSheet = false }
+            )
         }
     }
 
@@ -462,6 +539,15 @@ private fun PlayerContent(
                     }
                 )
                 ListItem(
+                    headlineContent = { Text("Audio Pitch") },
+                    supportingContent = { Text(if (playbackPitch == 1f) "Normal" else "${playbackPitch}x") },
+                    leadingContent = { Icon(Icons.Default.MusicNote, null) },
+                    modifier = Modifier.clickable {
+                        showSettingsSheet = false
+                        showPitchSheet = true
+                    }
+                )
+                ListItem(
                     headlineContent = { Text(stringResource(R.string.sleep_timer)) },
                     supportingContent = {
                         Text(
@@ -477,6 +563,17 @@ private fun PlayerContent(
                         showSettingsSheet = false
                         showSleepTimerSheet = true
                     }
+                )
+                ListItem(
+                    headlineContent = { Text("Stats for Nerds") },
+                    trailingContent = {
+                        Switch(
+                            checked = showStatsForNerds,
+                            onCheckedChange = { onToggleStats() }
+                        )
+                    },
+                    leadingContent = { Icon(Icons.Default.Info, null) },
+                    modifier = Modifier.clickable { onToggleStats() }
                 )
             }
         }
@@ -581,32 +678,58 @@ private fun PlayerContent(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            // Dynamic Blurred Background
+            // Dynamic Ambient Mode (Modern Glow Effect)
             if (uiState is PlayerUiState.Success || initialThumbnail != null) {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(VideoUtils.getLowResThumbnail(videoId))
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = null,
+                val ambientThumbnail = when(uiState) {
+                    is PlayerUiState.Success -> uiState.bundle.thumbnailUrl
+                    is PlayerUiState.Upcoming -> uiState.thumbnailUrl
+                    else -> initialThumbnail ?: VideoUtils.getBestThumbnailUrl(videoId)
+                }
+
+                Box(
                     modifier = Modifier
-                        .fillMaxSize()
+                        .fillMaxWidth()
+                        .height(300.dp) // Glow only around the top player area
                         .graphicsLayer {
-                            alpha = 0.15f
+                            alpha = 0.45f
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                                 renderEffect = android.graphics.RenderEffect.createBlurEffect(
-                                    100f, 100f, android.graphics.Shader.TileMode.CLAMP
+                                    120f, 120f, android.graphics.Shader.TileMode.CLAMP
                                 ).asComposeRenderEffect()
                             }
                         }
                         .then(
                             if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
-                                Modifier.blur(80.dp)
+                                Modifier.blur(100.dp)
                             } else Modifier
-                        ),
-                    contentScale = ContentScale.Crop,
-                    filterQuality = FilterQuality.Low
-                )
+                        )
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(ambientThumbnail)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        filterQuality = FilterQuality.Low
+                    )
+                    
+                    // Gradient overlay to fade ambient glow into background
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Transparent,
+                                        MaterialTheme.colorScheme.background.copy(alpha = 0.8f),
+                                        MaterialTheme.colorScheme.background
+                                    )
+                                )
+                            )
+                    )
+                }
             }
 
             Column(
@@ -758,6 +881,8 @@ private fun PlayerContent(
                                     ) {
                                         ManualSubtitleView(
                                             cues = activeCues,
+                                            fontSize = subtitleFontSize,
+                                            backgroundOpacity = subtitleBackgroundOpacity,
                                             modifier = Modifier.fillMaxWidth().wrapContentHeight()
                                         )
                                     }
@@ -808,6 +933,7 @@ private fun PlayerContent(
                                     isPlaying = isPlaying,
                                     currentPosition = currentPosition,
                                     duration = duration,
+                                    bufferedPosition = bufferedPosition,
                                     isLive = isLive,
                                     isCcEnabled = isCcEnabled,
                                     isIncognito = isIncognito,
@@ -835,6 +961,15 @@ private fun PlayerContent(
                                 amount = seekAmount,
                                 isForward = isSeekForward
                             )
+
+                            if (showStatsForNerds) {
+                                StatsForNerdsOverlay(
+                                    stats = playbackStats,
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .padding(16.dp)
+                                )
+                            }
 
                             // Consolidated Player Loading UI
                             val showLoader = (uiState is PlayerUiState.Loading) || isBuffering || isRecovering
@@ -901,12 +1036,32 @@ private fun PlayerContent(
                                         subscriberCount = uiState.bundle.uploaderSubscriberCount,
                                         isSubscribed = isSubscribed,
                                         isFavorite = isFavorite,
+                                        isSaved = isSaved,
                                         isDownloaded = downloadedIds.contains(videoId),
+                                        comments = comments,
+                                        commentCount = null, // Extractor doesn't always provide count easily
                                         onToggleSubscription = onToggleSubscription,
                                         onToggleFavorite = { onToggleFavorite(null) },
+                                        onSaveClick = { 
+                                            uiState.bundle.let { bundle ->
+                                                onAddToPlaylistClick(
+                                                    VideoItem(
+                                                        id = videoId,
+                                                        title = uiState.title,
+                                                        thumbnailUrl = bundle.thumbnailUrl ?: "",
+                                                        uploaderName = uiState.uploader,
+                                                        uploaderUrl = bundle.uploaderUrl,
+                                                        viewCount = bundle.viewCount,
+                                                        uploadDate = bundle.uploadDate,
+                                                        duration = duration() / 1000
+                                                    )
+                                                )
+                                            }
+                                        },
                                         onDownloadClick = { if (!downloadedIds.contains(videoId)) onDownloadClick(null) },
                                         onShareClick = onShareVideo,
-                                        onChannelClick = onChannelClick
+                                        onChannelClick = onChannelClick,
+                                        onCommentsClick = { showCommentsSheet = true }
                                     )
                                 }
 
@@ -919,6 +1074,7 @@ private fun PlayerContent(
                                     onVideoClick = onVideoClick,
                                     onChannelClick = onChannelClick,
                                     onFavoriteClick = { onToggleFavorite(it) },
+                                    onAddToPlaylistClick = onAddToPlaylistClick,
                                     onDownloadClick = { onDownloadClick(it) }
                                 )
                             }
@@ -935,12 +1091,30 @@ private fun PlayerContent(
                                         subscriberCount = null,
                                         isSubscribed = isSubscribed,
                                         isFavorite = isFavorite,
+                                        isSaved = isSaved,
                                         isDownloaded = false,
+                                        comments = emptyList(),
+                                        commentCount = null,
                                         onToggleSubscription = onToggleSubscription,
                                         onToggleFavorite = { onToggleFavorite(null) },
+                                        onSaveClick = {
+                                            onAddToPlaylistClick(
+                                                VideoItem(
+                                                    id = videoId,
+                                                    title = uiState.title,
+                                                    thumbnailUrl = uiState.thumbnailUrl ?: "",
+                                                    uploaderName = uiState.uploader,
+                                                    uploaderUrl = null,
+                                                    viewCount = -1L,
+                                                    uploadDate = uiState.scheduledTime,
+                                                    duration = 0L
+                                                )
+                                            )
+                                        },
                                         onDownloadClick = { },
                                         onShareClick = onShareVideo,
-                                        onChannelClick = onChannelClick
+                                        onChannelClick = onChannelClick,
+                                        onCommentsClick = { }
                                     )
                                 }
                             }
@@ -988,41 +1162,79 @@ private fun PlayerContent(
     }
 }
 
+@Composable
+private fun StatsForNerdsOverlay(
+    stats: com.arslandaim.playtube.ui.screens.player.PlaybackStats,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.widthIn(max = 260.dp),
+        color = Color.Black.copy(alpha = 0.85f),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.15f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Info, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Stats for Nerds", color = Color.White, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
+            }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), thickness = 0.5.dp, color = Color.White.copy(alpha = 0.2f))
+            
+            StatRow("Resolution", stats.resolution)
+            StatRow("Format", stats.videoFormat ?: "Unknown")
+            StatRow("Bitrate", "${stats.bitrate / 1000} kbps")
+            StatRow("Dropped Frames", stats.droppedFrames.toString())
+            StatRow("Bandwidth", "${stats.bandwidthEstimate / 1000000} Mbps")
+        }
+    }
+}
 
+@Composable
+private fun StatRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
+        Text(value, color = Color.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium)
+    }
+}
 
-@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 private fun ManualSubtitleView(
     cues: List<Cue>,
+    fontSize: Float,
+    backgroundOpacity: Float,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier.padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         cues.forEach { cue ->
             val text = cue.text
             if (text != null && text.isNotEmpty()) {
                 Surface(
-                    color = Color.Black.copy(alpha = 0.65f),
-                    shape = RoundedCornerShape(10.dp),
-                    tonalElevation = 2.dp
+                    color = Color.Black.copy(alpha = backgroundOpacity),
+                    shape = RoundedCornerShape(4.dp)
                 ) {
                     Text(
                         text = text.toString(),
                         color = Color.White,
+                        fontSize = fontSize.sp,
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontWeight = FontWeight.Medium,
-                            lineHeight = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = (fontSize * 1.3f).sp,
                             textAlign = TextAlign.Center,
                             shadow = androidx.compose.ui.graphics.Shadow(
-                                color = Color.Black.copy(alpha = 0.5f),
-                                offset = androidx.compose.ui.geometry.Offset(1f, 1f),
-                                blurRadius = 2f
+                                color = Color.Black.copy(alpha = 0.8f),
+                                offset = androidx.compose.ui.geometry.Offset(1.5f, 1.5f),
+                                blurRadius = 3f
                             )
                         ),
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
             }
@@ -1084,45 +1296,13 @@ private fun VideoPlayerView(
     )
 }
 
-@Composable
-private fun PersistentProgressBar(
-    progress: () -> Float,
-    bufferedProgress: () -> Float,
-    modifier: Modifier = Modifier
-) {
-    Canvas(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(2.dp)
-    ) {
-        val width = size.width
-        
-        // Background
-        drawRect(
-            color = Color.White.copy(alpha = 0.1f),
-            size = size
-        )
-        
-        // Buffered (Preloaded) line
-        drawRect(
-            color = Color.White.copy(alpha = 0.3f),
-            size = size.copy(width = width * bufferedProgress().coerceIn(0f, 1f))
-        )
-        
-        // Playback progress line
-        drawRect(
-            color = Color.Red,
-            size = size.copy(width = width * progress().coerceIn(0f, 1f))
-        )
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PlayerControlsOverlay(
     isPlaying: Boolean,
     currentPosition: () -> Long,
     duration: () -> Long,
+    bufferedPosition: () -> Long,
     isLive: Boolean,
     isCcEnabled: Boolean,
     isIncognito: Boolean,
@@ -1136,90 +1316,104 @@ private fun PlayerControlsOverlay(
     onShowSettings: () -> Unit,
     onBack: () -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color.Black.copy(alpha = 0.5f),
-                        Color.Transparent,
-                        Color.Transparent,
-                        Color.Black.copy(alpha = 0.6f)
-                    )
-                )
-            )
+            .background(Color.Black.copy(alpha = 0.45f))
     ) {
-        // Center Play/Pause with Skip Buttons
+        // Center Controls Section (Modern Layout)
         Row(
             modifier = Modifier.align(Alignment.Center),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(24.dp)
+            horizontalArrangement = Arrangement.spacedBy(32.dp)
         ) {
-            // Skip Previous
-            IconButton(
-                onClick = onSkipPrevious,
-                modifier = Modifier
-                    .background(Color.White.copy(alpha = 0.12f), CircleShape)
-                    .size(44.dp)
-            ) {
-                Icon(Icons.Default.SkipPrevious, null, tint = Color.White, modifier = Modifier.size(24.dp))
-            }
-
             Surface(
-                onClick = onPlayPause,
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onSkipPrevious()
+                },
                 shape = CircleShape,
                 color = Color.White.copy(alpha = 0.15f),
-                modifier = Modifier.size(64.dp)
+                modifier = Modifier.size(52.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.SkipPrevious, null, tint = Color.White, modifier = Modifier.size(28.dp))
+                }
+            }
+
+            // Central Play/Pause with custom circular background
+            Surface(
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onPlayPause()
+                },
+                shape = CircleShape,
+                color = Color.White.copy(alpha = 0.25f),
+                modifier = Modifier
+                    .size(76.dp)
+                    .border(1.5.dp, Color.White.copy(alpha = 0.2f), CircleShape)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(44.dp)
                     )
                 }
             }
 
-            // Skip Next
-            IconButton(
-                onClick = onSkipNext,
-                modifier = Modifier
-                    .background(Color.White.copy(alpha = 0.12f), CircleShape)
-                    .size(44.dp)
+            Surface(
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onSkipNext()
+                },
+                shape = CircleShape,
+                color = Color.White.copy(alpha = 0.15f),
+                modifier = Modifier.size(52.dp)
             ) {
-                Icon(Icons.Default.SkipNext, null, tint = Color.White, modifier = Modifier.size(24.dp))
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.SkipNext, null, tint = Color.White, modifier = Modifier.size(28.dp))
+                }
             }
         }
 
-        // Bottom Seek Section (Modern & Minimal)
+        // Modern Bottom Bar Section
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(bottom = 8.dp)
+                .padding(bottom = 12.dp)
         ) {
+            // Time Display & Live Badge
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
+                    .padding(horizontal = 24.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (isLive) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .background(Color.Red.copy(alpha = 0.8f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
                         Box(
                             modifier = Modifier
                                 .size(6.dp)
-                                .background(Color.Red, CircleShape)
+                                .background(Color.White, CircleShape)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "LIVE",
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.5.sp
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 0.5.sp,
+                                shadow = androidx.compose.ui.graphics.Shadow(Color.Black, blurRadius = 4f)
                             ),
                             color = Color.White
                         )
@@ -1227,55 +1421,42 @@ private fun PlayerControlsOverlay(
                 } else {
                     Text(
                         text = VideoUtils.formatDuration(currentPosition() / 1000),
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            shadow = androidx.compose.ui.graphics.Shadow(Color.Black, blurRadius = 4f)
+                        ),
                         color = Color.White
                     )
                     Text(
                         text = VideoUtils.formatDuration(duration() / 1000),
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = Color.White.copy(alpha = 0.7f)
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            shadow = androidx.compose.ui.graphics.Shadow(Color.Black, blurRadius = 4f)
+                        ),
+                        color = Color.White.copy(alpha = 0.8f)
                     )
                 }
             }
             
             if (!isLive) {
-                val currentPos = currentPosition()
-                val totalDuration = duration()
-                Slider(
-                    value = currentPos.toFloat(),
-                    onValueChange = { onSeekTo(it.toLong()) },
-                    valueRange = 0f..totalDuration.toFloat().coerceAtLeast(1f),
-                    thumb = {
-                        Box(
-                            modifier = Modifier.size(20.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(12.dp)
-                                    .background(Color.Red, CircleShape)
-                            )
-                        }
-                    },
-                    track = { sliderState ->
-                        SliderDefaults.Track(
-                            sliderState = sliderState,
-                            modifier = Modifier.height(3.dp),
-                            thumbTrackGapSize = 0.dp,
-                            colors = SliderDefaults.colors(
-                                activeTrackColor = Color.Red,
-                                inactiveTrackColor = Color.White.copy(alpha = 0.25f)
-                            )
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth().height(48.dp) // Professional 48dp touch target
+                val currentPos = currentPosition().toFloat()
+                val totalDuration = duration().toFloat().coerceAtLeast(1f)
+                val bufferedPos = bufferedPosition().toFloat()
+
+                ModernPlaybackProgress(
+                    progress = currentPos / totalDuration,
+                    bufferedProgress = bufferedPos / totalDuration,
+                    onSeek = { onSeekTo((it * totalDuration).toLong()) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
                 )
             } else {
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
 
-        // Top Navigation & Actions Pill
+        // Top Action Pill (Glassmorphic)
         Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -1286,58 +1467,60 @@ private fun PlayerControlsOverlay(
             IconButton(
                 onClick = onBack,
                 modifier = Modifier
-                    .background(Color.White.copy(alpha = 0.15f), CircleShape)
+                    .background(Color.Black.copy(alpha = 0.35f), CircleShape)
                     .size(40.dp)
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White, modifier = Modifier.size(22.dp))
             }
 
             if (isIncognito) {
                 Spacer(modifier = Modifier.width(12.dp))
                 Surface(
-                    color = Color(0xFF9C27B0).copy(alpha = 0.6f),
-                    shape = RoundedCornerShape(16.dp)
+                    color = Color.Black.copy(alpha = 0.6f),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.25f))
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.VisibilityOff, null, tint = Color.White, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Incognito", color = Color.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.VisibilityOff, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Incognito", 
+                            color = Color.White, 
+                            style = MaterialTheme.typography.labelSmall, 
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
             
             Spacer(modifier = Modifier.weight(1f))
 
+            // Unified Settings Pill
             Surface(
-                color = Color.White.copy(alpha = 0.15f),
-                shape = RoundedCornerShape(24.dp)
+                color = Color.Black.copy(alpha = 0.35f),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.2f))
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (hasSubtitles) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .combinedClickable(
-                                    onClick = onToggleSubtitles,
-                                    onLongClick = onShowSubtitleSettings
-                                ),
-                            contentAlignment = Alignment.Center
+                        IconButton(
+                            onClick = onToggleSubtitles,
+                            modifier = Modifier.size(40.dp)
                         ) {
                             Icon(
                                 imageVector = if (isCcEnabled) Icons.Default.ClosedCaption else Icons.Default.ClosedCaptionDisabled,
                                 contentDescription = null,
-                                tint = if (isCcEnabled) MaterialTheme.colorScheme.primary else Color.White,
-                                modifier = Modifier.size(20.dp)
+                                tint = if (isCcEnabled) Color.Yellow else Color.White,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                     }
 
                     IconButton(onClick = onShowSettings, modifier = Modifier.size(40.dp)) {
-                        Icon(Icons.Default.Settings, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Settings, null, tint = Color.White, modifier = Modifier.size(22.dp))
                     }
                 }
             }

@@ -17,6 +17,7 @@ import com.arslandaim.playtube.domain.usecase.*
 import com.arslandaim.playtube.ui.components.DownloadDialogState
 import com.arslandaim.playtube.utils.PlayTubeError
 import com.arslandaim.playtube.utils.VideoUtils
+import com.arslandaim.playtube.utils.HistoryUtils.applyHistory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
@@ -43,9 +44,7 @@ class ChannelViewModel @Inject constructor(
         libraryRepository.getHistory()
     ) { state, history ->
         if (state is ChannelUiState.Success) {
-            val historyMap = history.associateBy({ it.videoId }, { if (it.durationMs > 0) it.progressMs.toFloat() / it.durationMs else null })
-            val updatedVideos = state.details.videos.map { it.copy(watchProgress = historyMap[it.id]) }
-            ChannelUiState.Success(state.details.copy(videos = updatedVideos))
+            ChannelUiState.Success(state.details.copy(videos = state.details.videos.applyHistory(history)))
         } else {
             state
         }

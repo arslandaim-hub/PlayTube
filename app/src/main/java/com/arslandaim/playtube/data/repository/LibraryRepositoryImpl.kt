@@ -17,7 +17,8 @@ class LibraryRepositoryImpl @Inject constructor(
     private val subscriptionDao: SubscriptionDao,
     private val searchHistoryDao: SearchHistoryDao,
     private val userInterestDao: UserInterestDao,
-    private val blacklistDao: BlacklistDao
+    private val blacklistDao: BlacklistDao,
+    private val localPlaylistDao: LocalPlaylistDao
 ) : LibraryRepository {
 
     override fun getHistory(): Flow<List<HistoryEntity>> = historyDao.getAllHistory()
@@ -137,4 +138,50 @@ class LibraryRepositoryImpl @Inject constructor(
     }
 
     override suspend fun isBlacklisted(id: String): Boolean = blacklistDao.isBlacklisted(id)
+
+    // Local Playlists
+    override fun getLocalPlaylists(): Flow<List<LocalPlaylistEntity>> = localPlaylistDao.getAllPlaylists()
+
+    override suspend fun createLocalPlaylist(name: String, description: String?): Long {
+        return localPlaylistDao.createPlaylist(LocalPlaylistEntity(name = name, description = description))
+    }
+
+    override suspend fun deleteLocalPlaylist(playlist: LocalPlaylistEntity) {
+        localPlaylistDao.deletePlaylist(playlist)
+    }
+
+    override fun getVideosForLocalPlaylist(playlistId: Int): Flow<List<LocalPlaylistVideoEntity>> = 
+        localPlaylistDao.getVideosForPlaylist(playlistId)
+
+    override suspend fun addVideoToLocalPlaylist(playlistId: Int, video: com.arslandaim.playtube.domain.model.VideoItem) {
+        localPlaylistDao.addVideoToPlaylist(
+            LocalPlaylistVideoEntity(
+                playlistId = playlistId,
+                videoId = video.id,
+                title = video.title,
+                thumbnailUrl = video.thumbnailUrl,
+                uploaderName = video.uploaderName,
+                duration = video.duration
+            )
+        )
+        localPlaylistDao.updatePlaylistThumbnail(playlistId, video.thumbnailUrl)
+    }
+
+    override suspend fun removeVideoFromLocalPlaylist(playlistId: Int, videoId: String) {
+        localPlaylistDao.removeVideoFromPlaylist(playlistId, videoId)
+        val nextThumbnail = localPlaylistDao.getLastVideoThumbnail(playlistId)
+        localPlaylistDao.updatePlaylistThumbnail(playlistId, nextThumbnail)
+    }
+
+    override suspend fun isVideoInLocalPlaylist(playlistId: Int, videoId: String): Boolean = 
+        localPlaylistDao.isVideoInPlaylist(playlistId, videoId)
+
+    override fun isVideoInAnyLocalPlaylist(videoId: String): Flow<Boolean> = 
+        localPlaylistDao.isVideoInAnyPlaylist(videoId)
+
+    override fun getAllSavedVideoIds(): Flow<List<String>> = 
+        localPlaylistDao.getAllSavedVideoIds()
+
+    override fun getPlaylistsContainingVideo(videoId: String): Flow<List<Int>> = 
+        localPlaylistDao.getPlaylistsContainingVideo(videoId)
 }

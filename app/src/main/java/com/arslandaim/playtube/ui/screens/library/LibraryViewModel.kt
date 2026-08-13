@@ -43,7 +43,8 @@ class LibraryViewModel @Inject constructor(
     private val toggleFavoriteUseCase: ToggleFavoriteUseCase,
     private val toggleSubscriptionUseCase: ToggleSubscriptionUseCase,
     private val syncSubscriptionMetadataUseCase: SyncSubscriptionMetadataUseCase,
-    private val playlistFavoriteDao: PlaylistFavoriteDao
+    private val playlistFavoriteDao: PlaylistFavoriteDao,
+    private val libraryRepository: com.arslandaim.playtube.domain.repository.LibraryRepository
 ) : ViewModel() {
 
     val downloads: StateFlow<List<DownloadEntity>> = getDownloadsUseCase()
@@ -68,6 +69,13 @@ class LibraryViewModel @Inject constructor(
 
     val playlists: StateFlow<List<PlaylistFavoriteEntity>> = playlistFavoriteDao.getAllPlaylistFavorites()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val localPlaylists: StateFlow<List<com.arslandaim.playtube.data.local.LocalPlaylistEntity>> = libraryRepository.getLocalPlaylists()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val savedVideoIds: StateFlow<Set<String>> = libraryRepository.getAllSavedVideoIds()
+        .map { it.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
     private val _subscriptionSearchQuery = MutableStateFlow("")
     val subscriptionSearchQuery: StateFlow<String> = _subscriptionSearchQuery.asStateFlow()
@@ -167,9 +175,27 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    fun removeFromHistory(videoId: String) {
+        viewModelScope.launch {
+            libraryRepository.removeFromHistory(videoId)
+        }
+    }
+
     fun toggleSubscription(subscription: SubscriptionEntity) {
         viewModelScope.launch {
             toggleSubscriptionUseCase(subscription)
+        }
+    }
+
+    fun createLocalPlaylist(name: String) {
+        viewModelScope.launch {
+            libraryRepository.createLocalPlaylist(name)
+        }
+    }
+
+    fun deleteLocalPlaylist(playlist: com.arslandaim.playtube.data.local.LocalPlaylistEntity) {
+        viewModelScope.launch {
+            libraryRepository.deleteLocalPlaylist(playlist)
         }
     }
 }

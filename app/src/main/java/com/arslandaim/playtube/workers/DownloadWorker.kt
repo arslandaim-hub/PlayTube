@@ -67,65 +67,95 @@ class DownloadWorker @AssistedInject constructor(
 
             // Fetch metadata if missing (typically for playlists)
             if (videoUrl == null) {
-                try {
-                    PTLog.d("DownloadWorker", "Fetching metadata for $videoId (Preferred: $preferredQuality)")
-                    val bundle = videoRepository.getStreamBundle(videoId)
-                    
-                    // Match preferred quality if provided, else fallback to standard selection
-                    val videoStream = if (!preferredQuality.isNullOrBlank()) {
-                        // Priority 1: Exact match
-                        // Priority 2: Closest lower resolution
-                        // Priority 3: Any available
-                        bundle.videoStreams.find { it.quality.contains(preferredQuality, ignoreCase = true) }
-                            ?: bundle.videoStreams.find { 
-                                val res = it.quality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0
-                                val prefRes = preferredQuality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0
-                                res <= prefRes 
-                            } ?: bundle.videoStreams.firstOrNull()
-                    } else {
-                        bundle.videoStreams.find { it.quality.contains("360") }
-                            ?: bundle.videoStreams.find { it.quality.contains("480") }
-                            ?: bundle.videoStreams.firstOrNull()
-                    }
-
-                    if (videoStream == null) {
-                        downloadDao.updateProgress(videoId, DownloadStatus.FAILED, 0, 0)
-                        return@withContext Result.failure()
-                    }
-
-                    videoUrl = videoStream.url
-                    format = videoStream.format
-                    audioUrl = if (videoStream.isAdaptive) {
-                        bundle.audioStreams.find {
-                            it.format.contains("m4a", ignoreCase = true) ||
-                            it.format.contains("aac", ignoreCase = true)
-                        }?.url ?: bundle.audioStreams.firstOrNull()?.url
-                    } else null
-
-                    if (videoStream.isAdaptive && audioUrl == null) {
-                        PTLog.e("DownloadWorker", "Adaptive stream selected but no audio found for $videoId")
-                        downloadDao.updateProgress(videoId, DownloadStatus.FAILED, 0, 0)
-                        return@withContext Result.failure()
-                    }
-
-                    // Update DB with fetched metadata
-                    currentDownload?.let {
-                        downloadDao.updateDownload(it.copy(
-                            videoUrl = videoUrl,
-                            audioUrl = audioUrl,
-                            quality = videoStream.quality,
-                            format = format
-                        ))
-                    }
-                } catch (e: Exception) {
-                    PTLog.e("DownloadWorker", "Failed to fetch metadata for $videoId", e)
+                val metadata = fetchStreamMetadata(videoId, preferredQuality)
+                if (metadata == null) {
                     downloadDao.updateProgress(videoId, DownloadStatus.FAILED, 0, 0)
                     return@withContext Result.failure()
+                }
+
+                videoUrl = metadata.videoUrl
+                format = metadata.format
+                audioUrl = metadata.audioUrl
+
+                // Update DB with fetched metadata
+                currentDownload?.let {
+                    downloadDao.updateDownload(it.copy(
+                        videoUrl = videoUrl,
+                        audioUrl = audioUrl,
+                        quality = metadata.quality,
+                        format = format
+                    ))
                 }
             }
             
             // Once we have the lock and metadata, start downloading
-            doDownload(videoId, videoUrl!!, audioUrl, title, format)
+            try {
+                doDownload(videoId, videoUrl!!, audioUrl, title, format)
+            } catch (e: ExpiredUrlException) {
+                PTLog.w("DownloadWorker", "URL expired for $videoId, re-fetching metadata...")
+                try {
+                    val metadata = fetchStreamMetadata(videoId, preferredQuality)
+                    if (metadata == null) return@withContext Result.failure()
+                    
+                    videoUrl = metadata.videoUrl
+                    audioUrl = metadata.audioUrl
+                    
+                    // Update DB with fresh URLs
+                    currentDownload?.let {
+                        downloadDao.updateDownload(it.copy(videoUrl = videoUrl, audioUrl = audioUrl))
+                    }
+
+                    // Retry download once
+                    doDownload(videoId, videoUrl!!, audioUrl, title, format)
+                } catch (ex: Exception) {
+                    PTLog.e("DownloadWorker", "Failed to refresh metadata for $videoId", ex)
+                    downloadDao.updateProgress(videoId, DownloadStatus.FAILED, 0, 0)
+                    Result.failure()
+                }
+            }
+        }
+    }
+
+    private data class StreamMetadata(val videoUrl: String, val audioUrl: String?, val format: String, val quality: String)
+
+    private suspend fun fetchStreamMetadata(videoId: String, preferredQuality: String?): StreamMetadata? {
+        return try {
+            PTLog.d("DownloadWorker", "Fetching metadata for $videoId (Preferred: $preferredQuality)")
+            val bundle = videoRepository.getStreamBundle(videoId)
+            
+            val videoStream = if (!preferredQuality.isNullOrBlank()) {
+                bundle.videoStreams.find { it.quality.contains(preferredQuality, ignoreCase = true) }
+                    ?: bundle.videoStreams.find { 
+                        val res = it.quality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0
+                        val prefRes = preferredQuality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0
+                        res <= prefRes 
+                    } ?: bundle.videoStreams.firstOrNull()
+            } else {
+                bundle.videoStreams.find { it.quality.contains("360") }
+                    ?: bundle.videoStreams.find { it.quality.contains("480") }
+                    ?: bundle.videoStreams.firstOrNull()
+            }
+
+            if (videoStream == null) return null
+
+            val videoUrl = videoStream.url
+            val format = videoStream.format
+            val audioUrl = if (videoStream.isAdaptive) {
+                bundle.audioStreams.find {
+                    it.format.contains("m4a", ignoreCase = true) ||
+                    it.format.contains("aac", ignoreCase = true)
+                }?.url ?: bundle.audioStreams.firstOrNull()?.url
+            } else null
+
+            if (videoStream.isAdaptive && audioUrl == null) {
+                PTLog.e("DownloadWorker", "Adaptive stream selected but no audio found for $videoId")
+                return null
+            }
+
+            StreamMetadata(videoUrl, audioUrl, format, videoStream.quality)
+        } catch (e: Exception) {
+            PTLog.e("DownloadWorker", "Failed to fetch metadata for $videoId", e)
+            null
         }
     }
 
@@ -152,7 +182,10 @@ class DownloadWorker @AssistedInject constructor(
             
             PTLog.d("DownloadWorker", "Sizes: video=$totalVideoSize, audio=$totalAudioSize, combined=$combinedTotalSize")
 
-            downloadDao.updateProgress(videoId, DownloadStatus.DOWNLOADING, 0, combinedTotalSize)
+            val currentDownload = downloadDao.getDownloadById(videoId)
+            val initialDownloadedSize = currentDownload?.downloadedSize ?: 0L
+            
+            downloadDao.updateProgress(videoId, DownloadStatus.DOWNLOADING, initialDownloadedSize, combinedTotalSize)
 
             // Download Video
             PTLog.d("DownloadWorker", "Downloading video to ${videoFile.absolutePath}")
@@ -205,6 +238,8 @@ class DownloadWorker @AssistedInject constructor(
         } catch (e: Exception) {
             PTLog.e("DownloadWorker", "Work failed for $videoId: ${e.message}", e)
 
+            if (e is ExpiredUrlException) throw e
+
             // Only update to FAILED if it wasn't explicitly PAUSED by the user/system
             val currentDownload = downloadDao.getDownloadById(videoId)
             if (currentDownload?.status != DownloadStatus.PAUSED) {
@@ -213,17 +248,9 @@ class DownloadWorker @AssistedInject constructor(
 
             Result.failure()
         } finally {
-            if (videoFile.exists() && audioUrl != null) {
-                PTLog.d("DownloadWorker", "Cleaning up video temp file: ${videoFile.name}")
-                videoFile.delete()
-            }
-            audioFile?.let { if (it.exists()) {
-                PTLog.d("DownloadWorker", "Cleaning up audio temp file: ${it.name}")
-                it.delete()
-            } }
-            
-            // Note: finalFile is not deleted here as it's the intended output if successful.
-            // If failed, we could delete it, but doDownload logic above manages its creation.
+            // Only clean up temp files IF successful. 
+            // On failure or pause, we keep them for resuming.
+            // Exception: If we finished muxing, we already deleted them.
         }
     }
 
@@ -241,6 +268,16 @@ class DownloadWorker @AssistedInject constructor(
         PTLog.d("DownloadWorker", "Starting download: $url")
         
         val totalSize = getRemoteFileSize(url)
+        val existingSize = if (file.exists()) file.length() else 0L
+        
+        if (totalSize > 0 && existingSize >= totalSize) {
+            PTLog.d("DownloadWorker", "File already fully downloaded: ${file.name}")
+            // Update progress for the skipped file
+            val currentDownloaded = previousDownloaded + existingSize
+            val effectiveTotalSize = if (combinedTotalSize > 0) combinedTotalSize else currentDownloaded
+            downloadDao.updateProgress(videoId, DownloadStatus.DOWNLOADING, currentDownloaded, effectiveTotalSize)
+            return existingSize
+        }
         
         // Use parallel chunks for ANY file larger than 1MB to avoid single-connection throttling
         if (totalSize > 1024 * 1024) { 
@@ -331,7 +368,8 @@ class DownloadWorker @AssistedInject constructor(
             downloadedBytes.get()
         } catch (e: Exception) {
             PTLog.e("DownloadWorker", "Parallel download failed: ${e.message}")
-            partFiles.forEach { if (it.exists()) it.delete() }
+            // Do NOT delete part files here to allow resuming later
+            if (e is ExpiredUrlException) throw e
             -1
         }
     }
@@ -345,54 +383,69 @@ class DownloadWorker @AssistedInject constructor(
         isPart: Boolean,
         combinedTotalSize: Long
     ): Long = withContext(Dispatchers.IO) {
+        val existingSize = if (file.exists()) file.length() else 0L
+        
         val request = Request.Builder()
             .url(url)
             .header("User-Agent", userAgent)
+            .apply {
+                if (existingSize > 0) {
+                    addHeader("Range", "bytes=$existingSize-")
+                }
+            }
             .build()
 
         var response: okhttp3.Response? = null
         try {
             val result = withTimeoutOrNull(300_000L) {
                 response = okHttpClient.newCall(request).execute()
+                
+                // Handle 416 (Range Not Satisfiable) - usually means file changed or offset is wrong
+                if (response!!.code == 416) {
+                    PTLog.w("DownloadWorker", "Range not satisfiable for $videoId, restarting full download")
+                    file.delete()
+                    return@withTimeoutOrNull downloadSingleStream(url, file, videoId, title, previousDownloaded, isPart, combinedTotalSize)
+                }
+
                 if (!response!!.isSuccessful) throw Exception("Download failed: ${response!!.code}")
+                
                 val body = response!!.body ?: throw Exception("Empty body")
-                val totalSize = body.contentLength()
-                var downloaded = 0L
+                val totalSize = if (existingSize > 0) {
+                    // Content-Length in a 206 response is the size of the range, not the whole file
+                    existingSize + body.contentLength()
+                } else {
+                    body.contentLength()
+                }
+
+                var downloaded = existingSize
                 var lastUpdateTime = 0L
 
-                file.outputStream().use { output ->
+                java.io.FileOutputStream(file, existingSize > 0).use { output ->
                     body.byteStream().use { input ->
-                        val buffer = ByteArray(128 * 1024) // 128KB buffer for better throughput
+                        val buffer = ByteArray(128 * 1024)
                         var bytesRead: Int
                         var lastProgressUpdate = 0
                         
                         while (input.read(buffer).also { bytesRead = it } != -1) {
-                            ensureActive() // Safe coroutine cancellation
+                            ensureActive()
                             output.write(buffer, 0, bytesRead)
                             downloaded += bytesRead
                             
                             val effectiveTotalSize = if (combinedTotalSize > 0) combinedTotalSize else (previousDownloaded + totalSize)
-                            val currentTotalDownloaded = previousDownloaded + downloaded
-                            val progress = if (effectiveTotalSize > 0) ((currentTotalDownloaded * 100) / effectiveTotalSize).toInt() else 0
+                            val progress = if (effectiveTotalSize > 0) (((previousDownloaded + downloaded) * 100) / effectiveTotalSize).toInt() else 0
                             
                             if (isStopped) throw CancellationException("Worker stopped during single stream download")
 
-                            // Throttled updates: every 1% change or if 1 second passed
                             val currentTime = System.currentTimeMillis()
-                            if (isStopped) throw CancellationException("Worker stopped during parallel download")
-
                             if (progress > lastProgressUpdate || currentTime - lastUpdateTime > 1000) {
                                 lastUpdateTime = currentTime
                                 lastProgressUpdate = progress
                                 
-                                setForeground(createForegroundInfo(
-                                    if (isPart) "Downloading $title" else "Downloading $title",
-                                    progress
-                                ))
-                                downloadDao.updateProgress(videoId, DownloadStatus.DOWNLOADING, currentTotalDownloaded, effectiveTotalSize.coerceAtLeast(currentTotalDownloaded))
+                                setForeground(createForegroundInfo("Downloading $title", progress))
+                                downloadDao.updateProgress(videoId, DownloadStatus.DOWNLOADING, previousDownloaded + downloaded, effectiveTotalSize.coerceAtLeast(previousDownloaded + downloaded))
                             }
                         }
-                        output.flush() // Ensure final bytes are flushed
+                        output.flush()
                     }
                 }
                 downloaded
@@ -419,26 +472,46 @@ class DownloadWorker @AssistedInject constructor(
         downloadedBytes: AtomicLong,
         onProgress: suspend () -> Unit
     ) {
+        val existingSize = if (partFile.exists()) partFile.length() else 0L
+        if (existingSize >= (end - start + 1)) {
+            // Already fully downloaded this chunk
+            downloadedBytes.addAndGet(existingSize)
+            onProgress()
+            return
+        }
+
+        val actualStart = start + existingSize
         val request = Request.Builder()
             .url(url)
             .header("User-Agent", userAgent)
-            .addHeader("Range", "bytes=$start-$end")
+            .addHeader("Range", "bytes=$actualStart-$end")
             .build()
 
         var response: okhttp3.Response? = null
         try {
             withTimeoutOrNull(300_000L) {
                 response = okHttpClient.newCall(request).execute()
+                
+                if (response!!.code == 403) throw ExpiredUrlException()
+                
+                if (response!!.code == 416) {
+                    PTLog.w("DownloadWorker", "Range not satisfiable for chunk of $videoId, restarting chunk")
+                    partFile.delete()
+                    return@withTimeoutOrNull downloadChunk(url, partFile, start, end, videoId, title, isPart, previousDownloaded, combinedTotalSize, downloadedBytes, onProgress)
+                }
+
                 if (!response!!.isSuccessful) throw Exception("Chunk download failed: ${response!!.code}")
 
                 val body = response!!.body ?: throw Exception("Empty response body for chunk")
 
-                partFile.outputStream().use { output ->
+                downloadedBytes.addAndGet(existingSize)
+
+                java.io.FileOutputStream(partFile, existingSize > 0).use { output ->
                     body.byteStream().use { input ->
                         val buffer = ByteArray(65536)
                         var bytesRead: Int
                         while (input.read(buffer).also { bytesRead = it } != -1) {
-                            ensureActive() // Safe coroutine cancellation
+                            ensureActive()
                             output.write(buffer, 0, bytesRead)
                             downloadedBytes.addAndGet(bytesRead.toLong())
                             onProgress()
@@ -451,6 +524,9 @@ class DownloadWorker @AssistedInject constructor(
         }
     }
 
+    private class ExpiredUrlException : Exception("URL expired")
+
+
     private fun getRemoteFileSize(url: String): Long {
         return try {
             val request = Request.Builder()
@@ -459,10 +535,12 @@ class DownloadWorker @AssistedInject constructor(
                 .head()
                 .build()
             okHttpClient.newCall(request).execute().use { response ->
+                if (response.code == 403) throw ExpiredUrlException()
                 val length = response.header("Content-Length")?.toLong() ?: response.body.contentLength()
                 if (response.isSuccessful && length > 0) length else 0L
             }
         } catch (e: Exception) {
+            if (e is ExpiredUrlException) throw e
             0L
         }
     }

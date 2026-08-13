@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,17 +22,21 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -39,13 +44,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arslandaim.playtube.R
-import com.arslandaim.playtube.domain.model.SearchItem
-import com.arslandaim.playtube.domain.model.SearchSort
-import com.arslandaim.playtube.domain.model.StreamBundle
-import com.arslandaim.playtube.domain.model.VideoItem
+import com.arslandaim.playtube.domain.model.*
 import com.arslandaim.playtube.ui.components.InfiniteScrollEffect
+import com.arslandaim.playtube.ui.components.InfiniteScrollGridEffect
 import com.arslandaim.playtube.ui.components.*
 import com.arslandaim.playtube.utils.PlayTubeError
+import com.arslandaim.playtube.utils.Constants
 import com.arslandaim.playtube.MainViewModel
 import com.arslandaim.playtube.domain.repository.UpdateInfo
 import com.arslandaim.playtube.ui.screens.settings.UpdateViewModel
@@ -54,6 +58,7 @@ import com.arslandaim.playtube.ui.screens.library.VideoRow
 import com.arslandaim.playtube.ui.screens.library.ModernChannelCard
 import com.arslandaim.playtube.ui.screens.library.ModernPlaylistRow
 import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.SharedFlow
 
 @Composable
@@ -66,24 +71,26 @@ fun SearchScreen(
     onVideoClick: (VideoItem) -> Unit,
     onChannelClick: (String) -> Unit,
     onPlaylistClick: (String) -> Unit,
+    onAddToPlaylistClick: (VideoItem) -> Unit,
     onNavigateToDownloads: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onBack: () -> Unit
 ) {
-    val searchQuery by viewModel.searchQuery.collectAsState()
-    val searchSort by viewModel.searchSort.collectAsState()
-    val uiState by viewModel.uiState.collectAsState()
-    val suggestions by viewModel.suggestions.collectAsState()
-    val searchHistory by viewModel.searchHistory.collectAsState()
-    val isGridView by viewModel.isGridView.collectAsState()
-    val downloadedIds by libraryViewModel.downloadedVideoIds.collectAsState()
-    val favorites by libraryViewModel.favorites.collectAsState()
-    val downloadState by viewModel.downloadState.collectAsState()
-    val isSortingNewest by viewModel.isSortingNewest.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val searchSort by viewModel.searchSort.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val suggestions by viewModel.suggestions.collectAsStateWithLifecycle()
+    val searchHistory by viewModel.searchHistory.collectAsStateWithLifecycle()
+    val isGridView by viewModel.isGridView.collectAsStateWithLifecycle()
+    val downloadedIds by libraryViewModel.downloadedVideoIds.collectAsStateWithLifecycle()
+    val favorites by libraryViewModel.favorites.collectAsStateWithLifecycle()
+    val savedVideoIds by libraryViewModel.savedVideoIds.collectAsStateWithLifecycle()
+    val downloadState by viewModel.downloadState.collectAsStateWithLifecycle()
+    val isSortingNewest by viewModel.isSortingNewest.collectAsStateWithLifecycle()
     
-    val isIncognitoMode by mainViewModel.isIncognitoMode.collectAsState()
-    val updateInfo by updateViewModel.updateInfo.collectAsState()
-    val isAutoUpdateEnabled by updateViewModel.isAutoUpdateEnabled.collectAsState()
+    val isIncognitoMode by mainViewModel.isIncognitoMode.collectAsStateWithLifecycle()
+    val updateInfo by updateViewModel.updateInfo.collectAsStateWithLifecycle()
+    val isAutoUpdateEnabled by updateViewModel.isAutoUpdateEnabled.collectAsStateWithLifecycle()
 
     val favoriteIds = remember(favorites) {
         favorites.map { it.videoId }.toSet()
@@ -98,6 +105,7 @@ fun SearchScreen(
         isGridView = isGridView,
         downloadedIds = downloadedIds,
         favoriteIds = favoriteIds,
+        savedVideoIds = savedVideoIds,
         downloadState = downloadState,
         isSortingNewest = isSortingNewest,
         isIncognitoMode = isIncognitoMode,
@@ -122,6 +130,7 @@ fun SearchScreen(
         onVideoClick = onVideoClick,
         onChannelClick = onChannelClick,
         onPlaylistClick = onPlaylistClick,
+        onAddToPlaylistClick = onAddToPlaylistClick,
         onNavigateToDownloads = onNavigateToDownloads,
         onBack = onBack
     )
@@ -138,6 +147,7 @@ private fun SearchContent(
     isGridView: Boolean,
     downloadedIds: Set<String>,
     favoriteIds: Set<String>,
+    savedVideoIds: Set<String>,
     downloadState: DownloadDialogState,
     isSortingNewest: Boolean,
     isIncognitoMode: Boolean,
@@ -162,6 +172,7 @@ private fun SearchContent(
     onVideoClick: (VideoItem) -> Unit,
     onChannelClick: (String) -> Unit,
     onPlaylistClick: (String) -> Unit,
+    onAddToPlaylistClick: (VideoItem) -> Unit,
     onNavigateToDownloads: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -169,7 +180,6 @@ private fun SearchContent(
     var isSearchFocused by remember { mutableStateOf(false) }
     val scrollVisibilityConnection = rememberScrollVisibilityConnection(onBarsVisibilityChange)
 
-    val surfaceColor = MaterialTheme.colorScheme.surface
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
     
@@ -190,138 +200,197 @@ private fun SearchContent(
         modifier = Modifier.nestedScroll(scrollVisibilityConnection),
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
+            val firstItemThumbnail = (uiState as? SearchUiState.Success)?.items?.firstOrNull()?.let { item ->
+                when (item) {
+                    is SearchItem.Video -> item.video.thumbnailUrl
+                    is SearchItem.Channel -> item.thumbnailUrl
+                    is SearchItem.Playlist -> item.playlist.thumbnailUrl
+                }
+            }
+            
             GlassSurface(
-                tonalElevation = 3.dp,
+                tonalElevation = 0.dp,
                 border = null,
-                containerColor = surfaceColor
+                containerColor = if (isSearchFocused) {
+                    MaterialTheme.colorScheme.surface
+                } else {
+                    MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
+                }
             ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        ModernSearchBar(
-                            query = searchQuery,
-                            onQueryChange = { onQueryChange(it) },
-                            onSearch = { query ->
-                                if (query.isNotBlank()) {
-                                    isSearchFocused = false
-                                    onSearch(query)
-                                    focusManager.clearFocus()
+                // Parent Box to establish scope for matchParentSize()
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    
+                    // 1. Ambient Glow Layer (Dynamically bounded)
+                    if (!firstItemThumbnail.isNullOrBlank() && !isSearchFocused) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize() // The critical fix replacing the hardcoded 180.dp
+                                .graphicsLayer {
+                                    alpha = 0.35f
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                        renderEffect = android.graphics.RenderEffect.createBlurEffect(
+                                            110f, 110f, android.graphics.Shader.TileMode.CLAMP
+                                        ).asComposeRenderEffect()
+                                    }
                                 }
-                            },
-                            onFocusChange = { isSearchFocused = it },
-                            onBack = {
-                                if (isSearchFocused || searchQuery.isNotEmpty()) {
-                                    onQueryChange("")
-                                    isSearchFocused = false
-                                    focusManager.clearFocus()
-                                } else {
-                                    onBack()
-                                }
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        if (!isSearchFocused) {
-                            IconButton(onClick = onToggleIncognito) {
-                                Icon(
-                                    imageVector = if (isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = "Incognito Mode",
-                                    tint = if (isIncognitoMode) Color(0xFF9C27B0) else MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.size(24.dp)
+                                .then(
+                                    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
+                                        Modifier.blur(90.dp)
+                                    } else Modifier
                                 )
-                            }
+                        ) {
+                            ThumbnailImage(
+                                videoId = "",
+                                thumbnailUrl = firstItemThumbnail,
+                                quality = ThumbnailQuality.Low,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            colors = listOf(
+                                                Color.Transparent,
+                                                MaterialTheme.colorScheme.background.copy(alpha = 0.5f),
+                                                MaterialTheme.colorScheme.background.copy(alpha = 0.9f)
+                                            )
+                                        )
+                                    )
+                            )
+                        }
+                    }
 
-                            IconButton(onClick = onNavigateToSettings) {
-                                BadgedBox(
-                                    badge = {
-                                        if (isAutoUpdateEnabled && updateInfo.hasUpdate) {
-                                            Badge(
-                                                containerColor = MaterialTheme.colorScheme.error,
-                                                contentColor = MaterialTheme.colorScheme.onError
-                                            ) {
-                                                Text("!")
+                    // 2. Foreground Content Layer (Sets the height for the Box)
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            ModernSearchBar(
+                                query = searchQuery,
+                                onQueryChange = { onQueryChange(it) },
+                                onSearch = { query ->
+                                    if (query.isNotBlank()) {
+                                        isSearchFocused = false
+                                        onSearch(query)
+                                        focusManager.clearFocus()
+                                    }
+                                },
+                                isFocused = isSearchFocused,
+                                onFocusChange = { isSearchFocused = it },
+                                onBack = {
+                                    if (isSearchFocused || searchQuery.isNotEmpty()) {
+                                        onQueryChange("")
+                                        isSearchFocused = false
+                                        focusManager.clearFocus()
+                                    } else {
+                                        onBack()
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                            
+                            if (!isSearchFocused) {
+                                IconButton(onClick = onToggleIncognito) {
+                                    Icon(
+                                        imageVector = if (isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = "Incognito Mode",
+                                        tint = if (isIncognitoMode) Color(0xFF9C27B0) else MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                                IconButton(onClick = onNavigateToSettings) {
+                                    BadgedBox(
+                                        badge = {
+                                            if (isAutoUpdateEnabled && updateInfo.hasUpdate) {
+                                                Badge(
+                                                    containerColor = MaterialTheme.colorScheme.error,
+                                                    contentColor = MaterialTheme.colorScheme.onError
+                                                ) { Text("!") }
                                             }
                                         }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Settings,
+                                            contentDescription = stringResource(R.string.settings),
+                                            tint = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(22.dp)
+                                        )
                                     }
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                        }
+                        
+                        // Sort Chips Row
+                        AnimatedVisibility(
+                            visible = uiState is SearchUiState.Success && !isSearchFocused,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Premium Layout Toggle
+                                Surface(
+                                    onClick = onToggleGrid,
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(36.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Settings,
-                                        contentDescription = stringResource(R.string.settings),
-                                        tint = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.size(24.dp)
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = if (isGridView) Icons.Default.ViewStream else Icons.Default.GridView,
+                                            contentDescription = "Toggle Layout",
+                                            modifier = Modifier.size(20.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+
+                                SearchSort.entries.forEach { sort ->
+                                    val isSelected = searchSort == sort
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = { onSortChange(sort) },
+                                        label = { 
+                                            Text(
+                                                text = when(sort) {
+                                                    SearchSort.RELEVANCE -> stringResource(R.string.sort_relevance)
+                                                    SearchSort.UPLOAD_DATE -> stringResource(R.string.sort_newest)
+                                                    SearchSort.VIEW_COUNT -> stringResource(R.string.sort_most_viewed)
+                                                    SearchSort.RATING -> stringResource(R.string.sort_top_rated)
+                                                },
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold
+                                            ) 
+                                        },
+                                        shape = CircleShape,
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                        ),
+                                        border = null
                                     )
                                 }
                             }
-                            Spacer(modifier = Modifier.width(8.dp))
                         }
                     }
-                    
-                    // Sort Chips Row (Integrated with GlassSurface)
-                    AnimatedVisibility(
-                        visible = uiState is SearchUiState.Success && !isSearchFocused,
-                        enter = expandVertically() + fadeIn(),
-                        exit = shrinkVertically() + fadeOut()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Grid Toggle Button
-                            IconButton(
-                                onClick = onToggleGrid,
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                            ) {
-                                Icon(
-                                    imageVector = if (isGridView) Icons.Default.ViewStream else Icons.Default.GridView,
-                                    contentDescription = "Toggle Layout",
-                                    modifier = Modifier.size(18.dp),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-
-                            VerticalDivider(modifier = Modifier.height(20.dp).padding(horizontal = 4.dp), thickness = 0.5.dp)
-
-                            SearchSort.entries.forEach { sort ->
-                                FilterChip(
-                                    selected = searchSort == sort,
-                                    onClick = { onSortChange(sort) },
-                                    label = { 
-                                        Text(
-                                            text = when(sort) {
-                                                SearchSort.RELEVANCE -> stringResource(R.string.sort_relevance)
-                                                SearchSort.UPLOAD_DATE -> stringResource(R.string.sort_newest)
-                                                SearchSort.VIEW_COUNT -> stringResource(R.string.sort_most_viewed)
-                                                SearchSort.RATING -> stringResource(R.string.sort_top_rated)
-                                            },
-                                            style = MaterialTheme.typography.labelMedium
-                                        ) 
-                                    },
-                                    shape = RoundedCornerShape(8.dp),
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                        selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                    ),
-                                    border = null
-                                )
-                            }
-                        }
-                    }
-                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 }
             }
         }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+        val topPadding = padding.calculateTopPadding()
+        
+        Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Top-level Progress Indicator for "Newest" sort transition
                 AnimatedVisibility(
@@ -332,8 +401,8 @@ private fun SearchContent(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(surfaceColor)
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                            .background(Color.Transparent)
+                            .padding(start = 16.dp, end = 16.dp, top = topPadding + 4.dp, bottom = 8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
@@ -364,10 +433,15 @@ private fun SearchContent(
                     ) { state ->
                         when (state) {
                             is SearchUiState.Initial -> {
-                                InitialSearchState()
+                                Box(modifier = Modifier.fillMaxSize().padding(top = topPadding)) {
+                                    InitialSearchState()
+                                }
                             }
                             is SearchUiState.Loading -> {
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize().padding(top = topPadding), 
+                                    contentAlignment = Alignment.Center
+                                ) {
                                     CircularProgressIndicator()
                                 }
                             }
@@ -381,97 +455,103 @@ private fun SearchContent(
                                         onActionClick = { onQueryChange("") }
                                     )
                                 } else {
-                                    InfiniteScrollEffect(
-                                        listState = listState,
-                                        enabled = !state.isLoadingMore,
-                                        onLoadMore = onLoadMore
-                                    )
+                                    val configuration = LocalConfiguration.current
+                                    val screenWidth = configuration.screenWidthDp
+                                    val gridColumns = Constants.calculateGridColumns(screenWidth)
+                                    val finalColumns = if (isGridView) gridColumns else 1
 
-                                    LazyColumn(
-                                        state = listState,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentPadding = PaddingValues(bottom = 100.dp)
-                                    ) {
-                                        items(
-                                            items = state.items,
-                                            key = { it.uniqueKey }
-                                        ) { item ->
-                                            when (item) {
-                                                is SearchItem.Video -> {
-                                                    val video = item.video
-                                                    val currentOnFavoriteClick = remember(video.id, onFavoriteClick) { { onFavoriteClick(video) } }
-                                                    val currentOnDownloadClick = remember(video.id, onDownloadClick) { { onDownloadClick(video) } }
-                                                    val currentOnChannelClick = remember(video.id, onChannelClick) {
-                                                        video.uploaderUrl?.let { url -> { onChannelClick(url) } }
-                                                    }
-                                                    val currentOnClick = remember(video.id, onVideoClick) { { onVideoClick(video) } }
+                                    if (finalColumns > 1) {
+                                        val gridState = rememberLazyGridState()
+                                        InfiniteScrollGridEffect(
+                                            gridState = gridState,
+                                            enabled = !state.isLoadingMore,
+                                            onLoadMore = onLoadMore
+                                        )
 
-                                                    Box(modifier = Modifier.animateItem()) {
-                                                        if (isGridView) {
-                                                            VideoItemRow(
-                                                                video = video,
-                                                                isDownloaded = downloadedIds.contains(video.id),
-                                                                isFavorite = favoriteIds.contains(video.id),
-                                                                onFavoriteClick = currentOnFavoriteClick,
-                                                                onDownloadClick = currentOnDownloadClick,
-                                                                onChannelClick = currentOnChannelClick,
-                                                                onClick = currentOnClick
-                                                            )
-                                                        } else {
-                                                            VideoRow(
-                                                                videoId = video.id,
-                                                                title = video.title,
-                                                                uploader = video.uploaderName,
-                                                                thumbnailUrl = video.thumbnailUrl,
-                                                                watchProgress = video.watchProgress,
-                                                                isDownloaded = downloadedIds.contains(video.id),
-                                                                isFavorite = favoriteIds.contains(video.id),
-                                                                onFavoriteClick = currentOnFavoriteClick,
-                                                                onDownloadClick = currentOnDownloadClick,
-                                                                onChannelClick = currentOnChannelClick,
-                                                                onClick = currentOnClick
-                                                            )
-                                                        }
-                                                    }
+                                        LazyVerticalGrid(
+                                            state = gridState,
+                                            columns = GridCells.Fixed(finalColumns),
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentPadding = PaddingValues(top = topPadding, bottom = 100.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            items(
+                                                items = state.items,
+                                                key = { it.uniqueKey },
+                                                span = { item ->
+                                                    if (item is SearchItem.Video) GridItemSpan(1)
+                                                    else GridItemSpan(finalColumns)
                                                 }
-                                                is SearchItem.Channel -> {
-                                                    val currentOnToggleSubscription = remember(item.id, onToggleSubscription) {
-                                                        { onToggleSubscription(item) }
-                                                    }
-                                                    val currentOnChannelClick = remember(item.id, onChannelClick) {
-                                                        { onChannelClick(item.id) }
-                                                    }
-                                                    Box(modifier = Modifier.animateItem().padding(horizontal = 16.dp, vertical = 2.dp)) {
-                                                        ModernChannelCard(
-                                                            channel = item,
-                                                            onClick = currentOnChannelClick,
-                                                            onToggleSubscription = currentOnToggleSubscription
-                                                        )
-                                                    }
-                                                }
-                                                is SearchItem.Playlist -> {
-                                                    val currentOnClick = remember(item.playlist.id, onPlaylistClick) {
-                                                        { onPlaylistClick(item.playlist.id) }
-                                                    }
-                                                    Box(modifier = Modifier.animateItem().padding(horizontal = 16.dp, vertical = 2.dp)) {
-                                                        ModernPlaylistRow(
-                                                            playlist = item.playlist,
-                                                            onClick = currentOnClick
-                                                        )
+                                            ) { item ->
+                                                SearchItemRenderer(
+                                                    item = item,
+                                                    isGridView = true,
+                                                    downloadedIds = downloadedIds,
+                                                    favoriteIds = favoriteIds,
+                                                    savedVideoIds = savedVideoIds,
+                                                    onFavoriteClick = onFavoriteClick,
+                                                    onDownloadClick = onDownloadClick,
+                                                    onChannelClick = onChannelClick,
+                                                    onVideoClick = onVideoClick,
+                                                    onToggleSubscription = onToggleSubscription,
+                                                    onPlaylistClick = onPlaylistClick
+                                                )
+                                            }
+
+                                            if (state.isLoadingMore) {
+                                                item(span = { GridItemSpan(finalColumns) }) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(24.dp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
                                                     }
                                                 }
                                             }
                                         }
+                                    } else {
+                                        InfiniteScrollEffect(
+                                            listState = listState,
+                                            enabled = !state.isLoadingMore,
+                                            onLoadMore = onLoadMore
+                                        )
 
-                                        if (state.isLoadingMore) {
-                                            item {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .padding(24.dp),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                                        LazyColumn(
+                                            state = listState,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentPadding = PaddingValues(top = topPadding, bottom = 100.dp)
+                                        ) {
+                                            items(
+                                                items = state.items,
+                                                key = { it.uniqueKey }
+                                            ) { item ->
+                                                SearchItemRenderer(
+                                                    item = item,
+                                                    isGridView = isGridView,
+                                                    downloadedIds = downloadedIds,
+                                                    favoriteIds = favoriteIds,
+                                                    savedVideoIds = savedVideoIds,
+                                                    onFavoriteClick = onFavoriteClick,
+                                                    onDownloadClick = onDownloadClick,
+                                                    onChannelClick = onChannelClick,
+                                                    onVideoClick = onVideoClick,
+                                                    onToggleSubscription = onToggleSubscription,
+                                                    onPlaylistClick = onPlaylistClick
+                                                )
+                                            }
+
+                                            if (state.isLoadingMore) {
+                                                item {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(24.dp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                                                    }
                                                 }
                                             }
                                         }
@@ -480,30 +560,34 @@ private fun SearchContent(
                             }
                             is SearchUiState.Error -> {
                                 val isNetworkError = state.error is PlayTubeError.Network
-                                EmptyState(
-                                    icon = if (isNetworkError) Icons.Default.WifiOff else Icons.Default.ErrorOutline,
-                                    title = if (isNetworkError) stringResource(R.string.no_internet) else "Something went wrong",
-                                    description = if (isNetworkError) "Your downloads are still available offline." else state.error.getMessage(),
-                                    actionText = if (isNetworkError) "Go to Offline Hub" else stringResource(R.string.retry),
-                                    onActionClick = { 
-                                        if (isNetworkError) onNavigateToDownloads() else onSearch(searchQuery)
-                                    }
-                                )
+                                Box(modifier = Modifier.fillMaxSize().padding(top = topPadding)) {
+                                    EmptyState(
+                                        icon = if (isNetworkError) Icons.Default.WifiOff else Icons.Default.ErrorOutline,
+                                        title = if (isNetworkError) stringResource(R.string.no_internet) else "Something went wrong",
+                                        description = if (isNetworkError) "Your downloads are still available offline." else state.error.getMessage(),
+                                        actionText = if (isNetworkError) "Go to Offline Hub" else stringResource(R.string.retry),
+                                        onActionClick = { 
+                                            if (isNetworkError) onNavigateToDownloads() else onSearch(searchQuery)
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Overlay suggestions when search is focused (Enhanced design)
+            // Redesigned Overlay suggestions (Glassmorphic)
             AnimatedVisibility(
                 visible = isSearchFocused && (searchQuery.isNotEmpty() || searchHistory.isNotEmpty()),
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
                 Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.surface
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = topPadding),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
                 ) {
                     SuggestionsAndHistoryList(
                         query = searchQuery,
@@ -556,26 +640,119 @@ private fun SearchContent(
     }
 }
 
+@Composable
+private fun SearchItemRenderer(
+    item: SearchItem,
+    isGridView: Boolean,
+    downloadedIds: Set<String>,
+    favoriteIds: Set<String>,
+    savedVideoIds: Set<String>,
+    onFavoriteClick: (VideoItem) -> Unit,
+    onDownloadClick: (VideoItem) -> Unit,
+    onChannelClick: (String) -> Unit,
+    onVideoClick: (VideoItem) -> Unit,
+    onToggleSubscription: (SearchItem.Channel) -> Unit,
+    onPlaylistClick: (String) -> Unit
+) {
+    when (item) {
+        is SearchItem.Video -> {
+            val video = item.video
+            val currentOnFavoriteClick = remember(video.id, onFavoriteClick) { { onFavoriteClick(video) } }
+            val currentOnDownloadClick = remember(video.id, onDownloadClick) { { onDownloadClick(video) } }
+            val currentOnChannelClick = remember(video.id, onChannelClick) {
+                video.uploaderUrl?.let { url -> { onChannelClick(url) } }
+            }
+            val currentOnClick = remember(video.id, onVideoClick) { { onVideoClick(video) } }
+
+            Box {
+                if (isGridView) {
+                    VideoItemRow(
+                        video = video,
+                        isDownloaded = downloadedIds.contains(video.id),
+                        isFavorite = favoriteIds.contains(video.id),
+                        isSaved = savedVideoIds.contains(video.id),
+                        onFavoriteClick = currentOnFavoriteClick,
+                        onDownloadClick = currentOnDownloadClick,
+                        onChannelClick = currentOnChannelClick,
+                        onClick = currentOnClick
+                    )
+                } else {
+                    VideoRow(
+                        videoId = video.id,
+                        title = video.title,
+                        uploader = video.uploaderName,
+                        thumbnailUrl = video.thumbnailUrl,
+                        watchProgress = video.watchProgress,
+                        isDownloaded = downloadedIds.contains(video.id),
+                        isFavorite = favoriteIds.contains(video.id),
+                        isSaved = savedVideoIds.contains(video.id),
+                        onFavoriteClick = currentOnFavoriteClick,
+                        onDownloadClick = currentOnDownloadClick,
+                        onChannelClick = currentOnChannelClick,
+                        onClick = currentOnClick
+                    )
+                }
+            }
+        }
+        is SearchItem.Channel -> {
+            val currentOnToggleSubscription = remember(item.id, onToggleSubscription) {
+                { onToggleSubscription(item) }
+            }
+            val currentOnChannelClick = remember(item.id, onChannelClick) {
+                { onChannelClick(item.id) }
+            }
+            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
+                ModernChannelCard(
+                    channel = item,
+                    onClick = currentOnChannelClick,
+                    onToggleSubscription = currentOnToggleSubscription
+                )
+            }
+        }
+        is SearchItem.Playlist -> {
+            val currentOnClick = remember(item.playlist.id, onPlaylistClick) {
+                { onPlaylistClick(item.playlist.id) }
+            }
+            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
+                ModernPlaylistRow(
+                    playlist = item.playlist,
+                    onClick = currentOnClick
+                )
+            }
+        }
+    }
+}
 
 @Composable
 fun ModernSearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
     onSearch: (String) -> Unit,
+    isFocused: Boolean,
     onFocusChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val focusManager = LocalFocusManager.current
+
+    val containerAlpha by animateFloatAsState(
+        targetValue = if (isFocused) 0.85f else 0.4f, 
+        label = "SearchContainerAlpha"
+    )
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp)
-            .height(52.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        shape = RoundedCornerShape(26.dp),
+            .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
+            .height(48.dp)
+            .animateContentSize(),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = containerAlpha),
+        shape = CircleShape,
         border = androidx.compose.foundation.BorderStroke(
             width = 0.5.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+            color = if (isFocused) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) 
+                    else Color.White.copy(alpha = 0.1f)
         )
     ) {
         TextField(
@@ -588,15 +765,27 @@ fun ModernSearchBar(
                 Text(
                     text = stringResource(R.string.search_placeholder),
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    fontWeight = FontWeight.Medium
                 ) 
             },
             leadingIcon = {
-                IconButton(onClick = onBack) {
+                IconButton(
+                    onClick = {
+                        if (isFocused || query.isNotEmpty()) {
+                            onBack()
+                        } else {
+                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                            onBack()
+                        }
+                    }
+                ) {
                     Icon(
-                        imageVector = if (query.isEmpty()) Icons.Default.Search else Icons.AutoMirrored.Filled.ArrowBack,
+                        imageVector = if (!isFocused && query.isEmpty()) Icons.Default.Search 
+                                      else Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = stringResource(R.string.back),
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = if (isFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             },
@@ -606,7 +795,8 @@ fun ModernSearchBar(
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = stringResource(R.string.clear),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -620,9 +810,14 @@ fun ModernSearchBar(
                 unfocusedIndicatorColor = Color.Transparent,
                 cursorColor = MaterialTheme.colorScheme.primary
             ),
-            textStyle = MaterialTheme.typography.bodyLarge,
+            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Medium
+            ),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { onSearch(query) })
+            keyboardActions = KeyboardActions(onSearch = { 
+                onSearch(query)
+                focusManager.clearFocus()
+            })
         )
     }
 }
@@ -636,6 +831,11 @@ fun SuggestionsAndHistoryList(
     onDeleteHistory: (com.arslandaim.playtube.data.local.SearchHistoryEntity) -> Unit,
     onClearHistory: () -> Unit
 ) {
+    val filteredHistory = remember(query, history) {
+        if (query.isEmpty()) history
+        else history.filter { it.query.contains(query, ignoreCase = true) }
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 100.dp)
@@ -658,19 +858,25 @@ fun SuggestionsAndHistoryList(
                     }
                 }
             }
-            items(history) { item ->
-                SearchItemRow(
-                    text = item.query,
-                    icon = Icons.Default.History,
-                    onDelete = { onDeleteHistory(item) },
-                    onClick = { onSuggestionClick(item.query) }
-                )
-            }
-        } else {
-            items(suggestions) { suggestion ->
+        }
+
+        // Show Matching History First
+        items(filteredHistory) { item ->
+            SearchItemRow(
+                text = item.query,
+                icon = Icons.Default.History,
+                onDelete = { onDeleteHistory(item) },
+                onClick = { onSuggestionClick(item.query) }
+            )
+        }
+
+        // Show Remote Suggestions
+        if (query.isNotEmpty()) {
+            val suggestionsToDisplay = suggestions.filter { s -> filteredHistory.none { it.query.equals(s, true) } }
+            items(suggestionsToDisplay) { suggestion ->
                 SearchItemRow(
                     text = suggestion,
-                    icon = Icons.AutoMirrored.Filled.TrendingUp,
+                    icon = Icons.Default.Search,
                     onClick = { onSuggestionClick(suggestion) }
                 )
             }
@@ -689,13 +895,14 @@ fun SearchItemRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 24.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            tint = if (onDelete != null) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                   else MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
             modifier = Modifier.size(20.dp)
         )
         Spacer(modifier = Modifier.width(16.dp))
@@ -704,7 +911,8 @@ fun SearchItemRow(
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyLarge,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            fontWeight = FontWeight.Medium
         )
         if (onDelete != null) {
             IconButton(
@@ -715,7 +923,7 @@ fun SearchItemRow(
                     imageVector = Icons.Default.Close,
                     contentDescription = "Delete",
                     modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
             }
         } else {
@@ -723,7 +931,7 @@ fun SearchItemRow(
                 imageVector = Icons.Default.NorthWest,
                 contentDescription = null,
                 modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
             )
         }
     }
@@ -736,23 +944,38 @@ fun InitialSearchState() {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Icon(
-            imageVector = Icons.Default.Search,
-            contentDescription = null,
-            modifier = Modifier.size(80.dp),
-            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-        )
-        Spacer(modifier = Modifier.height(16.dp))
+        Surface(
+            modifier = Modifier.size(120.dp),
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+            shape = CircleShape
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = null,
+                    modifier = Modifier.size(56.dp),
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
         Text(
             text = stringResource(R.string.discover_new),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Black,
+            color = MaterialTheme.colorScheme.onSurface,
+            letterSpacing = 0.5.sp
         )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
         Text(
             text = "Search for your favorite videos and channels",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            fontWeight = FontWeight.Medium
         )
     }
 }

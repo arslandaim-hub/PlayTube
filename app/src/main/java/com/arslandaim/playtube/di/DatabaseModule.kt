@@ -46,6 +46,7 @@ object DatabaseModule {
             "playtube_db"
         )
         .addMigrations(MIGRATION_9_10)
+        .fallbackToDestructiveMigration()
         .build()
     }
 
@@ -87,5 +88,10 @@ object DatabaseModule {
     @Provides
     fun provideBlacklistDao(database: PlayTubeDatabase): BlacklistDao {
         return database.blacklistDao()
+    }
+
+    @Provides
+    fun provideLocalPlaylistDao(database: PlayTubeDatabase): com.arslandaim.playtube.data.local.LocalPlaylistDao {
+        return database.localPlaylistDao()
     }
 }

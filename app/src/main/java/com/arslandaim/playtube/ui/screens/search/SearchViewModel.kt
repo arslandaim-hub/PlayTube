@@ -30,6 +30,7 @@ import com.arslandaim.playtube.domain.usecase.ToggleSubscriptionUseCase
 import com.arslandaim.playtube.ui.components.DownloadDialogState
 import com.arslandaim.playtube.utils.PlayTubeError
 import com.arslandaim.playtube.utils.VideoUtils
+import com.arslandaim.playtube.utils.HistoryUtils.applyHistory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -77,13 +78,15 @@ class SearchViewModel @Inject constructor(
         isFetchingNextPage
     ) { state, sort, history, subs, isLoadingMore ->
         if (state is SearchUiState.Success) {
-            val historyMap = history.associateBy({ it.videoId }, { if (it.durationMs > 0) it.progressMs.toFloat() / it.durationMs else null })
-            
-            // Step 1: Apply watch progress and subscription status
+            // Step 1: Extract videos and apply history
+            val videos = state.items.filterIsInstance<SearchItem.Video>().map { it.video }.applyHistory(history)
+            val videoMap = videos.associateBy { it.id }
+
+            // Step 2: Reconstruct items with updated progress and subscription status
             val updatedItems = state.items.map { item ->
                 when (item) {
                     is SearchItem.Video -> {
-                        SearchItem.Video(item.video.copy(watchProgress = historyMap[item.video.id]))
+                        SearchItem.Video(videoMap[item.video.id] ?: item.video)
                     }
                     is SearchItem.Channel -> {
                         val channelId = VideoUtils.extractChannelId(item.id) ?: item.id
@@ -174,13 +177,13 @@ class SearchViewModel @Inject constructor(
     fun onSortChange(sort: SearchSort) {
         if (_searchSort.value == sort) return
         _searchSort.value = sort
+        triggerSearch()
+    }
+
+    private fun triggerSearch() {
         if (_searchQuery.value.isNotBlank()) {
-            // Reset the internal state to prevent "stale" results from being shown 
-            // while the new sort-specific query is fetching.
             _internalUiState.value = SearchUiState.Loading
-            
-            // Only use the top-level Fetching indicator if switching TO newest sort
-            _isSortingNewest.value = (sort == SearchSort.UPLOAD_DATE)
+            _isSortingNewest.value = (_searchSort.value == SearchSort.UPLOAD_DATE)
             search(_searchQuery.value)
         }
     }
@@ -245,7 +248,7 @@ class SearchViewModel @Inject constructor(
                 if (currentPage == null) break
                 
                 delay(100) // Small delay to prevent rate limiting and allow UI to breathe
-                val nextResult = searchVideosUseCase.fetchNextPage(query, SearchSort.UPLOAD_DATE, currentPage).getOrThrow()
+                val nextResult = searchVideosUseCase.fetchNextPage(query, SearchSort.UPLOAD_DATE, page = currentPage).getOrThrow()
                 
                 val newItems = nextResult.items.filter { it.uniqueKey !in currentKeys }
                 allItems.addAll(newItems)
@@ -279,7 +282,7 @@ class SearchViewModel @Inject constructor(
 
         isFetchingNextPage.value = true
         viewModelScope.launch {
-            searchVideosUseCase.fetchNextPage(currentQuery, _searchSort.value, currentPage)
+            searchVideosUseCase.fetchNextPage(currentQuery, _searchSort.value, page = currentPage)
                 .onSuccess { result ->
                     _internalUiState.update { currentState ->
                         if (currentState is SearchUiState.Success) {

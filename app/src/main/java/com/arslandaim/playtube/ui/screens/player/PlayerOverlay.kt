@@ -24,8 +24,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.arslandaim.playtube.domain.model.VideoItem
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.math.roundToInt
 
+@OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 fun PlayerOverlay(
     isExpanded: Boolean,
@@ -39,10 +41,11 @@ fun PlayerOverlay(
     onMinimize: () -> Unit,
     onChannelClick: (String) -> Unit,
     onVideoClick: (VideoItem) -> Unit,
+    onAddToPlaylistClick: (VideoItem) -> Unit,
     content: @Composable (Modifier) -> Unit
 ) {
-    val visibility by viewModel.miniPlayerManager.visibilityState.collectAsState()
-    val isPlaying by viewModel.isPlaying.collectAsState()
+    val visibility by viewModel.miniPlayerManager.visibilityState.collectAsStateWithLifecycle()
+    val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
     
     // Track navigation state to force BackHandler re-registration
     val navBackStackEntry by navController?.currentBackStackEntryAsState() ?: remember { mutableStateOf(null) }
@@ -166,7 +169,8 @@ fun PlayerOverlay(
                     viewModel = viewModel,
                     onBack = safeMinimize,
                     onVideoClick = onVideoClick,
-                    onChannelClick = onChannelClick
+                    onChannelClick = onChannelClick,
+                    onAddToPlaylistClick = onAddToPlaylistClick
                 )
             }
         } else {

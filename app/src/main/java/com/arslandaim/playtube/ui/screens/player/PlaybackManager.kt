@@ -11,6 +11,7 @@ import androidx.annotation.OptIn
 import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.upstream.BandwidthMeter
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
@@ -63,6 +65,21 @@ class PlaybackManager @Inject constructor(
     private val _playbackEnded = MutableSharedFlow<Unit>()
     val playbackEnded: SharedFlow<Unit> = _playbackEnded.asSharedFlow()
 
+    private val _recoveryRequired = MutableSharedFlow<Long>()
+    val recoveryRequired: SharedFlow<Long> = _recoveryRequired.asSharedFlow()
+
+    private val _onSponsorSkipped = MutableSharedFlow<com.arslandaim.playtube.domain.model.SponsorSegment>()
+    val onSponsorSkipped: SharedFlow<com.arslandaim.playtube.domain.model.SponsorSegment> = _onSponsorSkipped.asSharedFlow()
+
+    private val _playbackStats = MutableStateFlow(PlaybackStats())
+    val playbackStats: StateFlow<PlaybackStats> = _playbackStats.asStateFlow()
+
+    private var _lastPauseTimestamp = 0L
+    val lastPauseTimestamp: Long get() = _lastPauseTimestamp
+
+    private var currentExtractedAt = 0L
+    private var sponsorSegments: List<com.arslandaim.playtube.domain.model.SponsorSegment> = emptyList()
+
     private var managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var progressJob: Job? = null
 
@@ -88,11 +105,25 @@ class PlaybackManager @Inject constructor(
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            managerScope.launch { _playbackError.emit(error) }
+            val cause = error.cause
+            if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS &&
+                cause is HttpDataSource.InvalidResponseCodeException &&
+                cause.responseCode == 403) {
+                PTLog.w("PlaybackManager", "403 Forbidden detected. Triggering immediate recovery.")
+                val pos = player.currentPosition
+                managerScope.launch { _recoveryRequired.emit(pos) }
+            } else {
+                managerScope.launch { _playbackError.emit(error) }
+            }
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             _isPlaying.value = isPlaying
+            if (!isPlaying) {
+                _lastPauseTimestamp = System.currentTimeMillis()
+            } else {
+                _lastPauseTimestamp = 0L
+            }
         }
 
         override fun onPositionDiscontinuity(
@@ -108,6 +139,14 @@ class PlaybackManager @Inject constructor(
                 _mediaItemTransition.emit(mediaItem?.mediaId) 
             }
         }
+
+        override fun onVideoSizeChanged(videoSize: VideoSize) {
+            _playbackStats.update { it.copy(width = videoSize.width, height = videoSize.height) }
+        }
+
+        override fun onMetadata(metadata: Metadata) {
+            // Handle metadata if needed
+        }
     }
 
     init {
@@ -121,6 +160,7 @@ class PlaybackManager @Inject constructor(
     }
 
     fun play(videoId: String, bundle: StreamBundle, stream: StreamItem, startPosition: Long = 0) {
+        currentExtractedAt = bundle.extractedAt
         val metadata = MediaMetadata.Builder()
             .setTitle(bundle.title)
             .setArtist(bundle.uploaderName)
@@ -163,7 +203,16 @@ class PlaybackManager @Inject constructor(
                 val audioSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(audioUrl))
                 player.setMediaSource(MergingMediaSource(videoSource, audioSource))
             } else {
-                player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
+                // Fallback: If adaptive is requested but no audio stream is found, 
+                // try to find a non-adaptive stream (standard MPEG-4) to avoid silent playback.
+                val fallbackStream = bundle.videoStreams.find { !it.isAdaptive }
+                if (fallbackStream != null) {
+                    PTLog.w("PlaybackManager", "Adaptive stream requested but audio URL missing. Falling back to standard stream: ${fallbackStream.quality}")
+                    val fallbackMediaItem = mediaItem.buildUpon().setUri(fallbackStream.url).build()
+                    player.setMediaSource(mediaSourceFactory.createMediaSource(fallbackMediaItem))
+                } else {
+                    player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
+                }
             }
         } else {
             player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
@@ -174,6 +223,52 @@ class PlaybackManager @Inject constructor(
             player.seekTo(startPosition)
         }
         player.playWhenReady = true
+    }
+
+    /**
+     * Switches the video quality without stopping the player or resetting position.
+     */
+    fun switchQualitySeamlessly(videoId: String, bundle: StreamBundle, stream: StreamItem) {
+        val currentPosition = player.currentPosition
+        val metadata = MediaMetadata.Builder()
+            .setTitle(bundle.title)
+            .setArtist(bundle.uploaderName)
+            .setArtworkUri(bundle.thumbnailUrl?.let { Uri.parse(it) })
+            .build()
+
+        val subtitleConfigs = trackManager.createSubtitleConfigs(bundle)
+        val mediaItemBuilder = MediaItem.Builder()
+            .setUri(stream.url)
+            .setMediaId(videoId)
+            .setMediaMetadata(metadata)
+            .setSubtitleConfigurations(subtitleConfigs)
+
+        val isManifest = stream.format == "m3u8" || stream.format == "mpd"
+        if (bundle.isLive || isManifest) {
+            val mimeType = if (stream.format == "mpd") MimeTypes.APPLICATION_MPD else MimeTypes.APPLICATION_M3U8
+            mediaItemBuilder.setMimeType(mimeType)
+        }
+
+        val mediaItem = mediaItemBuilder.build()
+        val effectiveDataSourceFactory = if (isManifest) httpDataSourceFactory else dataSourceFactory
+        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(effectiveDataSourceFactory)
+
+        val newSource = if (stream.isAdaptive) {
+            val audioUrl = bundle.bestAudioStreamUrl
+            if (audioUrl != null) {
+                val videoSource = mediaSourceFactory.createMediaSource(mediaItem)
+                val audioSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(audioUrl))
+                MergingMediaSource(videoSource, audioSource)
+            } else {
+                mediaSourceFactory.createMediaSource(mediaItem)
+            }
+        } else {
+            mediaSourceFactory.createMediaSource(mediaItem)
+        }
+
+        player.setMediaSource(newSource, false) // false = don't reset position
+        player.prepare()
+        // No need to call play() if it was already playing
     }
 
     fun playLocal(videoId: String, file: java.io.File, title: String, uploader: String, thumbnail: String?) {
@@ -199,6 +294,7 @@ class PlaybackManager @Inject constructor(
     fun stop() {
         player.stop()
         player.clearMediaItems()
+        currentExtractedAt = 0L
         stopProgressUpdate()
     }
 
@@ -207,6 +303,16 @@ class PlaybackManager @Inject constructor(
     }
 
     fun resume() {
+        val now = System.currentTimeMillis()
+        val isPausedTooLong = _lastPauseTimestamp > 0 && now - _lastPauseTimestamp > 3 * 60 * 1000
+        val isLinkExpired = currentExtractedAt > 0 && now - currentExtractedAt > 5.5 * 60 * 60 * 1000
+        
+        if (isPausedTooLong || isLinkExpired) {
+            val pos = player.currentPosition
+            PTLog.d("PlaybackManager", "Resume check: isPausedTooLong=$isPausedTooLong, isLinkExpired=$isLinkExpired. Requesting recovery.")
+            managerScope.launch { _recoveryRequired.emit(pos) }
+            _lastPauseTimestamp = 0L // Reset to prevent multiple emissions
+        }
         player.play()
     }
 
@@ -219,11 +325,19 @@ class PlaybackManager @Inject constructor(
     }
 
     fun setPlaybackSpeed(speed: Float) {
-        player.setPlaybackSpeed(speed)
+        player.setPlaybackParameters(PlaybackParameters(speed, player.playbackParameters.pitch))
+    }
+
+    fun setPitch(pitch: Float) {
+        player.setPlaybackParameters(PlaybackParameters(player.playbackParameters.speed, pitch))
     }
 
     fun updateCcState(enabled: Boolean, preferredLang: String?) {
         trackManager.updateCcState(player, enabled, preferredLang)
+    }
+
+    fun setSponsorSegments(segments: List<com.arslandaim.playtube.domain.model.SponsorSegment>) {
+        sponsorSegments = segments
     }
 
     @OptIn(UnstableApi::class)
@@ -273,9 +387,35 @@ class PlaybackManager @Inject constructor(
         progressJob?.cancel()
         progressJob = managerScope.launch {
             while (true) {
-                _currentPosition.value = player.currentPosition
+                val currentPos = player.currentPosition
+                _currentPosition.value = currentPos
                 _duration.value = if (player.duration == C.TIME_UNSET) 0L else player.duration
                 _bufferedPosition.value = player.bufferedPosition
+
+                // Update Stats
+                val videoFormat = player.videoFormat
+                _playbackStats.update { stats ->
+                    stats.copy(
+                        videoFormat = videoFormat?.sampleMimeType,
+                        bitrate = videoFormat?.bitrate ?: 0,
+                        resolution = videoFormat?.let { "${it.width}x${it.height}" } ?: "",
+                        droppedFrames = player.videoDecoderCounters?.droppedBufferCount ?: 0,
+                        bandwidthEstimate = bandwidthMeter.bitrateEstimate
+                    )
+                }
+
+                // SponsorBlock Skipping Logic
+                if (sponsorSegments.isNotEmpty()) {
+                    val matchingSegment = sponsorSegments.find { 
+                        currentPos >= it.startMs && currentPos < it.endMs 
+                    }
+                    if (matchingSegment != null) {
+                        PTLog.d("PlaybackManager", "Skipping sponsor segment: ${matchingSegment.category}")
+                        player.seekTo(matchingSegment.endMs)
+                        _onSponsorSkipped.emit(matchingSegment)
+                    }
+                }
+
                 delay(500)
             }
         }
@@ -292,3 +432,13 @@ class PlaybackManager @Inject constructor(
         managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     }
 }
+
+data class PlaybackStats(
+    val width: Int = 0,
+    val height: Int = 0,
+    val videoFormat: String? = null,
+    val bitrate: Int = 0,
+    val resolution: String = "",
+    val droppedFrames: Int = 0,
+    val bandwidthEstimate: Long = 0
+)

@@ -6,6 +6,8 @@
 package com.arslandaim.playtube.di
 
 import android.content.Context
+import com.arslandaim.playtube.data.local.PreferencesManager
+import com.arslandaim.playtube.data.network.DynamicProxySelector
 import com.arslandaim.playtube.data.network.IPv4OnlyDns
 import com.arslandaim.playtube.utils.Constants
 import com.google.gson.Gson
@@ -35,7 +37,10 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(@ApplicationContext context: Context): OkHttpClient {
+    fun provideOkHttpClient(
+        @ApplicationContext context: Context,
+        preferencesManager: PreferencesManager
+    ): OkHttpClient {
         val cacheSize = 50L * 1024L * 1024L // 50MB
         val cacheDirectory = File(context.cacheDir, "http_cache")
         val cache = Cache(cacheDirectory, cacheSize)
@@ -76,6 +81,7 @@ object NetworkModule {
             .retryOnConnectionFailure(true)
             .fastFallback(true)
             .dns(IPv4OnlyDns())
+            .proxySelector(DynamicProxySelector(preferencesManager))
             .build()
     }
 

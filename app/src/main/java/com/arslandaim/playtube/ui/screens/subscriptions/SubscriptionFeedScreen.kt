@@ -19,11 +19,15 @@ import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
@@ -50,12 +54,14 @@ fun SubscriptionFeedScreen(
     onBarsVisibilityChange: (Boolean) -> Unit,
     onVideoClick: (VideoItem) -> Unit,
     onChannelClick: (String) -> Unit,
+    onAddToPlaylistClick: (VideoItem) -> Unit,
     onNavigateToDownloads: () -> Unit,
     onNavigateToSubscriptionsList: () -> Unit
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val downloadedIds by libraryViewModel.downloadedVideoIds.collectAsStateWithLifecycle()
     val favorites by libraryViewModel.favorites.collectAsStateWithLifecycle()
+    val savedVideoIds by libraryViewModel.savedVideoIds.collectAsStateWithLifecycle()
     
     val favoriteIds = remember(favorites) {
         favorites.map { it.videoId }.toSet()
@@ -89,6 +95,7 @@ fun SubscriptionFeedScreen(
         downloadState = downloadState,
         downloadedIds = downloadedIds,
         favoriteIds = favoriteIds,
+        savedVideoIds = savedVideoIds,
         snackbarMessage = viewModel.snackbarMessage,
         onRefresh = onRefresh,
         onFavoriteClick = onFavoriteClick,
@@ -97,6 +104,7 @@ fun SubscriptionFeedScreen(
         onDismissDownload = onDismissDownload,
         onChannelSelected = onChannelSelected,
         onLoadMore = onLoadMore,
+        onAddToPlaylistClick = onAddToPlaylistClick,
         onBarsVisibilityChange = onBarsVisibilityChange,
         onVideoClick = onVideoClick,
         onChannelClick = onChannelClick,
@@ -114,6 +122,7 @@ private fun SubscriptionFeedContent(
     downloadState: DownloadDialogState,
     downloadedIds: Set<String>,
     favoriteIds: Set<String>,
+    savedVideoIds: Set<String>,
     snackbarMessage: kotlinx.coroutines.flow.SharedFlow<String>,
     onRefresh: () -> Unit,
     onFavoriteClick: (VideoItem) -> Unit,
@@ -122,6 +131,7 @@ private fun SubscriptionFeedContent(
     onDismissDownload: () -> Unit,
     onChannelSelected: (String?) -> Unit,
     onLoadMore: () -> Unit,
+    onAddToPlaylistClick: (VideoItem) -> Unit,
     onBarsVisibilityChange: (Boolean) -> Unit,
     onVideoClick: (VideoItem) -> Unit,
     onChannelClick: (String) -> Unit,
@@ -144,7 +154,60 @@ private fun SubscriptionFeedContent(
     val scrollVisibilityConnection = rememberScrollVisibilityConnection(onBarsVisibilityChange)
     val bubbleListState = androidx.compose.foundation.lazy.rememberLazyListState()
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        // 1. Immersive Ambient Header Glow
+        val activeFeed = state.activeFeed
+        val firstVideoThumbnail = activeFeed.videos.firstOrNull()?.thumbnailUrl
+        val selectedChannelThumbnail = state.subscriptions.find { it.channelId == state.selectedChannelId }?.thumbnailUrl
+        val ambientColorSource = selectedChannelThumbnail ?: firstVideoThumbnail
+
+        if (!ambientColorSource.isNullOrBlank()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(280.dp)
+                    .graphicsLayer {
+                        alpha = 0.35f
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                            renderEffect = android.graphics.RenderEffect.createBlurEffect(
+                                120f, 120f, android.graphics.Shader.TileMode.CLAMP
+                            ).asComposeRenderEffect()
+                        }
+                    }
+                    .then(
+                        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
+                            Modifier.blur(100.dp)
+                        } else Modifier
+                    )
+            ) {
+                com.arslandaim.playtube.ui.components.ThumbnailImage(
+                    videoId = "",
+                    thumbnailUrl = ambientColorSource,
+                    quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.Low,
+                    modifier = Modifier.fillMaxSize()
+                )
+                
+                // Vertical gradient to blend into background
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    MaterialTheme.colorScheme.background.copy(alpha = 0.8f),
+                                    MaterialTheme.colorScheme.background
+                                )
+                            )
+                        )
+                )
+            }
+        }
+
         val pullToRefreshState = rememberPullToRefreshState()
         PullToRefreshBox(
             isRefreshing = isRefreshing,
@@ -154,15 +217,12 @@ private fun SubscriptionFeedContent(
             contentAlignment = Alignment.TopCenter
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                val activeFeed = state.activeFeed
                 val isLoadingInitial = activeFeed.isLoading && activeFeed.videos.isEmpty() && !state.isThoroughSearching
                 
                 if (isLoadingInitial) {
                     if (state.subscriptions.isEmpty()) {
-                        // Complete skeleton (bubbles + videos)
                         SubscriptionFeedSkeleton()
                     } else {
-                        // We have channels but no videos yet: Show real filter bar + video skeletons
                         Column {
                             SubscriptionFilterBar(
                                 subscriptions = state.subscriptions,
@@ -170,10 +230,6 @@ private fun SubscriptionFeedContent(
                                 onChannelSelected = onChannelSelected,
                                 onViewAllClick = onNavigateToSubscriptionsList,
                                 listState = bubbleListState
-                            )
-                            HorizontalDivider(
-                                thickness = 0.5.dp,
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                             )
                             com.arslandaim.playtube.ui.components.VideoListSkeleton()
                         }
@@ -198,24 +254,20 @@ private fun SubscriptionFeedContent(
                                 title = stringResource(R.string.no_subscriptions_videos),
                                 description = if (state.subscriptions.isEmpty()) "Subscribe to channels to see their latest videos here." else "No new videos from your subscriptions yet.",
                                 actionText = if (state.subscriptions.isEmpty()) "Explore Content" else stringResource(R.string.retry),
-                                onActionClick = { 
-                                    if (state.subscriptions.isEmpty()) {
-                                        onRefresh()
-                                    } else {
-                                        onRefresh()
-                                    }
-                                }
+                                onActionClick = onRefresh
                             )
                         } else if (isReady || state.isThoroughSearching || activeFeed.videos.isNotEmpty()) {
                             VideoList(
                                 videos = activeFeed.videos,
                                 downloadedIds = downloadedIds,
                                 favoriteIds = favoriteIds,
+                                savedVideoIds = savedVideoIds,
                                 onVideoClick = onVideoClick,
                                 onChannelClick = onChannelClick,
                                 onFavoriteClick = onFavoriteClick,
                                 onNotInterestedClick = null,
                                 onDownloadClick = onDownloadClick,
+                                onAddToPlaylistClick = onAddToPlaylistClick,
                                 onLoadMore = onLoadMore,
                                 isLoadingMore = activeFeed.isLoadingMore,
                                 header = {
@@ -246,10 +298,6 @@ private fun SubscriptionFeedContent(
                                                 )
                                             }
 
-                                            HorizontalDivider(
-                                                thickness = 0.5.dp,
-                                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                                            )
                                             Spacer(modifier = Modifier.height(8.dp))
                                         }
                                     }
@@ -320,74 +368,80 @@ private fun SubscriptionFilterBar(
     onViewAllClick: () -> Unit,
     listState: androidx.compose.foundation.lazy.LazyListState
 ) {
-    LazyRow(
-        state = listState,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.Transparent
     ) {
-        item(key = "all") {
-            val currentOnSelected = remember(onChannelSelected) { { onChannelSelected(null) } }
-            ChannelBubble(
-                name = "All",
-                thumbnailUrl = null,
-                isSelected = selectedChannelId == null,
-                onClick = currentOnSelected
-            )
-        }
-
-        items(
-            items = subscriptions,
-            key = { it.channelId }
-        ) { sub ->
-            val currentOnSelected = remember(sub.channelId, onChannelSelected) {
-                { onChannelSelected(sub.channelId) }
+        LazyRow(
+            state = listState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            item(key = "all") {
+                val currentOnSelected = remember(onChannelSelected) { { onChannelSelected(null) } }
+                ChannelBubble(
+                    name = "All",
+                    thumbnailUrl = null,
+                    isSelected = selectedChannelId == null,
+                    onClick = currentOnSelected
+                )
             }
-            ChannelBubble(
-                name = sub.name,
-                thumbnailUrl = sub.thumbnailUrl,
-                isSelected = selectedChannelId == sub.channelId,
-                onClick = currentOnSelected
-            )
-        }
 
-        item(key = "view_all") {
-            // View All Button
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .width(52.dp)
-                    .clickable(
-                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                        indication = null,
-                        onClick = onViewAllClick
-                    )
-            ) {
-                Box(
+            items(
+                items = subscriptions,
+                key = { it.channelId }
+            ) { sub ->
+                val currentOnSelected = remember(sub.channelId, onChannelSelected) {
+                    { onChannelSelected(sub.channelId) }
+                }
+                ChannelBubble(
+                    name = sub.name,
+                    thumbnailUrl = sub.thumbnailUrl,
+                    isSelected = selectedChannelId == sub.channelId,
+                    onClick = currentOnSelected
+                )
+            }
+
+            item(key = "view_all") {
+                // Sleek circular View All Button
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .size(44.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), CircleShape),
-                    contentAlignment = Alignment.Center
+                        .width(56.dp)
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                            onClick = onViewAllClick
+                        )
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = "View All",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), CircleShape)
+                            .border(0.5.dp, Color.White.copy(alpha = 0.1f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "View All",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "View All",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "View All",
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
             }
         }
     }
@@ -400,10 +454,18 @@ private fun ChannelBubble(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
+    val scale by animateFloatAsState(if (isSelected) 1.1f else 1f, label = "BubbleScale")
+    val alpha by animateFloatAsState(if (isSelected) 1f else 0.7f, label = "BubbleAlpha")
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .width(52.dp)
+            .width(56.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                this.alpha = alpha
+            }
             .clickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null,
@@ -412,13 +474,17 @@ private fun ChannelBubble(
     ) {
         Box(
             modifier = Modifier
-                .size(44.dp)
+                .size(48.dp)
                 .then(
                     if (isSelected) Modifier.border(
-                        width = 2.dp,
+                        width = 2.5.dp,
                         color = MaterialTheme.colorScheme.primary,
                         shape = CircleShape
-                    ) else Modifier
+                    ) else Modifier.border(
+                        width = 0.5.dp,
+                        color = Color.White.copy(alpha = 0.1f),
+                        shape = CircleShape
+                    )
                 ),
             contentAlignment = Alignment.Center
         ) {
@@ -428,41 +494,41 @@ private fun ChannelBubble(
                     thumbnailUrl = thumbnailUrl,
                     quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.Medium,
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(40.dp)
                         .clip(CircleShape)
-                        .graphicsLayer {
-                            if (isSelected) {
-                                scaleX = 1.05f
-                                scaleY = 1.05f
-                            }
-                        }
                 )
             } else {
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
-                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isSelected) 1f else 0.6f), CircleShape),
+                        .size(40.dp)
+                        .background(
+                            if (isSelected) MaterialTheme.colorScheme.primary 
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), 
+                            CircleShape
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Subscriptions,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(18.dp)
+                        tint = if (isSelected) MaterialTheme.colorScheme.onPrimary 
+                               else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(2.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
         Text(
             text = name,
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+            fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+            color = if (isSelected) MaterialTheme.colorScheme.primary 
+                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
         )
     }
 }

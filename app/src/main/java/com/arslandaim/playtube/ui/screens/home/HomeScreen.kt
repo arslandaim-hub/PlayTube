@@ -62,11 +62,13 @@ fun HomeScreen(
     onBarsVisibilityChange: (Boolean) -> Unit,
     onVideoClick: (VideoItem) -> Unit,
     onChannelClick: (String) -> Unit,
+    onAddToPlaylistClick: (VideoItem) -> Unit,
     onNavigateToDownloads: () -> Unit // New parameter
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val downloadedIds by libraryViewModel.downloadedVideoIds.collectAsStateWithLifecycle()
     val favorites by libraryViewModel.favorites.collectAsStateWithLifecycle()
+    val savedVideoIds by libraryViewModel.savedVideoIds.collectAsStateWithLifecycle()
     
     // Optimized: Using remember(favorites) for ID mapping to avoid O(N) mapping on every recomposition
     val favoriteIds = remember(favorites) {
@@ -82,6 +84,7 @@ fun HomeScreen(
         downloadState = downloadState,
         downloadedIds = downloadedIds,
         favoriteIds = favoriteIds,
+        savedVideoIds = savedVideoIds,
         snackbarMessage = viewModel.snackbarMessage,
         onRefresh = viewModel::refresh,
         onLoadMore = viewModel::loadNextTrendingPage,
@@ -90,6 +93,7 @@ fun HomeScreen(
         onDownloadClick = viewModel::prepareDownload,
         onDownloadConfirm = viewModel::download,
         onDismissDownload = viewModel::dismissDownloadDialog,
+        onAddToPlaylistClick = onAddToPlaylistClick,
         onPersonalizedNotifyShown = viewModel::onPersonalizedNotifyShown,
         onBarsVisibilityChange = onBarsVisibilityChange,
         onVideoClick = onVideoClick,
@@ -106,6 +110,7 @@ private fun HomeContent(
     downloadState: DownloadDialogState,
     downloadedIds: Set<String>,
     favoriteIds: Set<String>,
+    savedVideoIds: Set<String>,
     snackbarMessage: kotlinx.coroutines.flow.SharedFlow<String>,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
@@ -114,6 +119,7 @@ private fun HomeContent(
     onDownloadClick: (VideoItem) -> Unit,
     onDownloadConfirm: (VideoItem, com.arslandaim.playtube.domain.model.StreamBundle, String?, String?, String?, Boolean) -> Unit,
     onDismissDownload: () -> Unit,
+    onAddToPlaylistClick: (VideoItem) -> Unit,
     onPersonalizedNotifyShown: () -> Unit,
     onBarsVisibilityChange: (Boolean) -> Unit,
     onVideoClick: (VideoItem) -> Unit,
@@ -233,11 +239,13 @@ private fun HomeContent(
                         videos = videos,
                         downloadedIds = downloadedIds,
                         favoriteIds = favoriteIds,
+                        savedVideoIds = savedVideoIds,
                         onVideoClick = onVideoClick,
                         onChannelClick = onChannelClick,
                         onFavoriteClick = onFavoriteClick,
                         onNotInterestedClick = onNotInterestedClick,
                         onDownloadClick = onDownloadClick,
+                        onAddToPlaylistClick = onAddToPlaylistClick,
                         onLoadMore = onLoadMore,
                         isLoadingMore = state.isLoadingMore,
                         contentPadding = PaddingValues(

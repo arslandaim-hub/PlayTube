@@ -38,12 +38,14 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+@OptIn(UnstableApi::class)
 @AndroidEntryPoint
 class PlaybackService : MediaSessionService() {
 
     @Inject lateinit var player: ExoPlayer
     @Inject lateinit var preferencesManager: PreferencesManager
     @Inject lateinit var queueManager: QueueManager
+    @Inject lateinit var playbackManager: com.arslandaim.playtube.ui.screens.player.PlaybackManager
     
     private var mediaSession: MediaSession? = null
     private val serviceJob = SupervisorJob()
@@ -84,13 +86,19 @@ class PlaybackService : MediaSessionService() {
                 return super.getAvailableCommands().buildUpon()
                     .add(Player.COMMAND_SEEK_TO_NEXT)
                     .add(Player.COMMAND_SEEK_TO_PREVIOUS)
+                    .add(Player.COMMAND_PLAY_PAUSE)
+                    .add(Player.COMMAND_STOP)
                     .build()
             }
 
             override fun isCommandAvailable(command: Int): Boolean {
-                return command == Player.COMMAND_SEEK_TO_NEXT || 
-                       command == Player.COMMAND_SEEK_TO_PREVIOUS || 
-                       super.isCommandAvailable(command)
+                return when (command) {
+                    Player.COMMAND_SEEK_TO_NEXT,
+                    Player.COMMAND_SEEK_TO_PREVIOUS,
+                    Player.COMMAND_PLAY_PAUSE,
+                    Player.COMMAND_STOP -> true
+                    else -> super.isCommandAvailable(command)
+                }
             }
 
             override fun seekToNext() {
@@ -99,6 +107,18 @@ class PlaybackService : MediaSessionService() {
 
             override fun seekToPrevious() {
                 queueManager.skipToPrevious()
+            }
+
+            override fun play() {
+                playbackManager.resume()
+            }
+
+            override fun pause() {
+                playbackManager.pause()
+            }
+
+            override fun stop() {
+                playbackManager.stop()
             }
         }
 

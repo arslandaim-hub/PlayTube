@@ -18,6 +18,7 @@ import com.arslandaim.playtube.domain.repository.LibraryRepository
 import com.arslandaim.playtube.domain.usecase.*
 import com.arslandaim.playtube.ui.components.DownloadDialogState
 import com.arslandaim.playtube.utils.PlayTubeError
+import com.arslandaim.playtube.utils.HistoryUtils.applyHistory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -36,8 +37,17 @@ class PlaylistViewModel @Inject constructor(
     val downloadRepository: DownloadRepository
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow<PlaylistUiState>(PlaylistUiState.Loading)
-    val uiState: StateFlow<PlaylistUiState> = _uiState.asStateFlow()
+    private val _internalUiState = MutableStateFlow<PlaylistUiState>(PlaylistUiState.Loading)
+    val uiState: StateFlow<PlaylistUiState> = combine(
+        _internalUiState,
+        libraryRepository.getHistory()
+    ) { state, history ->
+        if (state is PlaylistUiState.Success) {
+            state.copy(details = state.details.copy(videos = state.details.videos.applyHistory(history)))
+        } else {
+            state
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PlaylistUiState.Loading)
 
     private val _isFavorite = MutableStateFlow(false)
     val isFavorite: StateFlow<Boolean> = _isFavorite.asStateFlow()
@@ -54,13 +64,21 @@ class PlaylistViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
     fun loadPlaylist(playlistId: String) {
+        if (playlistId.startsWith("local:")) {
+            val id = playlistId.substringAfter("local:").toIntOrNull()
+            if (id != null) {
+                loadLocalPlaylist(id)
+                return
+            }
+        }
+
         val playlistUrl = if (playlistId.startsWith("http")) {
             playlistId
         } else {
             "https://www.youtube.com/playlist?list=$playlistId"
         }
         viewModelScope.launch {
-            _uiState.value = PlaylistUiState.Loading
+            _internalUiState.value = PlaylistUiState.Loading
             
             // Watch favorite status
             launch {
@@ -71,16 +89,53 @@ class PlaylistViewModel @Inject constructor(
 
             getPlaylistDetailsUseCase(playlistUrl)
                 .onSuccess { details ->
-                    _uiState.value = PlaylistUiState.Success(details)
+                    _internalUiState.value = PlaylistUiState.Success(details)
                 }
                 .onFailure { exception ->
-                    _uiState.value = PlaylistUiState.Error(PlayTubeError.fromThrowable(exception))
+                    _internalUiState.value = PlaylistUiState.Error(PlayTubeError.fromThrowable(exception))
                 }
         }
     }
 
+    private fun loadLocalPlaylist(id: Int) {
+        viewModelScope.launch {
+            _internalUiState.value = PlaylistUiState.Loading
+            libraryRepository.getLocalPlaylists().collectLatest { playlists ->
+                val playlist = playlists.find { it.id == id }
+                if (playlist != null) {
+                    libraryRepository.getVideosForLocalPlaylist(id).collectLatest { videos ->
+                        val details = PlaylistDetails(
+                            id = "local:$id",
+                            title = playlist.name,
+                            thumbnailUrl = playlist.thumbnailUrl ?: videos.firstOrNull()?.thumbnailUrl ?: "",
+                            uploaderName = "Local Playlist",
+                            uploaderUrl = null,
+                            videos = videos.map { it.toVideoItem() }
+                        )
+                        _internalUiState.value = PlaylistUiState.Success(details)
+                    }
+                } else {
+                    _internalUiState.value = PlaylistUiState.Error(PlayTubeError.Unknown("Playlist not found"))
+                }
+            }
+        }
+    }
+
+    private fun com.arslandaim.playtube.data.local.LocalPlaylistVideoEntity.toVideoItem() = VideoItem(
+        id = videoId,
+        title = title,
+        thumbnailUrl = thumbnailUrl,
+        uploaderName = uploaderName,
+        uploaderUrl = null,
+        uploaderThumbnailUrl = null,
+        viewCount = 0,
+        uploadDate = null,
+        rawUploadDate = null,
+        duration = duration
+    )
+
     fun downloadPlaylist(quality: String) {
-        val state = _uiState.value as? PlaylistUiState.Success ?: return
+        val state = _internalUiState.value as? PlaylistUiState.Success ?: return
         val details = state.details
         
         viewModelScope.launch {
@@ -115,7 +170,7 @@ class PlaylistViewModel @Inject constructor(
     }
 
     fun togglePlaylistFavorite() {
-        val state = _uiState.value as? PlaylistUiState.Success ?: return
+        val state = _internalUiState.value as? PlaylistUiState.Success ?: return
         val details = state.details
         viewModelScope.launch {
             togglePlaylistFavoriteUseCase(
@@ -205,6 +260,17 @@ class PlaylistViewModel @Inject constructor(
 
     fun dismissDownloadDialog() {
         _downloadState.value = com.arslandaim.playtube.ui.components.DownloadDialogState.Idle
+    }
+
+    fun removeFromPlaylist(video: VideoItem) {
+        val currentUiState = _internalUiState.value
+        if (currentUiState is PlaylistUiState.Success && currentUiState.details.id.startsWith("local:")) {
+            val playlistId = currentUiState.details.id.substringAfter("local:").toIntOrNull() ?: return
+            viewModelScope.launch {
+                libraryRepository.removeVideoFromLocalPlaylist(playlistId, video.id)
+                _snackbarMessage.emit("Removed from Playlist")
+            }
+        }
     }
 }
 

@@ -36,7 +36,9 @@ import com.arslandaim.playtube.utils.PlayTubeError
 import androidx.compose.material.icons.filled.*
 
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
+import kotlinx.coroutines.flow.map
 
 @Composable
 fun PlaylistScreen(
@@ -45,14 +47,18 @@ fun PlaylistScreen(
     onBarsVisibilityChange: (Boolean) -> Unit,
     onNavigateToDownloads: () -> Unit,
     onBack: () -> Unit,
-    onVideoClick: (VideoItem) -> Unit
+    onVideoClick: (VideoItem) -> Unit,
+    onAddToPlaylistClick: (VideoItem) -> Unit
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val isFavorite by viewModel.isFavorite.collectAsState()
-    val downloadedIds by viewModel.downloadedVideoIds.collectAsState()
-    val favorites by viewModel.libraryRepository.getFavorites().collectAsState(initial = emptyList())
-    val downloadState by viewModel.downloadState.collectAsState()
-    val showPlaylistDownloadDialog by viewModel.showPlaylistDownloadDialog.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isFavorite by viewModel.isFavorite.collectAsStateWithLifecycle()
+    val downloadedIds by viewModel.downloadedVideoIds.collectAsStateWithLifecycle()
+    val savedVideoIds by remember(viewModel) {
+        viewModel.libraryRepository.getAllSavedVideoIds().map { it.toSet() }
+    }.collectAsStateWithLifecycle(initialValue = emptySet())
+    val favorites by viewModel.libraryRepository.getFavorites().collectAsStateWithLifecycle(initialValue = emptyList())
+    val downloadState by viewModel.downloadState.collectAsStateWithLifecycle()
+    val showPlaylistDownloadDialog by viewModel.showPlaylistDownloadDialog.collectAsStateWithLifecycle()
 
     val favoriteIds = remember(favorites) {
         favorites.map { it.videoId }.toSet()
@@ -63,6 +69,7 @@ fun PlaylistScreen(
         uiState = uiState,
         isFavorite = isFavorite,
         downloadedIds = downloadedIds,
+        savedVideoIds = savedVideoIds,
         favoriteIds = favoriteIds,
         downloadState = downloadState,
         showPlaylistDownloadDialog = showPlaylistDownloadDialog,
@@ -79,7 +86,9 @@ fun PlaylistScreen(
         onBarsVisibilityChange = onBarsVisibilityChange,
         onNavigateToDownloads = onNavigateToDownloads,
         onBack = onBack,
-        onVideoClick = onVideoClick
+        onVideoClick = onVideoClick,
+        onAddToPlaylistClick = onAddToPlaylistClick,
+        onRemoveFromPlaylistClick = viewModel::removeFromPlaylist
     )
 }
 
@@ -90,6 +99,7 @@ private fun PlaylistContent(
     uiState: PlaylistUiState,
     isFavorite: Boolean,
     downloadedIds: Set<String>,
+    savedVideoIds: Set<String>,
     favoriteIds: Set<String>,
     downloadState: com.arslandaim.playtube.ui.components.DownloadDialogState,
     showPlaylistDownloadDialog: Boolean,
@@ -106,7 +116,9 @@ private fun PlaylistContent(
     onBarsVisibilityChange: (Boolean) -> Unit,
     onNavigateToDownloads: () -> Unit,
     onBack: () -> Unit,
-    onVideoClick: (VideoItem) -> Unit
+    onVideoClick: (VideoItem) -> Unit,
+    onAddToPlaylistClick: (VideoItem) -> Unit,
+    onRemoveFromPlaylistClick: (VideoItem) -> Unit
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val scrollVisibilityConnection = rememberScrollVisibilityConnection(onBarsVisibilityChange)
@@ -246,6 +258,7 @@ private fun PlaylistContent(
                         }
 
                         items(details.videos, key = { it.id }) { video ->
+                            val isLocal = details.id.startsWith("local:")
                             Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
                                 VideoRow(
                                     videoId = video.id,
@@ -258,8 +271,11 @@ private fun PlaylistContent(
                                     watchProgress = video.watchProgress,
                                     isDownloaded = downloadedIds.contains(video.id),
                                     isFavorite = favoriteIds.contains(video.id),
+                                    isSaved = savedVideoIds.contains(video.id),
                                     onFavoriteClick = { onToggleVideoFavorite(video) },
                                     onDownloadClick = { onDownloadVideo(video) },
+                                    onAddToPlaylistClick = if (isLocal) null else { { onAddToPlaylistClick(video) } },
+                                    onRemoveFromPlaylistClick = if (isLocal) { { onRemoveFromPlaylistClick(video) } } else null,
                                     onClick = { onVideoClick(video) }
                                 )
                             }

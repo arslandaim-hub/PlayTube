@@ -18,17 +18,26 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import javax.inject.Inject
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
     private val preferencesManager: PreferencesManager,
-    private val connectivityObserver: ConnectivityObserver
+    private val connectivityObserver: ConnectivityObserver,
+    private val libraryRepository: com.arslandaim.playtube.domain.repository.LibraryRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
+
+    val localPlaylists: StateFlow<List<com.arslandaim.playtube.data.local.LocalPlaylistEntity>> = libraryRepository.getLocalPlaylists()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _playlistSelectionState = MutableStateFlow(PlaylistSelectionState())
+    val playlistSelectionState = _playlistSelectionState.asStateFlow()
 
     val connectivityStatus: StateFlow<ConnectivityObserver.Status> = connectivityObserver.observe()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ConnectivityObserver.Status.Available)
@@ -45,6 +54,9 @@ class MainViewModel @Inject constructor(
 
     val isIncognitoMode: StateFlow<Boolean> = preferencesManager.isIncognitoMode
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    val isDynamicColorEnabled: StateFlow<Boolean> = preferencesManager.isDynamicColorEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val isOnboardingCompleted: StateFlow<Boolean?> = preferencesManager.isOnboardingCompleted
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -84,10 +96,53 @@ class MainViewModel @Inject constructor(
     fun setPlayerScreen(isPlayer: Boolean) {
         _uiState.update { it.copy(isPlayerScreen = isPlayer) }
     }
+
+    private var playlistSelectionJob: Job? = null
+
+    fun showPlaylistSelection(video: com.arslandaim.playtube.domain.model.VideoItem) {
+        playlistSelectionJob?.cancel()
+        playlistSelectionJob = viewModelScope.launch {
+            libraryRepository.getPlaylistsContainingVideo(video.id).collectLatest { playlists ->
+                _playlistSelectionState.value = PlaylistSelectionState(
+                    isVisible = true, 
+                    video = video,
+                    playlistsWithVideo = playlists.toSet()
+                )
+            }
+        }
+    }
+
+    fun hidePlaylistSelection() {
+        playlistSelectionJob?.cancel()
+        playlistSelectionJob = null
+        _playlistSelectionState.value = PlaylistSelectionState(isVisible = false, video = null)
+    }
+
+    fun addVideoToPlaylist(playlistId: Int, video: com.arslandaim.playtube.domain.model.VideoItem) {
+        viewModelScope.launch {
+            libraryRepository.addVideoToLocalPlaylist(playlistId, video)
+            hidePlaylistSelection()
+        }
+    }
+
+    fun createLocalPlaylist(name: String) {
+        viewModelScope.launch {
+            val id = libraryRepository.createLocalPlaylist(name)
+            _playlistSelectionState.value.video?.let { video ->
+                addVideoToPlaylist(id.toInt(), video)
+            }
+        }
+    }
 }
 
 data class MainUiState(
     val isBarsVisible: Boolean = true,
     val isInPipMode: Boolean = false,
     val isPlayerScreen: Boolean = false
+)
+
+data class PlaylistSelectionState(
+    val isVisible: Boolean = false,
+    val video: com.arslandaim.playtube.domain.model.VideoItem? = null,
+    val playlistsWithVideo: Set<Int> = emptySet()
 )

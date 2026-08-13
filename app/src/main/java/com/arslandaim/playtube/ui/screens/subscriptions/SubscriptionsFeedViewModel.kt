@@ -19,6 +19,7 @@ import com.arslandaim.playtube.domain.usecase.GetVideoStreamsUseCase
 import com.arslandaim.playtube.domain.usecase.ToggleFavoriteUseCase
 import com.arslandaim.playtube.ui.components.DownloadDialogState
 import com.arslandaim.playtube.utils.PlayTubeError
+import com.arslandaim.playtube.utils.HistoryUtils.applyHistory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -72,16 +73,11 @@ class SubscriptionsFeedViewModel @Inject constructor(
         val progress = args[4] as Float
         val history = args[5] as List<HistoryEntity>
 
-        val historyMap = if (history.isEmpty()) emptyMap() else history.associateBy(
-            { it.videoId },
-            { if (it.durationMs > 0) it.progressMs.toFloat() / it.durationMs else null }
-        )
-
         SubscriptionsFeedUIState(
             selectedChannelId = selectedId,
             subscriptions = subs,
             activeFeed = activeFeed.copy(
-                videos = activeFeed.videos.map { it.copy(watchProgress = historyMap[it.id]) }
+                videos = activeFeed.videos.applyHistory(history)
             ),
             isThoroughSearching = isSearching,
             thoroughSearchProgress = progress

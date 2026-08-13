@@ -11,6 +11,7 @@ import com.arslandaim.playtube.data.local.PlaylistFavoriteEntity
 import com.arslandaim.playtube.data.local.SearchHistoryEntity
 import com.arslandaim.playtube.data.local.SubscriptionEntity
 import com.arslandaim.playtube.data.local.UserInterestEntity
+import com.arslandaim.playtube.domain.model.VideoItem
 import kotlinx.coroutines.flow.Flow
 
 interface LibraryRepository {
@@ -61,4 +62,16 @@ interface LibraryRepository {
     suspend fun addToBlacklist(id: String, type: com.arslandaim.playtube.data.local.BlacklistType)
     suspend fun removeFromBlacklist(id: String)
     suspend fun isBlacklisted(id: String): Boolean
+
+    // Local Playlists
+    fun getLocalPlaylists(): Flow<List<com.arslandaim.playtube.data.local.LocalPlaylistEntity>>
+    suspend fun createLocalPlaylist(name: String, description: String? = null): Long
+    suspend fun deleteLocalPlaylist(playlist: com.arslandaim.playtube.data.local.LocalPlaylistEntity)
+    fun getVideosForLocalPlaylist(playlistId: Int): Flow<List<com.arslandaim.playtube.data.local.LocalPlaylistVideoEntity>>
+    suspend fun addVideoToLocalPlaylist(playlistId: Int, video: VideoItem)
+    suspend fun removeVideoFromLocalPlaylist(playlistId: Int, videoId: String)
+    suspend fun isVideoInLocalPlaylist(playlistId: Int, videoId: String): Boolean
+    fun isVideoInAnyLocalPlaylist(videoId: String): Flow<Boolean>
+    fun getAllSavedVideoIds(): Flow<List<String>>
+    fun getPlaylistsContainingVideo(videoId: String): Flow<List<Int>>
 }

@@ -28,6 +28,7 @@ import androidx.compose.ui.res.stringResource
 import com.arslandaim.playtube.R
 
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
 
 @Composable
@@ -37,19 +38,24 @@ fun HistoryScreen(
     onBarsVisibilityChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     onVideoClick: (VideoItem) -> Unit,
+    onAddToPlaylistClick: (VideoItem) -> Unit,
     onDiscoverVideos: () -> Unit
 ) {
-    val history by historyViewModel.history.collectAsState()
-    val isHistoryEnabled by settingsViewModel.isHistoryEnabled.collectAsState()
+    val history by historyViewModel.history.collectAsStateWithLifecycle()
+    val savedVideoIds by historyViewModel.savedVideoIds.collectAsStateWithLifecycle()
+    val isHistoryEnabled by settingsViewModel.isHistoryEnabled.collectAsStateWithLifecycle()
 
     HistoryContent(
         history = history,
+        savedVideoIds = savedVideoIds,
         isHistoryEnabled = isHistoryEnabled,
         onSetHistoryEnabled = settingsViewModel::setHistoryEnabled,
         onClearHistory = settingsViewModel::clearHistory,
         onBarsVisibilityChange = onBarsVisibilityChange,
         onBack = onBack,
         onVideoClick = onVideoClick,
+        onAddToPlaylistClick = onAddToPlaylistClick,
+        onRemoveHistoryItem = historyViewModel::removeFromHistory,
         onDiscoverVideos = onDiscoverVideos
     )
 }
@@ -58,12 +64,15 @@ fun HistoryScreen(
 @Composable
 private fun HistoryContent(
     history: List<com.arslandaim.playtube.data.local.HistoryEntity>,
+    savedVideoIds: Set<String>,
     isHistoryEnabled: Boolean,
     onSetHistoryEnabled: (Boolean) -> Unit,
     onClearHistory: () -> Unit,
     onBarsVisibilityChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     onVideoClick: (VideoItem) -> Unit,
+    onAddToPlaylistClick: (VideoItem) -> Unit,
+    onRemoveHistoryItem: (String) -> Unit,
     onDiscoverVideos: () -> Unit
 ) {
     val historyClearedMessage = stringResource(R.string.history_cleared)
@@ -136,7 +145,10 @@ private fun HistoryContent(
                         Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                             HistoryItemRow(
                                 item = item,
-                                onClick = currentOnClick
+                                onClick = currentOnClick,
+                                isSaved = savedVideoIds.contains(item.videoId),
+                                onAddToPlaylistClick = { onAddToPlaylistClick(item.toVideoItem()) },
+                                onRemoveClick = { onRemoveHistoryItem(item.videoId) }
                             )
                         }
                     }

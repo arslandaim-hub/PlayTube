@@ -50,27 +50,31 @@ class PlayTubeApp : Application(), Configuration.Provider, SingletonImageLoader.
     override fun onCreate() {
         super.onCreate()
         
-        if (BuildConfig.DEBUG) {
-            StrictMode.setThreadPolicy(
-                StrictMode.ThreadPolicy.Builder()
-                    .detectDiskReads()
-                    .detectDiskWrites()
-                    .detectNetwork()
-                    .penaltyLog()
-                    .build()
-            )
-            StrictMode.setVmPolicy(
-                StrictMode.VmPolicy.Builder()
-                    .detectLeakedSqlLiteObjects()
-                    .detectLeakedClosableObjects()
-                    .penaltyLog()
-                    .build()
-            )
-        }
+        try {
+            if (BuildConfig.DEBUG) {
+                StrictMode.setThreadPolicy(
+                    StrictMode.ThreadPolicy.Builder()
+                        .detectDiskReads()
+                        .detectDiskWrites()
+                        .detectNetwork()
+                        .penaltyLog()
+                        .build()
+                )
+                StrictMode.setVmPolicy(
+                    StrictMode.VmPolicy.Builder()
+                        .detectLeakedSqlLiteObjects()
+                        .detectLeakedClosableObjects()
+                        .penaltyLog()
+                        .build()
+                )
+            }
 
-        createNotificationChannel()
-        observeConnectivity()
-        prewarmNetwork()
+            createNotificationChannel()
+            observeConnectivity()
+            prewarmNetwork()
+        } catch (e: Exception) {
+            PTLog.e("PlayTubeApp", "Critical error during Application initialization", e)
+        }
     }
 
     private fun prewarmNetwork() {

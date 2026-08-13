@@ -102,12 +102,12 @@ object PlayerModule {
     ): ExoPlayer {
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                30000,  // Min buffer: 30s
-                120000, // Max buffer: 120s
-                2500,   // Buffer for playback: 2.5s
-                5000    // Buffer for playback after rebuffer: 5s
+                45000,  // Min buffer: 45s (Up from 30s)
+                180000, // Max buffer: 180s (Up from 120s)
+                3500,   // Buffer for playback: 3.5s (Up from 2.5s)
+                7000    // Buffer for playback after rebuffer: 7s (Up from 5s)
             )
-            .setBackBuffer(15000, true) // 15s back buffer for smooth rewinding
+            .setBackBuffer(20000, true) // 20s back buffer (Up from 15s)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
@@ -116,6 +116,7 @@ object PlayerModule {
             .forceEnableMediaCodecAsynchronousQueueing()
 
         return ExoPlayer.Builder(context, renderersFactory)
+            .setLooper(android.os.Looper.getMainLooper())
             .setAudioAttributes(
                 androidx.media3.common.AudioAttributes.Builder()
                     .setUsage(androidx.media3.common.C.USAGE_MEDIA)

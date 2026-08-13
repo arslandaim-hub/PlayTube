@@ -5,7 +5,7 @@
 */
 package com.arslandaim.playtube.ui.screens.channel
 
-import androidx.compose.animation.*
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,9 +23,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -33,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import com.arslandaim.playtube.R
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
@@ -42,6 +45,7 @@ import com.arslandaim.playtube.domain.model.PlaylistItem
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.domain.model.StreamBundle
 import com.arslandaim.playtube.ui.components.InfiniteScrollEffect
+import com.arslandaim.playtube.ui.components.InfiniteScrollGridEffect
 import com.arslandaim.playtube.ui.components.VideoItemRow
 import com.arslandaim.playtube.ui.components.ThumbnailImage
 import com.arslandaim.playtube.ui.components.DownloadSelectionSheet
@@ -51,8 +55,12 @@ import com.arslandaim.playtube.ui.components.EmptyState
 import com.arslandaim.playtube.ui.screens.library.LibraryViewModel
 import com.arslandaim.playtube.utils.PlayTubeError
 import com.arslandaim.playtube.utils.VideoUtils
+import com.arslandaim.playtube.utils.Constants
 import kotlinx.coroutines.flow.SharedFlow
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.foundation.lazy.grid.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
 import com.arslandaim.playtube.ui.theme.GlassAlpha
 
@@ -65,13 +73,15 @@ fun ChannelScreen(
     onNavigateToDownloads: () -> Unit,
     onBack: () -> Unit,
     onVideoClick: (VideoItem) -> Unit,
+    onAddToPlaylistClick: (VideoItem) -> Unit,
     onPlaylistClick: (String) -> Unit
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val isSubscribed by viewModel.isSubscribed.collectAsState()
-    val downloadedIds by libraryViewModel.downloadedVideoIds.collectAsState()
-    val favorites by libraryViewModel.favorites.collectAsState()
-    val downloadState by viewModel.downloadState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isSubscribed by viewModel.isSubscribed.collectAsStateWithLifecycle()
+    val downloadedIds by libraryViewModel.downloadedVideoIds.collectAsStateWithLifecycle()
+    val savedVideoIds by libraryViewModel.savedVideoIds.collectAsStateWithLifecycle()
+    val favorites by libraryViewModel.favorites.collectAsStateWithLifecycle()
+    val downloadState by viewModel.downloadState.collectAsStateWithLifecycle()
 
     val favoriteIds = remember(favorites) {
         favorites.map { it.videoId }.toSet()
@@ -82,6 +92,7 @@ fun ChannelScreen(
         uiState = uiState,
         isSubscribed = isSubscribed,
         downloadedIds = downloadedIds,
+        savedVideoIds = savedVideoIds,
         favoriteIds = favoriteIds,
         downloadState = downloadState,
         snackbarMessage = viewModel.snackbarMessage,
@@ -96,6 +107,7 @@ fun ChannelScreen(
         onNavigateToDownloads = onNavigateToDownloads,
         onBack = onBack,
         onVideoClick = onVideoClick,
+        onAddToPlaylistClick = onAddToPlaylistClick,
         onPlaylistClick = onPlaylistClick
     )
 }
@@ -107,6 +119,7 @@ private fun ChannelContent(
     uiState: ChannelUiState,
     isSubscribed: Boolean?,
     downloadedIds: Set<String>,
+    savedVideoIds: Set<String>,
     favoriteIds: Set<String>,
     downloadState: DownloadDialogState,
     snackbarMessage: SharedFlow<String>,
@@ -121,6 +134,7 @@ private fun ChannelContent(
     onNavigateToDownloads: () -> Unit,
     onBack: () -> Unit,
     onVideoClick: (VideoItem) -> Unit,
+    onAddToPlaylistClick: (VideoItem) -> Unit,
     onPlaylistClick: (String) -> Unit
 ) {
     var selectedTabIndex by remember { mutableIntStateOf(0) }
@@ -156,25 +170,81 @@ private fun ChannelContent(
 
     val bannerProgress = (1f - (scrollOffset / bannerHeightPx)).coerceIn(0f, 1f)
 
+    val configuration = LocalConfiguration.current
+    val screenWidth = configuration.screenWidthDp
+    val columns = Constants.calculateGridColumns(screenWidth)
+
     Scaffold(
         modifier = Modifier.nestedScroll(scrollVisibilityConnection),
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+        ) {
             when (uiState) {
                 is ChannelUiState.Loading -> {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    com.arslandaim.playtube.ui.components.ChannelMetadataSkeleton()
                 }
                 is ChannelUiState.Success -> {
                     val details = uiState.details
                     
-                    InfiniteScrollEffect(
-                        listState = listState,
+                    val gridState = rememberLazyGridState()
+                    InfiniteScrollGridEffect(
+                        gridState = gridState,
                         enabled = details.nextVideosPage != null && !uiState.isFetchingNextPage,
                         onLoadMore = onLoadMore
                     )
                     
-                    // Immersive Banner
+                    // Immersive Ambient Mode (Modern Banner Glow)
+                    if (!details.bannerUrl.isNullOrBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(320.dp)
+                                .graphicsLayer {
+                                    translationY = -scrollOffset * 0.4f
+                                    alpha = bannerProgress * 0.6f
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                        renderEffect = android.graphics.RenderEffect.createBlurEffect(
+                                            100f, 100f, android.graphics.Shader.TileMode.CLAMP
+                                        ).asComposeRenderEffect()
+                                    }
+                                }
+                                .then(
+                                    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
+                                        Modifier.blur(80.dp)
+                                    } else Modifier
+                                )
+                        ) {
+                            AsyncImage(
+                                model = details.bannerUrl,
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                                filterQuality = FilterQuality.Low
+                            )
+                            
+                            // Smooth gradient transition to background
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                                            colors = listOf(
+                                                Color.Transparent,
+                                                MaterialTheme.colorScheme.background.copy(alpha = 0.7f),
+                                                MaterialTheme.colorScheme.background
+                                            )
+                                        )
+                                    )
+                            )
+                        }
+                    }
+
+                    // Actual Banner
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -182,8 +252,6 @@ private fun ChannelContent(
                             .graphicsLayer {
                                 translationY = -scrollOffset * 0.5f
                                 alpha = bannerProgress
-                                scaleX = 1f + (1f - bannerProgress) * 0.2f
-                                scaleY = 1f + (1f - bannerProgress) * 0.2f
                             }
                     ) {
                         AsyncImage(
@@ -195,142 +263,153 @@ private fun ChannelContent(
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
                         )
-                        // Gradient Overlay for better contrast
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    androidx.compose.ui.graphics.Brush.verticalGradient(
-                                        listOf(Color.Black.copy(alpha = 0.4f), Color.Transparent, Color.Black.copy(alpha = 0.4f))
-                                    )
-                                )
-                        )
                     }
 
-                    LazyColumn(
-                        state = listState,
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(columns),
+                        state = gridState,
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        item {
-                            Spacer(modifier = Modifier.height(bannerHeight - 60.dp))
+                        item(span = { GridItemSpan(columns) }) {
+                            Spacer(modifier = Modifier.height(bannerHeight - 50.dp))
+                        }
                             
-                            // Modern Channel Header with Overlapping Avatar
-                            Box(contentAlignment = Alignment.TopCenter) {
-                                // Content Surface
-                                Surface(
-                                    modifier = Modifier
-                                        .padding(top = 50.dp) // Room for top half of avatar
-                                        .fillMaxWidth(),
-                                    shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
-                                    color = MaterialTheme.colorScheme.surface,
-                                    tonalElevation = 2.dp
+                        item(span = { GridItemSpan(columns) }) {
+                            // Professional Channel Header (Redesigned to fix overlap and modernize)
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp, vertical = 24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                // Avatar and Name Section
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
                                 ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 20.dp, vertical = 24.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    Surface(
+                                        modifier = Modifier.size(80.dp),
+                                        shape = CircleShape,
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            2.dp, 
+                                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
+                                        ),
+                                        color = MaterialTheme.colorScheme.surfaceVariant
                                     ) {
-                                        Spacer(modifier = Modifier.height(40.dp)) // Offset for bottom half of avatar
+                                        AsyncImage(
+                                            model = details.avatarUrl,
+                                            contentDescription = null,
+                                            modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                    
+                                    Spacer(modifier = Modifier.width(20.dp))
 
+                                    Column(horizontalAlignment = Alignment.Start) {
                                         Text(
                                             text = details.name,
                                             style = MaterialTheme.typography.headlineSmall,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                            fontWeight = FontWeight.Black,
+                                            letterSpacing = (-0.5).sp,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                         
-                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Spacer(modifier = Modifier.height(4.dp))
 
-                                        // Stats Row
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.Center
-                                        ) {
+                                        // Stats Row (Compact)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
                                             details.subscriberCount?.let { count ->
                                                 Text(
-                                                    text = if (count < 0) "Subscribers hidden" else "${VideoUtils.formatNumber(count)} Subscribers",
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    text = if (count < 0) "Hidden" else VideoUtils.formatNumber(count),
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = " subscribers",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                                 )
                                                 Text(
                                                     text = " • ",
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                                                 )
                                             }
                                             Text(
-                                                text = "${details.videos.size}+ Videos",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-
-                                        Spacer(modifier = Modifier.height(20.dp))
-
-                                        // Subscribe Button
-                                        if (isSubscribed != null) {
-                                            Button(
-                                                onClick = onToggleSubscription,
-                                                colors = if (isSubscribed == true) {
-                                                    ButtonDefaults.buttonColors(
-                                                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
-                                                } else {
-                                                    ButtonDefaults.buttonColors(
-                                                        containerColor = MaterialTheme.colorScheme.primary,
-                                                        contentColor = MaterialTheme.colorScheme.onPrimary
-                                                    )
-                                                },
-                                                shape = RoundedCornerShape(12.dp),
-                                                modifier = Modifier.fillMaxWidth().height(48.dp)
-                                            ) {
-                                                Text(
-                                                    text = if (isSubscribed == true) stringResource(R.string.subscribed) else stringResource(R.string.subscribe),
-                                                    fontWeight = FontWeight.Bold,
-                                                    letterSpacing = 0.5.sp
-                                                )
-                                            }
-                                        }
-
-                                        details.description?.let { desc ->
-                                            Text(
-                                                text = desc,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                maxLines = 3,
-                                                overflow = TextOverflow.Ellipsis,
-                                                modifier = Modifier.padding(top = 16.dp),
-                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                                text = "${details.videos.size}+ videos",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                                fontWeight = FontWeight.Bold
                                             )
                                         }
                                     }
                                 }
 
-                                // Floating Avatar
-                                Surface(
-                                    modifier = Modifier.size(100.dp),
-                                    shape = CircleShape,
-                                    border = androidx.compose.foundation.BorderStroke(4.dp, MaterialTheme.colorScheme.surface),
-                                    tonalElevation = 8.dp
-                                ) {
-                                    AsyncImage(
-                                        model = details.avatarUrl,
-                                        contentDescription = null,
-                                        modifier = Modifier.fillMaxSize().clip(CircleShape),
-                                        contentScale = ContentScale.Crop
+                                Spacer(modifier = Modifier.height(24.dp))
+
+                                // Subscribe Button (Sleek Pill)
+                                if (isSubscribed != null) {
+                                    Button(
+                                        onClick = onToggleSubscription,
+                                        colors = if (isSubscribed == true) {
+                                            ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        } else {
+                                            ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.onSurface,
+                                                contentColor = MaterialTheme.colorScheme.surface
+                                            )
+                                        },
+                                        shape = CircleShape,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(44.dp)
+                                    ) {
+                                        Text(
+                                            text = if (isSubscribed == true) stringResource(R.string.subscribed) else stringResource(R.string.subscribe),
+                                            fontWeight = FontWeight.Black,
+                                            letterSpacing = 0.5.sp,
+                                            style = MaterialTheme.typography.labelLarge
+                                        )
+                                    }
+                                }
+
+                                details.description?.let { desc ->
+                                    Text(
+                                        text = desc,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(top = 18.dp),
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                        lineHeight = 16.sp
                                     )
                                 }
                             }
                         }
                         
-                        // Sticky Tabs with Glass Effect
-                        stickyHeader {
-                            GlassSurface(tonalElevation = 0.dp) {
+                        // Modern Tabs (Integrated)
+                        item(span = { GridItemSpan(columns) }) {
+                            Column {
                                 PrimaryTabRow(
                                     selectedTabIndex = selectedTabIndex,
                                     containerColor = Color.Transparent,
-                                    divider = {}
+                                    contentColor = MaterialTheme.colorScheme.primary,
+                                    divider = {},
+                                    indicator = {
+                                        TabRowDefaults.PrimaryIndicator(
+                                            modifier = Modifier.tabIndicatorOffset(selectedTabIndex),
+                                            width = 40.dp,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            shape = RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)
+                                        )
+                                    }
                                 ) {
                                     tabs.forEachIndexed { index, title ->
                                         Tab(
@@ -339,25 +418,33 @@ private fun ChannelContent(
                                             text = { 
                                                 Text(
                                                     text = title,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = if (selectedTabIndex == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                    fontWeight = if (selectedTabIndex == index) FontWeight.Black else FontWeight.Bold,
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    color = if (selectedTabIndex == index) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                                 )
                                             }
                                         )
                                     }
                                 }
+                                HorizontalDivider(
+                                    thickness = 0.5.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
                             }
                         }
 
                         if (selectedTabIndex == 0) {
                             items(details.videos, key = { it.id }) { video ->
-                                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                                Box(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
                                     VideoItemRow(
                                         video = video,
                                         isDownloaded = downloadedIds.contains(video.id),
                                         isFavorite = favoriteIds.contains(video.id),
+                                        isSaved = savedVideoIds.contains(video.id),
                                         onFavoriteClick = { onFavoriteClick(video) },
                                         onDownloadClick = { onDownloadClick(video) },
+                                        onAddToPlaylistClick = { onAddToPlaylistClick(video) },
                                         onClick = { onVideoClick(video) }
                                     )
                                 }
@@ -365,13 +452,7 @@ private fun ChannelContent(
                             
                             // Load More Indicator
                             if (details.nextVideosPage != null) {
-                                item {
-                                    InfiniteScrollEffect(
-                                        listState = listState,
-                                        enabled = details.nextVideosPage != null && !uiState.isFetchingNextPage,
-                                        onLoadMore = onLoadMore
-                                    )
-
+                                item(span = { GridItemSpan(columns) }) {
                                     Box(
                                         modifier = Modifier.fillMaxWidth().padding(24.dp),
                                         contentAlignment = Alignment.Center
@@ -382,7 +463,7 @@ private fun ChannelContent(
                             }
                         } else {
                             items(details.playlists, key = { it.id }) { playlist ->
-                                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                                Box(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
                                     ModernPlaylistItem(playlist = playlist, onClick = { onPlaylistClick(playlist.id) })
                                 }
                             }

@@ -20,6 +20,8 @@ import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.channel.ChannelInfo
+import org.schabi.newpipe.extractor.comments.CommentsInfo
+import org.schabi.newpipe.extractor.comments.CommentsInfoItem
 import org.schabi.newpipe.extractor.kiosk.KioskInfo
 import org.schabi.newpipe.extractor.playlist.PlaylistInfo
 import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
@@ -157,7 +159,9 @@ class VideoRepositoryImpl @Inject constructor(
         try { getStreamBundle(videoId, forceRefresh = true) } catch (e: Exception) { PTLog.w("VideoRepository", "Preload failed for $videoId: ${e.message}") }
     }
 
-    override suspend fun fetchNextRelatedPage(videoId: String, page: Page): PaginatedList<VideoItem> = PaginatedList(emptyList(), null)
+    override suspend fun fetchNextRelatedPage(videoId: String, page: Page): PaginatedList<VideoItem> {
+        return PaginatedList(emptyList(), null)
+    }
 
     override suspend fun getChannelInfo(channelUrl: String): ChannelInfoBasic {
         ensureInit()
@@ -250,5 +254,39 @@ class VideoRepositoryImpl @Inject constructor(
                 throw e
             }
         }
+    }
+
+    override suspend fun getComments(videoId: String): PaginatedList<CommentItem> {
+        ensureInit()
+        return withContext(Dispatchers.IO) {
+            val url = Constants.YouTube.VIDEO_URL_PREFIX + videoId
+            val commentsInfo = CommentsInfo.getInfo(ServiceList.YouTube, url)
+            val items = commentsInfo.relatedItems.filterIsInstance<CommentsInfoItem>().map { mapToCommentItem(it) }
+            PaginatedList(items, if (commentsInfo.hasNextPage()) commentsInfo.nextPage else null)
+        }
+    }
+
+    override suspend fun fetchNextCommentsPage(videoId: String, page: Page): PaginatedList<CommentItem> {
+        ensureInit()
+        return withContext(Dispatchers.IO) {
+            val url = Constants.YouTube.VIDEO_URL_PREFIX + videoId
+            val nextPage = CommentsInfo.getMoreItems(ServiceList.YouTube, url, page)
+            val items = nextPage.items.filterIsInstance<CommentsInfoItem>().map { mapToCommentItem(it) }
+            PaginatedList(items, if (nextPage.hasNextPage()) nextPage.nextPage else null)
+        }
+    }
+
+    private fun mapToCommentItem(item: CommentsInfoItem): CommentItem {
+        return CommentItem(
+            authorName = item.uploaderName ?: "Unknown",
+            authorThumbnailUrl = item.uploaderAvatars?.firstOrNull()?.url,
+            authorUrl = item.uploaderUrl,
+            commentText = VideoUtils.sanitizeDescription(item.commentText.content),
+            publishedTime = item.textualUploadDate,
+            likeCount = item.likeCount,
+            isHeartedByUploader = item.isHeartedByUploader,
+            replyCount = item.replyCount,
+            commentId = item.commentId ?: ""
+        )
     }
 }

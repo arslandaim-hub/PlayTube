@@ -19,6 +19,7 @@ import com.arslandaim.playtube.domain.usecase.GetVideoStreamsUseCase
 import com.arslandaim.playtube.domain.usecase.ToggleFavoriteUseCase
 import com.arslandaim.playtube.ui.components.DownloadDialogState
 import com.arslandaim.playtube.utils.PlayTubeError
+import com.arslandaim.playtube.utils.HistoryUtils.applyHistory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -42,14 +43,13 @@ class HomeViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val _internalState = MutableStateFlow(HomeState())
-    private val _watchProgressMap = MutableStateFlow<Map<String, Float?>>(emptyMap())
 
     val uiState: StateFlow<HomeState> = combine(
         _internalState,
-        _watchProgressMap
-    ) { state, progressMap ->
+        libraryRepository.getHistory()
+    ) { state, history ->
         state.copy(
-            trendingVideos = state.trendingVideos.map { it.copy(watchProgress = progressMap[it.id]) }
+            trendingVideos = state.trendingVideos.applyHistory(history)
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeState())
 
@@ -113,8 +113,6 @@ class HomeViewModel @Inject constructor(
                 )
             }
             
-            updateWatchProgress(combinedVideos.map { it.id })
-            
         } catch (e: Exception) {
             _internalState.update { it.copy(error = PlayTubeError.fromThrowable(e)) }
         }
@@ -137,7 +135,6 @@ class HomeViewModel @Inject constructor(
                                     isLoadingMore = false
                                 )
                             }
-                            updateWatchProgress(result.items.map { it.id })
                         }
                         .onFailure {
                             _internalState.update { it.copy(isLoadingMore = false) }
@@ -245,13 +242,6 @@ class HomeViewModel @Inject constructor(
 
     fun onPersonalizedNotifyShown() {
         _internalState.update { it.copy(isPersonalized = false) }
-    }
-
-    private fun updateWatchProgress(videoIds: List<String>) {
-        viewModelScope.launch {
-            val progressMap = libraryRepository.getWatchProgressForVideos(videoIds)
-            _watchProgressMap.update { it + progressMap }
-        }
     }
 
     fun markNotInterested(video: VideoItem) {

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.PlayTube" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.PlayTube" parent="Theme.Material3.DayNight.NoActionBar" />
 
     <!-- Modern SplashScreen theme -->
     <style name="Theme.App.Starting" parent="Theme.SplashScreen">
@@ -9,6 +9,8 @@
         <item name="windowSplashScreenBackground">#FFFFFF</item>
         <!-- Icon to be displayed -->
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <!-- Icon background color (Required for some Android 12 implementations and good for consistency) -->
+        <item name="windowSplashScreenIconBackgroundColor">#FFFFFF</item>
         <!-- Duration the splash screen will be displayed -->
         <item name="windowSplashScreenAnimationDuration">800</item>
         <!-- The theme to use after the splash screen is finished -->

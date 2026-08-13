@@ -102,6 +102,18 @@ class DownloadRepositoryImpl @Inject constructor(
     override suspend fun cancelDownload(videoId: String) {
         workManager.cancelUniqueWork(videoId)
         downloadDao.updateProgress(videoId, DownloadStatus.FAILED, 0, 0)
+        
+        // Clean up partial files
+        try {
+            val cacheDir = context.cacheDir
+            cacheDir.listFiles()?.forEach { file ->
+                if (file.name.startsWith(videoId)) {
+                    file.delete()
+                }
+            }
+        } catch (e: Exception) {
+            PTLog.e("DownloadRepository", "Failed to clean up partial files for $videoId", e)
+        }
     }
 
     override suspend fun pauseDownload(videoId: String) {

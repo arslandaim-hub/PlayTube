@@ -26,7 +26,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -41,6 +41,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.util.Consumer
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -52,11 +53,11 @@ import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.services.PlaybackService
 import com.arslandaim.playtube.ui.components.GlassSurface
 import com.arslandaim.playtube.ui.components.main.OfflineBottomBanner
-import com.arslandaim.playtube.ui.components.main.PlayTubeBottomBar
 import com.arslandaim.playtube.ui.components.main.PlayTubeTopAppBar
 import com.arslandaim.playtube.ui.components.main.RestorationBanner
 import com.arslandaim.playtube.ui.navigation.NavGraph
-import com.arslandaim.playtube.ui.navigation.Screen
+import com.arslandaim.playtube.ui.navigation.Destination
+import com.arslandaim.playtube.ui.navigation.toDestination
 import com.arslandaim.playtube.ui.screens.player.MiniPlayerManager
 import com.arslandaim.playtube.ui.screens.player.PlayerOverlay
 import com.arslandaim.playtube.ui.screens.settings.UpdateViewModel
@@ -101,12 +102,15 @@ class MainActivity : ComponentActivity() {
 
         pendingDeepLink.value = intent
 
-        // Keep the splash screen on-screen until onboarding completion status is known
+        // Safety timeout for SplashScreen: don't hang for more than 3 seconds
+        val startTime = System.currentTimeMillis()
         splashScreen.setKeepOnScreenCondition {
-            mainViewModel.isOnboardingCompleted.value == null
+            val elapsed = System.currentTimeMillis() - startTime
+            val statusKnown = mainViewModel.isOnboardingCompleted.value != null
+            !statusKnown && elapsed < 3000
         }
 
-        // Local Network Protection check
+        // Local Network Protection check (Android 16+ / API 36+)
         if (Build.VERSION.SDK_INT >= 36) {
             val permission = if (Build.VERSION.SDK_INT >= 37) {
                 "android.permission.ACCESS_LOCAL_NETWORK"
@@ -114,8 +118,17 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.NEARBY_WIFI_DEVICES
             }
 
-            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissionLauncher.launch(permission)
+            try {
+                if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+                    // Only request if not previously denied in this session or check rationale
+                    if (shouldShowRequestPermissionRationale(permission)) {
+                        PTLog.d("MainActivity", "Local Network permission rationale needed.")
+                        // For simplicity in startup, we just launch, but a dialog would be better
+                    }
+                    requestPermissionLauncher.launch(permission)
+                }
+            } catch (e: Exception) {
+                PTLog.e("MainActivity", "Failed to request local network permission", e)
             }
         }
 
@@ -130,12 +143,12 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val darkTheme = isSystemInDarkTheme()
-            val isBackgroundPlayEnabled by mainViewModel.isBackgroundPlayEnabled.collectAsState()
-            val isOnboardingCompleted by mainViewModel.isOnboardingCompleted.collectAsState()
+            val isBackgroundPlayEnabled by mainViewModel.isBackgroundPlayEnabled.collectAsStateWithLifecycle()
+            val isOnboardingCompleted by mainViewModel.isOnboardingCompleted.collectAsStateWithLifecycle()
 
             if (isOnboardingCompleted == null) return@setContent
             
-            val startDestination = if (isOnboardingCompleted == true) Screen.Home.route else Screen.Onboarding.route
+            val startDestination = if (isOnboardingCompleted == true) Destination.Home else Destination.Onboarding
 
             // Background Play MediaSession Connection
             if (isBackgroundPlayEnabled) {
@@ -161,9 +174,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            PlayTubeTheme(darkTheme = darkTheme) {
+            PlayTubeTheme(
+                darkTheme = darkTheme,
+                isDynamicColorEnabled = mainViewModel.isDynamicColorEnabled.collectAsStateWithLifecycle().value
+            ) {
                 val navController = rememberNavController()
-                val uiState by mainViewModel.uiState.collectAsState()
+                val uiState by mainViewModel.uiState.collectAsStateWithLifecycle()
 
                 LaunchedEffect(navController, isOnboardingCompleted) {
                     if (isOnboardingCompleted == true) {
@@ -178,7 +194,7 @@ class MainActivity : ComponentActivity() {
 
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
-                val playerVisibility by miniPlayerManager.visibilityState.collectAsState()
+                val playerVisibility by miniPlayerManager.visibilityState.collectAsStateWithLifecycle()
                 val isExpanded = playerVisibility == com.arslandaim.playtube.ui.screens.player.MiniPlayerVisibility.Expanded
 
                 val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
@@ -191,16 +207,16 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                val currentVideo by miniPlayerManager.currentVideo.collectAsState()
-                val isIncognitoMode by mainViewModel.isIncognitoMode.collectAsState()
-                val isOffline by mainViewModel.isOffline.collectAsState()
+                val currentVideo by miniPlayerManager.currentVideo.collectAsStateWithLifecycle()
+                val isIncognitoMode by mainViewModel.isIncognitoMode.collectAsStateWithLifecycle()
+                val isOffline by mainViewModel.isOffline.collectAsStateWithLifecycle()
 
-                val currentScreen = remember(currentRoute) { Screen.fromRoute(currentRoute) }
+                val currentScreen = remember<Destination?>(currentRoute) { currentRoute.toDestination() }
                 val isMainRoute = currentScreen?.isTopLevel == true
-                val isOnboarding = currentScreen == Screen.Onboarding
+                val isOnboarding = currentScreen is Destination.Onboarding
                 
                 LaunchedEffect(currentRoute) {
-                    val isPlayer = currentRoute?.startsWith("player") == true
+                    val isPlayer = currentRoute?.contains("Player") == true
                     mainViewModel.setPlayerScreen(isPlayer)
                     
                     if (isMainRoute) {
@@ -215,7 +231,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val showTopBarActual by remember(showBars, currentScreen) {
-                    derivedStateOf { showBars && currentScreen != Screen.Search }
+                    derivedStateOf { showBars && currentScreen !is Destination.Search }
                 }
                 
                 val barsVisibilityProgress by animateFloatAsState(
@@ -342,9 +358,10 @@ class MainActivity : ComponentActivity() {
                     onMinimize = { currentVideo?.let { miniPlayerManager.minimize(it) } },
                     onChannelClick = { url ->
                         currentVideo?.let { miniPlayerManager.minimize(it) }
-                        navController.navigate(Screen.Channel.createRoute(url))
+                        navController.navigate(Destination.Channel(url))
                     },
                     onVideoClick = { playerViewModel.loadVideo(it) },
+                    onAddToPlaylistClick = { mainViewModel.showPlaylistSelection(it) },
                     content = {}
                 )
 
@@ -369,13 +386,13 @@ class MainActivity : ComponentActivity() {
                         contentAlignment = Alignment.BottomCenter
                     ) {
                         OfflineBottomBanner(visible = showBanner, onNavigateToDownloads = {
-                            navController.navigate(Screen.Downloads.route) { launchSingleTop = true }
+                            navController.navigate(Destination.Downloads) { launchSingleTop = true }
                         })
                     }
                 }
 
                 // Global Offline Dialog
-                val showOfflineDialog by mainViewModel.showOfflineDialog.collectAsState()
+                val showOfflineDialog by mainViewModel.showOfflineDialog.collectAsStateWithLifecycle()
                 if (showOfflineDialog) {
                     AlertDialog(
                         onDismissRequest = { mainViewModel.dismissOfflineDialog() },
@@ -385,13 +402,60 @@ class MainActivity : ComponentActivity() {
                         confirmButton = {
                             Button(onClick = { 
                                 mainViewModel.dismissOfflineDialog()
-                                navController.navigate(Screen.Downloads.route) { launchSingleTop = true }
+                                navController.navigate(Destination.Downloads) { launchSingleTop = true }
                             }) { Text(stringResource(R.string.go_to_downloads)) }
                         },
                         dismissButton = {
                             TextButton(onClick = { mainViewModel.dismissOfflineDialog() }) { Text(stringResource(R.string.close)) }
                         }
                     )
+                }
+
+                // Global Playlist Selection Sheet
+                val playlistSelectionState by mainViewModel.playlistSelectionState.collectAsStateWithLifecycle()
+                val localPlaylists by mainViewModel.localPlaylists.collectAsStateWithLifecycle()
+                
+                if (playlistSelectionState.isVisible) {
+                    var showCreateDialog by remember { mutableStateOf(false) }
+                    
+                    com.arslandaim.playtube.ui.components.AddToPlaylistSheet(
+                        playlists = localPlaylists,
+                        playlistsWithVideo = playlistSelectionState.playlistsWithVideo,
+                        onDismiss = { mainViewModel.hidePlaylistSelection() },
+                        onPlaylistSelected = { playlist ->
+                            playlistSelectionState.video?.let { video ->
+                                mainViewModel.addVideoToPlaylist(playlist.id, video)
+                            }
+                        },
+                        onCreateNewPlaylist = { showCreateDialog = true }
+                    )
+
+                    if (showCreateDialog) {
+                        var name by remember { mutableStateOf("") }
+                        AlertDialog(
+                            onDismissRequest = { showCreateDialog = false },
+                            title = { Text("Create New Playlist") },
+                            text = {
+                                TextField(
+                                    value = name,
+                                    onValueChange = { name = it },
+                                    placeholder = { Text("Playlist name") },
+                                    singleLine = true
+                                )
+                            },
+                            confirmButton = {
+                                TextButton(
+                                    onClick = {
+                                        if (name.isNotBlank()) mainViewModel.createLocalPlaylist(name)
+                                        showCreateDialog = false
+                                    }
+                                ) { Text("Create") }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showCreateDialog = false }) { Text("Cancel") }
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -452,17 +516,58 @@ class MainActivity : ComponentActivity() {
         val playlistId = com.arslandaim.playtube.utils.VideoUtils.extractPlaylistId(url)
         when {
             url.contains("/playlist?list=") || url.contains("&list=") -> {
-                if (playlistId.isNotBlank()) navController.navigate(Screen.Playlist.createRoute(playlistId)) { launchSingleTop = true }
+                if (playlistId.isNotBlank()) navController.navigate(Destination.Playlist(playlistId)) { launchSingleTop = true }
             }
             url.contains("/channel/") || url.contains("/c/") || url.contains("/user/") || url.contains("/@") -> {
-                navController.navigate(Screen.Channel.createRoute(url)) { launchSingleTop = true }
+                navController.navigate(Destination.Channel(url)) { launchSingleTop = true }
             }
             url.contains("/results?search_query=") || url.contains("/results?q=") -> {
                 val query = data.getQueryParameter("search_query") ?: data.getQueryParameter("q")
-                if (!query.isNullOrBlank()) navController.navigate(Screen.Search.createRoute(query)) { launchSingleTop = true }
+                if (!query.isNullOrBlank()) navController.navigate(Destination.Search(query)) { launchSingleTop = true }
             }
             videoId.isNotBlank() -> playerViewModel.loadVideo(VideoItem(id = videoId, title = "Loading...", thumbnailUrl = "", uploaderName = "", uploaderUrl = null, viewCount = 0, uploadDate = null, duration = 0))
         }
         intent.action = null
+    }
+}
+
+@Composable
+fun PlayTubeBottomBar(navController: androidx.navigation.NavHostController) {
+    val items = listOf(
+        Triple(Destination.Home, Icons.Default.Home, stringResource(R.string.tab_for_you)),
+        Triple(Destination.Subscriptions, Icons.Default.Subscriptions, stringResource(R.string.subscriptions)),
+        // Provide an empty string as the default argument for the Search route base
+        Triple(Destination.Search(""), Icons.Default.Search, stringResource(R.string.search)),
+        Triple(Destination.Library, Icons.Default.LibraryMusic, stringResource(R.string.library))
+    )
+    
+    NavigationBar(
+        modifier = Modifier.height(MainActivity.BOTTOM_BAR_HEIGHT),
+        containerColor = Color.Transparent,
+        tonalElevation = 0.dp
+    ) {
+        val navBackStackEntry by navController.currentBackStackEntryAsState()
+        val currentRoute = navBackStackEntry?.destination?.route
+        val currentScreen = remember(currentRoute) { currentRoute?.toDestination() }
+        
+        items.forEach { (destination, icon, label) ->
+            // Match the base class to highlight the active tab accurately
+            val isSelected = currentScreen != null && currentScreen::class == destination::class
+            
+            NavigationBarItem(
+                icon = { Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp).offset(y = 2.dp)) },
+                label = { Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.offset(y = (-2).dp)) },
+                selected = isSelected,
+                onClick = {
+                    navController.navigate(destination) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            )
+        }
     }
 }

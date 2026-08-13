@@ -38,10 +38,12 @@ fun DownloadsScreen(
     viewModel: LibraryViewModel,
     onBarsVisibilityChange: (Boolean) -> Unit,
     onBack: () -> Unit,
-    onVideoClick: (VideoItem) -> Unit
+    onVideoClick: (VideoItem) -> Unit,
+    onAddToPlaylistClick: (VideoItem) -> Unit
 ) {
     val downloads by viewModel.filteredDownloads.collectAsStateWithLifecycle()
     val allDownloads by viewModel.downloads.collectAsStateWithLifecycle()
+    val savedVideoIds by viewModel.savedVideoIds.collectAsStateWithLifecycle()
     val searchQuery by viewModel.offlineSearchQuery.collectAsStateWithLifecycle()
     val storageUsage by viewModel.storageUsage.collectAsStateWithLifecycle()
     
@@ -236,10 +238,12 @@ fun DownloadsScreen(
                         items(playlistVideos) { download ->
                             DownloadItemRow(
                                 download = download,
+                                isSaved = savedVideoIds.contains(download.videoId),
                                 onClick = { onVideoClick(download.toVideoItem()) },
                                 onDeleteClick = { videoIdToDelete = download.videoId },
                                 onCancelClick = { viewModel.cancelDownload(download.videoId) },
                                 onRetryClick = { viewModel.resumeDownload(download.videoId) },
+                                onAddToPlaylistClick = { onAddToPlaylistClick(download.toVideoItem()) },
                                 modifier = Modifier.padding(start = 24.dp)
                             )
                         }
@@ -249,10 +253,12 @@ fun DownloadsScreen(
                 items(singleVideos) { download ->
                     DownloadItemRow(
                         download = download,
+                        isSaved = savedVideoIds.contains(download.videoId),
                         onClick = { onVideoClick(download.toVideoItem()) },
                         onDeleteClick = { videoIdToDelete = download.videoId },
                         onCancelClick = { viewModel.cancelDownload(download.videoId) },
-                        onRetryClick = { viewModel.resumeDownload(download.videoId) }
+                        onRetryClick = { viewModel.resumeDownload(download.videoId) },
+                        onAddToPlaylistClick = { onAddToPlaylistClick(download.toVideoItem()) }
                     )
                 }
             }

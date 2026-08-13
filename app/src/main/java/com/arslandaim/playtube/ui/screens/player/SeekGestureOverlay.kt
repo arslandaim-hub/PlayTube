@@ -5,10 +5,9 @@
 */
 package com.arslandaim.playtube.ui.screens.player
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -23,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -36,22 +36,22 @@ fun SeekGestureOverlay(
 ) {
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(),
-        exit = fadeOut(),
+        enter = fadeIn() + scaleIn(initialScale = 0.7f),
+        exit = fadeOut() + scaleOut(targetScale = 1.3f),
         modifier = modifier.fillMaxSize()
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             val alignment = if (isForward) Alignment.CenterEnd else Alignment.CenterStart
             val gradientColors = if (isForward) {
-                listOf(Color.Transparent, Color.Black.copy(alpha = 0.3f))
+                listOf(Color.Transparent, Color.White.copy(alpha = 0.12f))
             } else {
-                listOf(Color.Black.copy(alpha = 0.3f), Color.Transparent)
+                listOf(Color.White.copy(alpha = 0.12f), Color.Transparent)
             }
 
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .fillMaxWidth(0.4f)
+                    .fillMaxWidth(0.35f)
                     .align(alignment)
                     .background(Brush.horizontalGradient(gradientColors))
             )
@@ -59,30 +59,33 @@ fun SeekGestureOverlay(
             Column(
                 modifier = Modifier
                     .align(alignment)
-                    .padding(horizontal = 48.dp),
+                    .padding(horizontal = 64.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Box(
                     modifier = Modifier
-                        .size(64.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.4f)),
+                        .size(76.dp)
+                        .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                        .border(1.5.dp, Color.White.copy(alpha = 0.15f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = if (isForward) Icons.Default.FastForward else Icons.Default.FastRewind,
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(36.dp)
                     )
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = "${if (isForward) "+" else "-"}${amount}s",
                     color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
-                    style = MaterialTheme.typography.titleMedium
+                    fontWeight = FontWeight.Black,
+                    fontSize = 20.sp,
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.graphicsLayer {
+                        shadowElevation = 8f
+                    }
                 )
             }
         }

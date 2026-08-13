@@ -52,4 +52,10 @@ abstract class RepositoryModule {
     abstract fun bindUpdateRepository(
         updateRepositoryImpl: UpdateRepositoryImpl
     ): UpdateRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindSponsorBlockRepository(
+        sponsorBlockRepositoryImpl: SponsorBlockRepositoryImpl
+    ): SponsorBlockRepository
 }

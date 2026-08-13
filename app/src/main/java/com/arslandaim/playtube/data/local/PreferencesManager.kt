@@ -112,6 +112,14 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
             preferences[AUTO_UPDATE_ENABLED] ?: false
         }
 
+    open val isDynamicColorEnabled: Flow<Boolean> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) emit(emptyPreferences())
+            else throw exception
+        }.map { preferences ->
+            preferences[DYNAMIC_COLOR_ENABLED] ?: false
+        }
+
     open val isRecommendationsPaused: Flow<Boolean> = dataStore.data
         .catch { exception ->
             if (exception is IOException) {
@@ -167,6 +175,30 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
             preferences[PREFERRED_QUALITY] ?: "Auto"
         }
 
+    open val subtitleFontSize: Flow<Float> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) emit(emptyPreferences())
+            else throw exception
+        }.map { preferences ->
+            preferences[SUBTITLE_FONT_SIZE] ?: 16f
+        }
+
+    open val subtitleBackgroundOpacity: Flow<Float> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) emit(emptyPreferences())
+            else throw exception
+        }.map { preferences ->
+            preferences[SUBTITLE_BACKGROUND_OPACITY] ?: 0.65f
+        }
+
+    open val lastPlayedVideoId: Flow<String?> = dataStore.data.map { it[LAST_PLAYED_VIDEO_ID] }
+    open val lastPlayedPosition: Flow<Long> = dataStore.data.map { it[LAST_PLAYED_POSITION] ?: 0L }
+    open val lastPlayedIsLocal: Flow<Boolean> = dataStore.data.map { it[LAST_PLAYED_IS_LOCAL] ?: false }
+
+    open val isProxyEnabled: Flow<Boolean> = dataStore.data.map { it[PROXY_ENABLED] ?: false }
+    open val proxyHost: Flow<String> = dataStore.data.map { it[PROXY_HOST] ?: "" }
+    open val proxyPort: Flow<Int> = dataStore.data.map { it[PROXY_PORT] ?: 8080 }
+
     suspend fun setHistoryEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[HISTORY_ENABLED] = enabled
@@ -215,6 +247,12 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
         }
     }
 
+    suspend fun setDynamicColorEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[DYNAMIC_COLOR_ENABLED] = enabled
+        }
+    }
+
     suspend fun setRecommendationsPaused(paused: Boolean) {
         dataStore.edit { preferences ->
             preferences[RECOMMENDATIONS_PAUSED] = paused
@@ -246,6 +284,34 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
         }
     }
 
+    suspend fun setSubtitleFontSize(size: Float) {
+        dataStore.edit { preferences ->
+            preferences[SUBTITLE_FONT_SIZE] = size
+        }
+    }
+
+    suspend fun setSubtitleBackgroundOpacity(opacity: Float) {
+        dataStore.edit { preferences ->
+            preferences[SUBTITLE_BACKGROUND_OPACITY] = opacity
+        }
+    }
+
+    suspend fun setLastPlayedSession(videoId: String, position: Long, isLocal: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[LAST_PLAYED_VIDEO_ID] = videoId
+            preferences[LAST_PLAYED_POSITION] = position
+            preferences[LAST_PLAYED_IS_LOCAL] = isLocal
+        }
+    }
+
+    suspend fun setProxySettings(enabled: Boolean, host: String, port: Int) {
+        dataStore.edit { preferences ->
+            preferences[PROXY_ENABLED] = enabled
+            preferences[PROXY_HOST] = host
+            preferences[PROXY_PORT] = port
+        }
+    }
+
     companion object {
         val HISTORY_ENABLED = booleanPreferencesKey("history_enabled")
         val SEARCH_HISTORY_PAUSED = booleanPreferencesKey("search_history_paused")
@@ -255,10 +321,21 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
         val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
         val SEARCH_GRID_VIEW = booleanPreferencesKey("search_grid_view")
         val AUTO_UPDATE_ENABLED = booleanPreferencesKey("auto_update_enabled")
+        val DYNAMIC_COLOR_ENABLED = booleanPreferencesKey("dynamic_color_enabled")
         val RECOMMENDATIONS_PAUSED = booleanPreferencesKey("recommendations_paused")
         val AUTOPLAY_ENABLED = booleanPreferencesKey("autoplay_enabled")
         val INCOGNITO_MODE = booleanPreferencesKey("incognito_mode")
         val PREFERRED_SUBTITLE_LANGUAGE = stringPreferencesKey("preferred_subtitle_language")
         val PREFERRED_QUALITY = stringPreferencesKey("preferred_quality")
+        val SUBTITLE_FONT_SIZE = floatPreferencesKey("subtitle_font_size")
+        val SUBTITLE_BACKGROUND_OPACITY = floatPreferencesKey("subtitle_background_opacity")
+        
+        val LAST_PLAYED_VIDEO_ID = stringPreferencesKey("last_played_video_id")
+        val LAST_PLAYED_POSITION = longPreferencesKey("last_played_position")
+        val LAST_PLAYED_IS_LOCAL = booleanPreferencesKey("last_played_is_local")
+
+        val PROXY_ENABLED = booleanPreferencesKey("proxy_enabled")
+        val PROXY_HOST = stringPreferencesKey("proxy_host")
+        val PROXY_PORT = intPreferencesKey("proxy_port")
     }
 }

@@ -17,9 +17,11 @@ import androidx.room.RoomDatabase
         SearchHistoryEntity::class,
         PlaylistFavoriteEntity::class,
         UserInterestEntity::class,
-        BlacklistEntity::class
+        BlacklistEntity::class,
+        LocalPlaylistEntity::class,
+        LocalPlaylistVideoEntity::class
     ],
-    version = 11
+    version = 13
 )
 abstract class PlayTubeDatabase : RoomDatabase() {
     abstract fun downloadDao(): DownloadDao
@@ -30,4 +32,5 @@ abstract class PlayTubeDatabase : RoomDatabase() {
     abstract fun searchHistoryDao(): SearchHistoryDao
     abstract fun userInterestDao(): UserInterestDao
     abstract fun blacklistDao(): BlacklistDao
+    abstract fun localPlaylistDao(): LocalPlaylistDao
 }

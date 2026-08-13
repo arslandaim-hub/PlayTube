@@ -6,20 +6,22 @@
 package com.arslandaim.playtube.ui.screens.library
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -43,47 +45,46 @@ const val GlobalGlassAlpha = 0.75f
 
 @Composable
 fun ProfileStatsHeader(
+    modifier: Modifier = Modifier,
     downloadCount: Int,
     subscriptionCount: Int,
-    favoriteCount: Int,
-    modifier: Modifier = Modifier
+    favoriteCount: Int
 ) {
-    Surface(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(16.dp),
-        color = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp),
-        shape = RoundedCornerShape(24.dp)
+            .padding(horizontal = 24.dp, vertical = 24.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically
+        // Large Fluid Avatar
+        Surface(
+            modifier = Modifier.size(72.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+            border = androidx.compose.foundation.BorderStroke(
+                2.dp, 
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+            )
         ) {
-            Surface(
-                modifier = Modifier.size(64.dp),
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = null,
-                        modifier = Modifier.size(32.dp),
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = null,
+                    modifier = Modifier.size(36.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
             }
-            
-            Spacer(modifier = Modifier.width(20.dp))
-            
-            Row(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                StatItem(label = "Downloads", count = downloadCount)
-                StatItem(label = "Subscribed", count = subscriptionCount)
-                StatItem(label = "Favorites", count = favoriteCount)
-            }
+        }
+        
+        Spacer(modifier = Modifier.width(24.dp))
+        
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            StatItem(label = "Downloads", count = downloadCount)
+            StatItem(label = "Subscribed", count = subscriptionCount)
+            StatItem(label = "Favorites", count = favoriteCount)
         }
     }
 }
@@ -94,12 +95,15 @@ private fun StatItem(label: String, count: Int) {
         Text(
             text = count.toString(),
             style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.ExtraBold
+            fontWeight = FontWeight.Black,
+            color = MaterialTheme.colorScheme.onSurface,
+            letterSpacing = (-0.5).sp
         )
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            fontWeight = FontWeight.Bold
         )
     }
 }
@@ -115,7 +119,7 @@ fun ModernSectionHeader(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            .padding(horizontal = 24.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -124,32 +128,41 @@ fun ModernSectionHeader(
                 imageVector = icon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(22.dp)
             )
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(14.dp))
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Black,
+                letterSpacing = 0.5.sp
             )
         }
         
         if (showSeeAll) {
             TextButton(
                 onClick = onSeeAllClick,
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                modifier = Modifier.height(32.dp)
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                modifier = Modifier
+                    .height(34.dp)
+                    .background(
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), 
+                        CircleShape
+                    )
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "See all",
                         style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.primary
                     )
+                    Spacer(modifier = Modifier.width(4.dp))
                     Icon(
                         Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         null,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary
                     )
                 }
             }
@@ -158,7 +171,14 @@ fun ModernSectionHeader(
 }
 
 @Composable
-fun ModernHistoryCard(item: HistoryEntity, onClick: () -> Unit) {
+fun ModernHistoryCard(
+    item: HistoryEntity,
+    onClick: () -> Unit,
+    isSaved: Boolean = false,
+    onAddToPlaylist: () -> Unit = {},
+    onRemoveClick: (() -> Unit)? = null
+) {
+    var showMenu by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .width(180.dp)
@@ -168,7 +188,12 @@ fun ModernHistoryCard(item: HistoryEntity, onClick: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(18.dp))
+                .border(
+                    width = 0.5.dp, 
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f), 
+                    shape = RoundedCornerShape(18.dp)
+                )
         ) {
             ThumbnailImage(
                 videoId = item.videoId,
@@ -177,40 +202,88 @@ fun ModernHistoryCard(item: HistoryEntity, onClick: () -> Unit) {
                 modifier = Modifier.fillMaxSize()
             )
             
-            // Watch Progress Bar (Minimal)
+            // Premium Menu Button
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+            ) {
+                IconButton(
+                    onClick = { showMenu = true },
+                    modifier = Modifier
+                        .size(32.dp)
+                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                ) {
+                    Icon(Icons.Default.MoreVert, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                }
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text(if (isSaved) "Saved" else "Add to Local Playlist") },
+                        leadingIcon = { 
+                            Icon(
+                                imageVector = if (isSaved) Icons.Default.CheckCircle else Icons.AutoMirrored.Filled.PlaylistAdd, 
+                                contentDescription = null,
+                                tint = if (isSaved) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                            ) 
+                        },
+                        onClick = {
+                            showMenu = false
+                            onAddToPlaylist()
+                        }
+                    )
+                    onRemoveClick?.let {
+                        DropdownMenuItem(
+                            text = { Text("Remove from History") },
+                            leadingIcon = { Icon(Icons.Default.Delete, null) },
+                            onClick = {
+                                showMenu = false
+                                it()
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Enhanced Watch Progress Bar
             if (item.durationMs > 0) {
                 val progress = item.progressMs.toFloat() / item.durationMs
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .height(3.dp)
-                        .background(Color.White.copy(alpha = 0.3f))
+                        .height(3.5.dp)
+                        .background(Color.Black.copy(alpha = 0.2f))
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxHeight()
                             .fillMaxWidth(progress.coerceIn(0f, 1f))
-                            .background(MaterialTheme.colorScheme.primary)
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(Color.Red, Color.Red.copy(alpha = 0.8f))
+                                )
+                            )
                     )
                 }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
         Text(
             text = item.title,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 4.dp)
+            modifier = Modifier.padding(horizontal = 4.dp),
+            letterSpacing = 0.1.sp
         )
         Text(
             text = item.uploaderName,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
             maxLines = 1,
-            modifier = Modifier.padding(horizontal = 4.dp)
+            modifier = Modifier.padding(horizontal = 4.dp),
+            fontWeight = FontWeight.Medium
         )
     }
 }
@@ -219,26 +292,37 @@ fun ModernHistoryCard(item: HistoryEntity, onClick: () -> Unit) {
 fun ModernSubscriptionItem(sub: SubscriptionEntity, onClick: () -> Unit) {
     Column(
         modifier = Modifier
-            .width(80.dp)
+            .width(86.dp)
             .clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        AsyncImage(
-            model = sub.thumbnailUrl,
-            contentDescription = sub.name,
-            modifier = Modifier
-                .size(64.dp)
-                .clip(CircleShape),
-            contentScale = ContentScale.Crop
-        )
+        Surface(
+            modifier = Modifier.size(68.dp),
+            shape = CircleShape,
+            border = androidx.compose.foundation.BorderStroke(
+                2.dp, 
+                Brush.linearGradient(listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary))
+            ),
+            color = Color.Transparent
+        ) {
+            AsyncImage(
+                model = sub.thumbnailUrl,
+                contentDescription = sub.name,
+                modifier = Modifier
+                    .padding(3.dp)
+                    .clip(CircleShape),
+                contentScale = ContentScale.Crop
+            )
+        }
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = sub.name,
             style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Medium,
+            fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
         )
     }
 }
@@ -257,7 +341,12 @@ fun ModernPlaylistCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(18.dp))
+                .border(
+                    width = 0.5.dp, 
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f), 
+                    shape = RoundedCornerShape(18.dp)
+                )
         ) {
             ThumbnailImage(
                 videoId = "",
@@ -270,19 +359,19 @@ fun ModernPlaylistCard(
                     .fillMaxHeight()
                     .fillMaxWidth(0.35f)
                     .align(Alignment.CenterEnd),
-                color = Color.Black.copy(alpha = 0.7f)
+                color = Color.Black.copy(alpha = 0.6f)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.PlaylistPlay,
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(32.dp)
                     )
                 }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
         Text(
             text = playlist.title,
             style = MaterialTheme.typography.bodyMedium,
@@ -293,19 +382,43 @@ fun ModernPlaylistCard(
         )
         Text(
             text = playlist.uploaderName,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
             maxLines = 1,
-            modifier = Modifier.padding(horizontal = 4.dp)
+            modifier = Modifier.padding(horizontal = 4.dp),
+            fontWeight = FontWeight.Medium
         )
     }
 }
 
 @Composable
-fun ModernDownloadCard(
-    download: DownloadEntity,
-    onClick: () -> Unit
+fun ModernLocalPlaylistCard(
+    playlist: com.arslandaim.playtube.data.local.LocalPlaylistEntity,
+    onClick: () -> Unit,
+    onDelete: () -> Unit
 ) {
+    var showMenu by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Delete Playlist") },
+            text = { Text("Are you sure you want to delete '${playlist.name}'?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDelete()
+                        showDeleteDialog = false
+                    }
+                ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
     Column(
         modifier = Modifier
             .width(180.dp)
@@ -315,7 +428,128 @@ fun ModernDownloadCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(18.dp))
+                .border(
+                    width = 0.5.dp, 
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f), 
+                    shape = RoundedCornerShape(18.dp)
+                )
+        ) {
+            if (playlist.thumbnailUrl != null) {
+                ThumbnailImage(
+                    videoId = "",
+                    thumbnailUrl = playlist.thumbnailUrl,
+                    quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.High,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.PlaylistPlay,
+                        contentDescription = null,
+                        modifier = Modifier.size(48.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                    )
+                }
+            }
+            
+            Surface(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.35f)
+                    .align(Alignment.CenterEnd),
+                color = Color.Black.copy(alpha = 0.6f)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.PlaylistPlay,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            }
+
+            // More Menu Badge
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+            ) {
+                IconButton(
+                    onClick = { showMenu = true },
+                    modifier = Modifier
+                        .size(32.dp)
+                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                ) {
+                    Icon(
+                        Icons.Default.MoreVert,
+                        null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Delete Playlist") },
+                        leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                        onClick = {
+                            showMenu = false
+                            showDeleteDialog = true
+                        }
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+            text = playlist.name,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 4.dp)
+        )
+        Text(
+            text = "Local Playlist",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 4.dp),
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+fun ModernDownloadCard(
+    download: DownloadEntity,
+    onClick: () -> Unit,
+    isSaved: Boolean = false,
+    onAddToPlaylist: () -> Unit = {},
+    onDelete: (() -> Unit)? = null
+) {
+    var showMenu by remember { mutableStateOf(false) }
+    Column(
+        modifier = Modifier
+            .width(180.dp)
+            .clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(18.dp))
+                .border(
+                    width = 0.5.dp, 
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f), 
+                    shape = RoundedCornerShape(18.dp)
+                )
         ) {
             ThumbnailImage(
                 videoId = download.videoId,
@@ -323,24 +557,66 @@ fun ModernDownloadCard(
                 quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.High,
                 modifier = Modifier.fillMaxSize()
             )
+
+            // More menu for download card
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+            ) {
+                IconButton(
+                    onClick = { showMenu = true },
+                    modifier = Modifier
+                        .size(32.dp)
+                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                ) {
+                    Icon(Icons.Default.MoreVert, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                }
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text(if (isSaved) "Saved" else "Add to Local Playlist") },
+                        leadingIcon = { 
+                            Icon(
+                                imageVector = if (isSaved) Icons.Default.CheckCircle else Icons.AutoMirrored.Filled.PlaylistAdd, 
+                                contentDescription = null,
+                                tint = if (isSaved) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                            ) 
+                        },
+                        onClick = {
+                            showMenu = false
+                            onAddToPlaylist()
+                        }
+                    )
+                    onDelete?.let {
+                        DropdownMenuItem(
+                            text = { Text("Delete Download") },
+                            leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                            onClick = {
+                                showMenu = false
+                                it()
+                            }
+                        )
+                    }
+                }
+            }
             
             if (download.status != com.arslandaim.playtube.data.local.DownloadStatus.COMPLETED) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = Color.Black.copy(alpha = 0.5f)
+                    color = Color.Black.copy(alpha = 0.45f)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(
                             progress = { if (download.totalSize > 0) download.downloadedSize.toFloat() / download.totalSize else 0f },
-                            modifier = Modifier.size(32.dp),
+                            modifier = Modifier.size(36.dp),
                             color = Color.White,
-                            strokeWidth = 3.dp,
+                            strokeWidth = 3.5.dp,
                         )
                     }
                 }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
         Text(
             text = download.title,
             style = MaterialTheme.typography.bodyMedium,
@@ -351,10 +627,11 @@ fun ModernDownloadCard(
         )
         Text(
             text = download.uploaderName,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
             maxLines = 1,
-            modifier = Modifier.padding(horizontal = 4.dp)
+            modifier = Modifier.padding(horizontal = 4.dp),
+            fontWeight = FontWeight.Medium
         )
     }
 }
@@ -368,13 +645,18 @@ fun ModernPlaylistRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp, horizontal = 20.dp),
+            .padding(vertical = 10.dp, horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(width = 120.dp, height = 68.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .size(width = 130.dp, height = 74.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .border(
+                    width = 0.5.dp, 
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f), 
+                    shape = RoundedCornerShape(16.dp)
+                )
         ) {
             ThumbnailImage(
                 videoId = "",
@@ -385,7 +667,7 @@ fun ModernPlaylistRow(
             Surface(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .width(36.dp)
+                    .width(40.dp)
                     .align(Alignment.CenterEnd),
                 color = Color.Black.copy(alpha = 0.6f)
             ) {
@@ -394,7 +676,7 @@ fun ModernPlaylistRow(
                         imageVector = Icons.AutoMirrored.Filled.PlaylistPlay,
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
@@ -405,29 +687,43 @@ fun ModernPlaylistRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = playlist.title,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                letterSpacing = 0.1.sp
             )
             Text(
                 text = "${playlist.uploaderName} • ${playlist.streamCount} videos",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                fontWeight = FontWeight.Medium
             )
         }
     }
 }
 
 @Composable
-fun HistoryItemRow(item: HistoryEntity, onClick: () -> Unit) {
+fun HistoryItemRow(
+    item: HistoryEntity,
+    onClick: () -> Unit,
+    isSaved: Boolean = false,
+    onAddToPlaylistClick: (() -> Unit)? = null,
+    onRemoveFromPlaylistClick: (() -> Unit)? = null,
+    onRemoveClick: (() -> Unit)? = null
+) {
     VideoRow(
         videoId = item.videoId,
         title = item.title,
         uploader = item.uploaderName,
         thumbnailUrl = item.thumbnailUrl,
         progress = if (item.durationMs > 0) item.progressMs.toFloat() / item.durationMs else null,
-        onClick = onClick
+        isSaved = isSaved,
+        onClick = onClick,
+        onAddToPlaylistClick = onAddToPlaylistClick,
+        onRemoveFromPlaylistClick = onRemoveFromPlaylistClick,
+        onDeleteClick = onRemoveClick,
+        deleteText = "Remove from History"
     )
 }
 
@@ -474,14 +770,18 @@ fun VideoRow(
     watchProgress: Float? = null,
     isDownloaded: Boolean = false,
     isFavorite: Boolean = false,
+    isSaved: Boolean = false,
     onDeleteClick: (() -> Unit)? = null,
     onCancelClick: (() -> Unit)? = null,
     onRetryClick: (() -> Unit)? = null,
     onFavoriteClick: (() -> Unit)? = null,
     onDownloadClick: (() -> Unit)? = null,
+    onAddToPlaylistClick: (() -> Unit)? = null,
+    onRemoveFromPlaylistClick: (() -> Unit)? = null,
     onChannelClick: (() -> Unit)? = null,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    deleteText: String = "Delete",
     trailing: @Composable (() -> Unit)? = null,
     metadata: @Composable (() -> Unit)? = null
 ) {
@@ -491,13 +791,18 @@ fun VideoRow(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 8.dp, horizontal = 20.dp),
+            .padding(vertical = 10.dp, horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(width = 140.dp, height = 80.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .size(width = 150.dp, height = 84.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .border(
+                    width = 0.5.dp, 
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f), 
+                    shape = RoundedCornerShape(16.dp)
+                )
         ) {
             ThumbnailImage(
                 videoId = videoId,
@@ -506,23 +811,23 @@ fun VideoRow(
                 modifier = Modifier.fillMaxSize()
             )
             
-            // Duration Badge
+            // Premium Duration Badge
             if (duration > 0) {
                 Surface(
-                    color = Color.Black.copy(alpha = 0.8f),
-                    shape = RoundedCornerShape(4.dp),
+                    color = Color.Black.copy(alpha = 0.7f),
+                    shape = RoundedCornerShape(6.dp),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(4.dp)
+                        .padding(6.dp)
                 ) {
                     Text(
                         text = VideoUtils.formatDuration(duration),
                         color = Color.White,
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Black
                         ),
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                     )
                 }
             }
@@ -575,10 +880,10 @@ fun VideoRow(
             val metaText = remember(uploader, viewCount, uploadDate) {
                 buildString {
                     append(uploader)
-                    if (viewCount != null && viewCount >= 0) {
+                    if (viewCount != null) {
                         append(" • ")
                         append(VideoUtils.formatViewCount(viewCount))
-                        if (viewCount >= 0) append(" views")
+                        append(" views")
                     }
                     if (!uploadDate.isNullOrBlank()) {
                         append(" • ")
@@ -597,80 +902,180 @@ fun VideoRow(
             metadata?.invoke()
         }
         
-        if (trailing != null) {
-            Box(modifier = Modifier.minimumInteractiveComponentSize()) {
-                trailing()
-            }
-        } else if (onFavoriteClick != null || onDownloadClick != null) {
-            Box {
-                IconButton(onClick = { showMenu = true }) {
-                    Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "More",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
+        val hasAnyAction = onFavoriteClick != null || onDownloadClick != null || 
+                          onAddToPlaylistClick != null || onRemoveFromPlaylistClick != null || 
+                          onDeleteClick != null || onRetryClick != null || onCancelClick != null
+
+        if (trailing != null || hasAnyAction) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (trailing != null) {
+                    Box(modifier = Modifier.minimumInteractiveComponentSize()) {
+                        trailing()
+                    }
                 }
                 
-                DropdownMenu(
-                    expanded = showMenu,
-                    onDismissRequest = { showMenu = false }
-                ) {
-                    if (onDownloadClick != null) {
-                        DropdownMenuItem(
-                            text = { Text(if (isDownloaded) "Downloaded" else "Download") },
-                            leadingIcon = { 
-                                Icon(
-                                    imageVector = if (isDownloaded) Icons.Default.CheckCircle else Icons.Default.Download, 
-                                    contentDescription = null,
-                                    tint = if (isDownloaded) MaterialTheme.colorScheme.primary else LocalContentColor.current
-                                ) 
-                            },
-                            onClick = {
-                                showMenu = false
-                                if (!isDownloaded) onDownloadClick()
-                            },
-                            enabled = !isDownloaded
-                        )
-                    }
-                    if (onFavoriteClick != null) {
-                        DropdownMenuItem(
-                            text = { Text(if (isFavorite) "Remove from Favorites" else "Add to Favorites") },
-                            leadingIcon = { 
-                                Icon(
-                                    imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, 
-                                    contentDescription = null,
-                                    tint = if (isFavorite) Color.Red else LocalContentColor.current
-                                ) 
-                            },
-                            onClick = {
-                                showMenu = false
-                                onFavoriteClick()
-                            }
-                        )
-                    }
-                }
-            }
-        } else {
-            // Default Download controls if not provided via trailing
-            Row {
-                onRetryClick?.let {
-                    IconButton(onClick = it) {
-                        Icon(Icons.Default.Refresh, null, tint = MaterialTheme.colorScheme.primary)
-                    }
-                }
-                onCancelClick?.let {
-                    IconButton(onClick = it) {
-                        Icon(Icons.Default.Close, null)
-                    }
-                }
-                onDeleteClick?.let {
-                    IconButton(onClick = it) {
-                        Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
+                if (hasAnyAction) {
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            VideoRowMenuContent(
+                                isDownloaded = isDownloaded,
+                                isFavorite = isFavorite,
+                                isSaved = isSaved,
+                                onDownloadClick = onDownloadClick,
+                                onFavoriteClick = onFavoriteClick,
+                                onAddToPlaylistClick = onAddToPlaylistClick,
+                                onRemoveFromPlaylistClick = onRemoveFromPlaylistClick,
+                                onDeleteClick = onDeleteClick,
+                                onRetryClick = onRetryClick,
+                                onCancelClick = onCancelClick,
+                                deleteText = deleteText,
+                                dismissMenu = { showMenu = false }
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun VideoRowMenuContent(
+    isDownloaded: Boolean,
+    isFavorite: Boolean,
+    isSaved: Boolean,
+    onDownloadClick: (() -> Unit)?,
+    onFavoriteClick: (() -> Unit)?,
+    onAddToPlaylistClick: (() -> Unit)?,
+    onRemoveFromPlaylistClick: (() -> Unit)?,
+    onDeleteClick: (() -> Unit)? = null,
+    onRetryClick: (() -> Unit)? = null,
+    onCancelClick: (() -> Unit)? = null,
+    deleteText: String = "Delete",
+    dismissMenu: () -> Unit
+) {
+    if (onDownloadClick != null) {
+        DropdownMenuItem(
+            text = { Text(if (isDownloaded) "Downloaded" else "Download") },
+            leadingIcon = { 
+                Icon(
+                    imageVector = if (isDownloaded) Icons.Default.CheckCircle else Icons.Default.Download, 
+                    contentDescription = null,
+                    tint = if (isDownloaded) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                ) 
+            },
+            onClick = {
+                dismissMenu()
+                if (!isDownloaded) onDownloadClick()
+            },
+            enabled = !isDownloaded
+        )
+    }
+    if (onFavoriteClick != null) {
+        DropdownMenuItem(
+            text = { Text(if (isFavorite) "Remove from Favorites" else "Add to Favorites") },
+            leadingIcon = { 
+                Icon(
+                    imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, 
+                    contentDescription = null,
+                    tint = if (isFavorite) Color.Red else LocalContentColor.current
+                ) 
+            },
+            onClick = {
+                dismissMenu()
+                onFavoriteClick()
+            }
+        )
+    }
+    if (onAddToPlaylistClick != null) {
+        DropdownMenuItem(
+            text = { Text(if (isSaved) "Saved" else "Add to Local Playlist") },
+            leadingIcon = { 
+                Icon(
+                    imageVector = if (isSaved) Icons.Default.CheckCircle else Icons.AutoMirrored.Filled.PlaylistAdd, 
+                    contentDescription = null,
+                    tint = if (isSaved) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                ) 
+            },
+            onClick = {
+                dismissMenu()
+                onAddToPlaylistClick()
+            }
+        )
+    }
+    if (onRemoveFromPlaylistClick != null) {
+        DropdownMenuItem(
+            text = { Text("Remove from Playlist") },
+            leadingIcon = { 
+                Icon(
+                    imageVector = Icons.Default.PlaylistRemove, 
+                    contentDescription = null
+                ) 
+            },
+            onClick = {
+                dismissMenu()
+                onRemoveFromPlaylistClick()
+            }
+        )
+    }
+    if (onRetryClick != null) {
+        DropdownMenuItem(
+            text = { Text("Retry Download") },
+            leadingIcon = { 
+                Icon(
+                    imageVector = Icons.Default.Refresh, 
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                ) 
+            },
+            onClick = {
+                dismissMenu()
+                onRetryClick()
+            }
+        )
+    }
+    if (onCancelClick != null) {
+        DropdownMenuItem(
+            text = { Text("Cancel Download") },
+            leadingIcon = { 
+                Icon(
+                    imageVector = Icons.Default.Close, 
+                    contentDescription = null
+                ) 
+            },
+            onClick = {
+                dismissMenu()
+                onCancelClick()
+            }
+        )
+    }
+    if (onDeleteClick != null) {
+        DropdownMenuItem(
+            text = { Text(deleteText) },
+            leadingIcon = { 
+                Icon(
+                    imageVector = Icons.Default.Delete, 
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                ) 
+            },
+            onClick = {
+                dismissMenu()
+                onDeleteClick()
+            }
+        )
     }
 }
 
@@ -687,14 +1092,24 @@ fun ModernChannelCard(
             .padding(vertical = 12.dp, horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AsyncImage(
-            model = channel.thumbnailUrl,
-            contentDescription = null,
-            modifier = Modifier
-                .size(56.dp)
-                .clip(CircleShape),
-            contentScale = ContentScale.Crop
-        )
+        Surface(
+            modifier = Modifier.size(64.dp),
+            shape = CircleShape,
+            border = androidx.compose.foundation.BorderStroke(
+                2.dp, 
+                Brush.linearGradient(listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primaryContainer))
+            ),
+            color = Color.Transparent
+        ) {
+            AsyncImage(
+                model = channel.thumbnailUrl,
+                contentDescription = null,
+                modifier = Modifier
+                    .padding(3.dp)
+                    .clip(CircleShape),
+                contentScale = ContentScale.Crop
+            )
+        }
         
         Spacer(modifier = Modifier.width(16.dp))
         
@@ -702,16 +1117,18 @@ fun ModernChannelCard(
             Text(
                 text = channel.name,
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.Black,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                letterSpacing = (-0.2).sp
             )
             
             if (channel.subscriberCount != null && channel.subscriberCount >= 0) {
                 Text(
                     text = "${VideoUtils.formatNumber(channel.subscriberCount)} subscribers",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
@@ -729,14 +1146,14 @@ fun ModernChannelCard(
                     contentColor = MaterialTheme.colorScheme.surface
                 )
             },
-            shape = RoundedCornerShape(12.dp),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+            shape = CircleShape,
+            contentPadding = PaddingValues(horizontal = 18.dp),
             modifier = Modifier.height(36.dp)
         ) {
             Text(
                 text = if (channel.isSubscribed) "Subscribed" else "Subscribe",
                 style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Black
             )
         }
     }
@@ -815,10 +1232,13 @@ fun PlaylistDownloadRow(
 fun DownloadItemRow(
     download: DownloadEntity,
     modifier: Modifier = Modifier,
+    isSaved: Boolean = false,
     onClick: () -> Unit,
     onDeleteClick: () -> Unit,
     onCancelClick: () -> Unit,
-    onRetryClick: () -> Unit
+    onRetryClick: () -> Unit,
+    onAddToPlaylistClick: (() -> Unit)? = null,
+    onRemoveFromPlaylistClick: (() -> Unit)? = null
 ) {
     VideoRow(
         videoId = download.videoId,
@@ -828,8 +1248,17 @@ fun DownloadItemRow(
         progress = if (download.status != com.arslandaim.playtube.data.local.DownloadStatus.COMPLETED) {
             if (download.totalSize > 0) download.downloadedSize.toFloat() / download.totalSize else 0f
         } else null,
+        isSaved = isSaved,
         onClick = onClick,
         modifier = modifier,
+        onAddToPlaylistClick = onAddToPlaylistClick,
+        onRemoveFromPlaylistClick = onRemoveFromPlaylistClick,
+        onDeleteClick = onDeleteClick,
+        onRetryClick = if (download.status == com.arslandaim.playtube.data.local.DownloadStatus.FAILED) onRetryClick else null,
+        onCancelClick = if (download.status == com.arslandaim.playtube.data.local.DownloadStatus.DOWNLOADING || 
+                           download.status == com.arslandaim.playtube.data.local.DownloadStatus.PENDING || 
+                           download.status == com.arslandaim.playtube.data.local.DownloadStatus.WAITING) onCancelClick else null,
+        deleteText = "Delete Download",
         metadata = {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -872,28 +1301,6 @@ fun DownloadItemRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-        },
-        trailing = {
-            Row {
-                when (download.status) {
-                    com.arslandaim.playtube.data.local.DownloadStatus.FAILED -> {
-                        IconButton(onClick = onRetryClick) {
-                            Icon(Icons.Default.Refresh, null, tint = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                    com.arslandaim.playtube.data.local.DownloadStatus.DOWNLOADING,
-                    com.arslandaim.playtube.data.local.DownloadStatus.PENDING,
-                    com.arslandaim.playtube.data.local.DownloadStatus.WAITING -> {
-                        IconButton(onClick = onCancelClick) {
-                            Icon(Icons.Default.Close, null)
-                        }
-                    }
-                    else -> {}
-                }
-                IconButton(onClick = onDeleteClick) {
-                    Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
-                }
-            }
         }
     )
 }
@@ -902,19 +1309,22 @@ fun DownloadItemRow(
 fun FavoriteItemRow(
     favorite: FavoriteEntity,
     onClick: () -> Unit,
-    onRemoveClick: () -> Unit
+    onRemoveClick: () -> Unit,
+    isSaved: Boolean = false,
+    onAddToPlaylistClick: (() -> Unit)? = null,
+    onRemoveFromPlaylistClick: (() -> Unit)? = null
 ) {
     VideoRow(
         videoId = favorite.videoId,
         title = favorite.title,
         uploader = favorite.uploaderName,
         thumbnailUrl = favorite.thumbnailUrl,
+        isSaved = isSaved,
         onClick = onClick,
-        trailing = {
-            IconButton(onClick = onRemoveClick) {
-                Icon(Icons.Default.Favorite, null, tint = Color.Red)
-            }
-        }
+        onAddToPlaylistClick = onAddToPlaylistClick,
+        onRemoveFromPlaylistClick = onRemoveFromPlaylistClick,
+        onFavoriteClick = onRemoveClick,
+        isFavorite = true
     )
 }
 
@@ -938,5 +1348,5 @@ fun formatBytes(bytes: Long): String {
     if (bytes < 1024) return "$bytes B"
     val exp = (Math.log(bytes.toDouble()) / Math.log(1024.0)).toInt()
     val pre = "KMGTPE"[exp - 1]
-    return String.format("%.1f %sB", bytes / Math.pow(1024.0, exp.toDouble()), pre)
+    return String.format(java.util.Locale.US, "%.1f %sB", bytes / Math.pow(1024.0, exp.toDouble()), pre)
 }

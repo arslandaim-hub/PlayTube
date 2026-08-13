@@ -43,8 +43,17 @@ class SettingsViewModel @Inject constructor(
     val isAutoUpdateEnabled: StateFlow<Boolean> = preferencesManager.isAutoUpdateEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    val isDynamicColorEnabled: StateFlow<Boolean> = preferencesManager.isDynamicColorEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     val isRecommendationsPaused: StateFlow<Boolean> = preferencesManager.isRecommendationsPaused
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val subtitleFontSize: StateFlow<Float> = preferencesManager.subtitleFontSize
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 16f)
+
+    val subtitleBackgroundOpacity: StateFlow<Float> = preferencesManager.subtitleBackgroundOpacity
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.65f)
 
     fun setHistoryEnabled(enabled: Boolean) {
         viewModelScope.launch {
@@ -70,9 +79,33 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setAutoUpdateEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesManager.setAutoUpdateEnabled(enabled)
+        }
+    }
+
+    fun setDynamicColorEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesManager.setDynamicColorEnabled(enabled)
+        }
+    }
+
     fun setRecommendationsPaused(paused: Boolean) {
         viewModelScope.launch {
             preferencesManager.setRecommendationsPaused(paused)
+        }
+    }
+
+    fun setSubtitleFontSize(size: Float) {
+        viewModelScope.launch {
+            preferencesManager.setSubtitleFontSize(size)
+        }
+    }
+
+    fun setSubtitleBackgroundOpacity(opacity: Float) {
+        viewModelScope.launch {
+            preferencesManager.setSubtitleBackgroundOpacity(opacity)
         }
     }
 

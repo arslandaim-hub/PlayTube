@@ -80,7 +80,7 @@ fun VideoCardSkeleton(transition: InfiniteTransition? = null) {
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(16.dp))
                 .shimmerEffect(transition)
         )
         
@@ -140,42 +140,39 @@ fun VideoListSkeleton() {
 fun SubscriptionFeedSkeleton() {
     val transition = rememberSyncShimmerTransition()
     Column(modifier = Modifier.fillMaxSize()) {
-        // Channel bubbles skeleton
+        // Redesigned Channel bubbles skeleton (More fluid, no divider)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp, horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(vertical = 12.dp, horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             repeat(6) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(50.dp)
                             .clip(CircleShape)
                             .shimmerEffect(transition)
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     Box(
                         modifier = Modifier
-                            .width(36.dp)
+                            .width(40.dp)
                             .height(10.dp)
-                            .clip(RoundedCornerShape(2.dp))
+                            .clip(RoundedCornerShape(4.dp))
                             .shimmerEffect(transition)
                     )
                 }
             }
         }
         
-        HorizontalDivider(
-            thickness = 0.5.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-        )
+        Spacer(modifier = Modifier.height(12.dp))
         
         // Video list skeleton
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 16.dp),
+            contentPadding = PaddingValues(bottom = 100.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             items(3) {
@@ -188,105 +185,304 @@ fun SubscriptionFeedSkeleton() {
 @Composable
 fun PlayerMetadataSkeleton(transition: InfiniteTransition? = null) {
     val actualTransition = transition ?: rememberSyncShimmerTransition()
-    Surface(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
-        color = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp).copy(alpha = 0.7f),
-        shape = RoundedCornerShape(24.dp),
-        border = androidx.compose.foundation.BorderStroke(
-            width = 0.5.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-        )
+            .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            // Title
+        // Title
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .height(26.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .shimmerEffect(actualTransition)
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.4f)
+                .height(26.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .shimmerEffect(actualTransition)
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Micro-stats row
+        Row {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(0.85f)
-                    .height(22.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .width(100.dp)
+                    .height(14.dp)
+                    .clip(RoundedCornerShape(4.dp))
                     .shimmerEffect(actualTransition)
             )
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.width(12.dp))
+            Box(
+                modifier = Modifier
+                    .width(80.dp)
+                    .height(14.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .shimmerEffect(actualTransition)
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        // Channel Section
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .shimmerEffect(actualTransition)
+            )
             
-            // Micro-stats row
-            Row {
+            Spacer(modifier = Modifier.width(12.dp))
+            
+            Column(modifier = Modifier.weight(1f)) {
                 Box(
                     modifier = Modifier
-                        .width(70.dp)
-                        .height(14.dp)
+                        .width(140.dp)
+                        .height(18.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .shimmerEffect(actualTransition)
                 )
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Box(
                     modifier = Modifier
-                        .width(90.dp)
-                        .height(14.dp)
+                        .width(80.dp)
+                        .height(12.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .shimmerEffect(actualTransition)
                 )
             }
             
-            Spacer(modifier = Modifier.height(16.dp))
-            HorizontalDivider(
-                thickness = 0.5.dp, 
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            // Subscribe Button Placeholder
+            Box(
+                modifier = Modifier
+                    .width(100.dp)
+                    .height(36.dp)
+                    .clip(CircleShape)
+                    .shimmerEffect(actualTransition)
             )
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Channel Section
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .shimmerEffect(actualTransition)
-                )
-                
-                Spacer(modifier = Modifier.width(12.dp))
-                
-                Column(modifier = Modifier.weight(1f)) {
-                    Box(
-                        modifier = Modifier
-                            .width(140.dp)
-                            .height(18.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .shimmerEffect(actualTransition)
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .width(80.dp)
-                            .height(12.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .shimmerEffect(actualTransition)
-                    )
-                }
-                
-                // Subscribe Button Placeholder
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        // Action Row
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            repeat(3) {
                 Box(
                     modifier = Modifier
                         .width(100.dp)
                         .height(36.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(CircleShape)
                         .shimmerEffect(actualTransition)
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun ChannelMetadataSkeleton(transition: InfiniteTransition? = null) {
+    val actualTransition = transition ?: rememberSyncShimmerTransition()
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // Banner Placeholder
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp)
+                .shimmerEffect(actualTransition)
+        )
+        
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Header Row (Avatar + Info)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                // Avatar
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(CircleShape)
+                        .shimmerEffect(actualTransition)
+                )
+                
+                Spacer(modifier = Modifier.width(20.dp))
+                
+                Column {
+                    // Name
+                    Box(
+                        modifier = Modifier
+                            .width(150.dp)
+                            .height(24.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .shimmerEffect(actualTransition)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    // Stats
+                    Box(
+                        modifier = Modifier
+                            .width(100.dp)
+                            .height(14.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .shimmerEffect(actualTransition)
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Subscribe Button Placeholder
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .clip(CircleShape)
+                    .shimmerEffect(actualTransition)
+            )
             
             Spacer(modifier = Modifier.height(20.dp))
             
-            // Action Row
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Description Placeholder
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.8f)
+                    .height(12.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .shimmerEffect(actualTransition)
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // Tabs Placeholder
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            Box(modifier = Modifier.width(60.dp).height(20.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect(actualTransition))
+            Box(modifier = Modifier.width(80.dp).height(20.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect(actualTransition))
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Content Placeholders (Videos)
+        repeat(2) {
+            VideoCardSkeleton(actualTransition)
+        }
+    }
+}
+
+@Composable
+fun LibraryDashboardSkeleton() {
+    val transition = rememberSyncShimmerTransition()
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Fluid Profile Header Placeholder
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(CircleShape)
+                    .shimmerEffect(transition)
+            )
+            Spacer(modifier = Modifier.width(24.dp))
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
                 repeat(3) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            modifier = Modifier
+                                .width(40.dp)
+                                .height(24.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .shimmerEffect(transition)
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .width(60.dp)
+                                .height(12.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .shimmerEffect(transition)
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Section Carousels Placeholder
+        repeat(3) {
+            Column(modifier = Modifier.padding(vertical = 12.dp)) {
+                // Header
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Box(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(38.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .shimmerEffect(actualTransition)
+                            .width(120.dp)
+                            .height(24.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .shimmerEffect(transition)
                     )
+                    Box(
+                        modifier = Modifier
+                            .width(60.dp)
+                            .height(16.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .shimmerEffect(transition)
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Carousel
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    repeat(2) {
+                        Column(modifier = Modifier.width(180.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(16f / 9f)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .shimmerEffect(transition)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.8f)
+                                    .height(16.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .shimmerEffect(transition)
+                            )
+                        }
+                    }
                 }
             }
         }

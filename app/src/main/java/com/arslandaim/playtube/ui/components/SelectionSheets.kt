@@ -10,7 +10,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.VideoFile
@@ -125,6 +129,45 @@ fun PlaybackSpeedSelectionSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+fun PitchSelectionSheet(
+    currentPitch: Float,
+    onDismiss: () -> Unit,
+    onPitchSelected: (Float) -> Unit
+) {
+    val pitches = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f)
+    
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(modifier = Modifier.padding(bottom = 32.dp)) {
+            Text(
+                text = "Audio Pitch",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+            
+            LazyColumn {
+                items(pitches) { pitch ->
+                    ListItem(
+                        headlineContent = { Text(text = if (pitch == 1.0f) "Normal" else "${pitch}x") },
+                        leadingContent = { 
+                            RadioButton(
+                                selected = pitch == currentPitch,
+                                onClick = null 
+                            ) 
+                        },
+                        modifier = Modifier.clickable { onPitchSelected(pitch) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 fun DownloadSelectionSheet(
     videoStreams: List<StreamItem>,
     onDismiss: () -> Unit,
@@ -210,6 +253,70 @@ fun SubtitleSelectionSheet(
                             ) 
                         },
                         modifier = Modifier.clickable { onLanguageSelected(subtitle.languageTag) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddToPlaylistSheet(
+    playlists: List<com.arslandaim.playtube.data.local.LocalPlaylistEntity>,
+    playlistsWithVideo: Set<Int> = emptySet(),
+    onDismiss: () -> Unit,
+    onPlaylistSelected: (com.arslandaim.playtube.data.local.LocalPlaylistEntity) -> Unit,
+    onCreateNewPlaylist: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(modifier = Modifier.padding(bottom = 32.dp)) {
+            Text(
+                text = "Add to Playlist",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+            
+            ListItem(
+                headlineContent = { Text("Create New Playlist") },
+                leadingContent = { Icon(Icons.Default.Add, null) },
+                modifier = Modifier.clickable { onCreateNewPlaylist() }
+            )
+            
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            
+            LazyColumn {
+                items(playlists) { playlist ->
+                    val isAdded = playlistsWithVideo.contains(playlist.id)
+                    ListItem(
+                        headlineContent = { 
+                            Text(
+                                text = playlist.name,
+                                fontWeight = if (isAdded) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isAdded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            ) 
+                        },
+                        leadingContent = { 
+                            Icon(
+                                imageVector = if (isAdded) Icons.Default.CheckCircle else Icons.AutoMirrored.Filled.PlaylistPlay, 
+                                contentDescription = null,
+                                tint = if (isAdded) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                            ) 
+                        },
+                        trailingContent = {
+                            if (isAdded) {
+                                Text(
+                                    text = "Added",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        },
+                        modifier = Modifier.clickable(enabled = !isAdded) { onPlaylistSelected(playlist) }
                     )
                 }
             }

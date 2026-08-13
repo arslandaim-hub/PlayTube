@@ -30,6 +30,8 @@
     <string name="downloaded">Downloaded</string>
     <string name="like">Like</string>
     <string name="liked">Liked</string>
+    <string name="save">Save</string>
+    <string name="saved">Saved</string>
     <string name="share">Share</string>
     <string name="info">Info</string>
     <string name="subscribe">Subscribe</string>

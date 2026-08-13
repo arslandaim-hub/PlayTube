@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -30,8 +31,8 @@ fun DataManagementScreen(
     viewModel: DataManagementViewModel,
     onBack: () -> Unit
 ) {
-    val importProgress by viewModel.importProgress.collectAsState()
-    val isProcessing by viewModel.isProcessing.collectAsState()
+    val importProgress by viewModel.importProgress.collectAsStateWithLifecycle()
+    val isProcessing by viewModel.isProcessing.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {

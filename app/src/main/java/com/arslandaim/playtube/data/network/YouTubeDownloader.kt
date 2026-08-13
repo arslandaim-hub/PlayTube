@@ -30,6 +30,7 @@ class YouTubeDownloader(private val client: OkHttpClient) : Downloader() {
             .addHeader("User-Agent", Constants.DEFAULT_USER_AGENT)
 
         // Bypass YouTube Consent/GDPR redirection in Europe
+        // Only apply to YouTube domains to minimize header interference
         if (url.contains("youtube.com") || url.contains("googlevideo.com")) {
             okHttpRequestBuilder.addHeader("Cookie", Constants.YouTube.CONSENT_COOKIE)
         }
@@ -40,12 +41,42 @@ class YouTubeDownloader(private val client: OkHttpClient) : Downloader() {
             }
         }
 
-        val okHttpResponse = client.newCall(okHttpRequestBuilder.build()).execute()
+        val maxRetries = 2
+        var attempt = 0
+        var lastResponse: okhttp3.Response? = null
+        var lastException: IOException? = null
 
-        val responseBody = okHttpResponse.body?.string()
-        val responseCode = okHttpResponse.code
-        val responseMessage = okHttpResponse.message
-        val responseHeaders = okHttpResponse.headers.toMultimap()
+        while (attempt <= maxRetries) {
+            try {
+                val okHttpResponse = client.newCall(okHttpRequestBuilder.build()).execute()
+                
+                // If it's a 403 or 429, it might be an IP block or temporary throttle.
+                if (okHttpResponse.code == 403 || okHttpResponse.code == 429) {
+                    okHttpResponse.close()
+                    attempt++
+                    if (attempt <= maxRetries) {
+                        Thread.sleep(1000L * attempt) // Linear backoff
+                        continue
+                    }
+                }
+                
+                lastResponse = okHttpResponse
+                break
+            } catch (e: IOException) {
+                lastException = e
+                attempt++
+                if (attempt <= maxRetries) {
+                    Thread.sleep(500L * attempt)
+                }
+            }
+        }
+
+        val response = lastResponse ?: throw lastException ?: IOException("Request failed after $maxRetries retries")
+
+        val responseBody = response.body?.string()
+        val responseCode = response.code
+        val responseMessage = response.message
+        val responseHeaders = response.headers.toMultimap()
 
         return Response(responseCode, responseMessage, responseHeaders, responseBody, url)
     }

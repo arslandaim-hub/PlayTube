@@ -7,6 +7,7 @@ package com.arslandaim.playtube.ui.components
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
@@ -49,6 +50,7 @@ import androidx.compose.ui.platform.LocalContext
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.arslandaim.playtube.utils.VideoUtils
+import com.arslandaim.playtube.utils.Constants
 import android.content.res.Configuration
 
 enum class ThumbnailQuality {
@@ -65,7 +67,7 @@ fun ThumbnailImage(
     filterQuality: FilterQuality = FilterQuality.High
 ) {
     val context = LocalContext.current
-    
+
     // Structured fallback chain based on requested quality
     val sourceUrls = remember(videoId, thumbnailUrl, quality) {
         // Attempt to extract ID if the provided URL is a YouTube image
@@ -390,11 +392,14 @@ fun VideoList(
     videos: List<VideoItem>,
     downloadedIds: Set<String> = emptySet(),
     favoriteIds: Set<String> = emptySet(),
+    savedVideoIds: Set<String> = emptySet(),
     onVideoClick: (VideoItem) -> Unit,
     onChannelClick: ((String) -> Unit)? = null,
     onFavoriteClick: ((VideoItem) -> Unit)? = null,
     onNotInterestedClick: ((VideoItem) -> Unit)? = null,
     onDownloadClick: ((VideoItem) -> Unit)? = null,
+    onAddToPlaylistClick: ((VideoItem) -> Unit)? = null,
+    onRemoveFromPlaylistClick: ((VideoItem) -> Unit)? = null,
     onLoadMore: (() -> Unit)? = null,
     isLoadingMore: Boolean = false,
     header: (@Composable () -> Unit)? = null,
@@ -402,8 +407,8 @@ fun VideoList(
     contentPadding: PaddingValues = PaddingValues(bottom = 100.dp)
 ) {
     val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val columns = if (isLandscape) 2 else 1
+    val screenWidth = configuration.screenWidthDp
+    val columns = Constants.calculateGridColumns(screenWidth)
 
     if (columns > 1) {
         val gridState = rememberLazyGridState()
@@ -441,6 +446,12 @@ fun VideoList(
                 val currentOnDownloadClick = remember(video, onDownloadClick) {
                     if (onDownloadClick != null) { { onDownloadClick(video) } } else null
                 }
+                val currentOnAddToPlaylistClick = remember(video, onAddToPlaylistClick) {
+                    if (onAddToPlaylistClick != null) { { onAddToPlaylistClick(video) } } else null
+                }
+                val currentOnRemoveFromPlaylistClick = remember(video, onRemoveFromPlaylistClick) {
+                    if (onRemoveFromPlaylistClick != null) { { onRemoveFromPlaylistClick(video) } } else null
+                }
                 val currentOnChannelClick = remember(video, onChannelClick) {
                     if (onChannelClick != null && video.uploaderUrl != null) { { onChannelClick(video.uploaderUrl) } } else null
                 }
@@ -452,9 +463,12 @@ fun VideoList(
                     video = video,
                     isDownloaded = downloadedIds.contains(video.id),
                     isFavorite = favoriteIds.contains(video.id),
+                    isSaved = savedVideoIds.contains(video.id),
                     onFavoriteClick = currentOnFavoriteClick,
                     onNotInterestedClick = currentOnNotInterestedClick,
                     onDownloadClick = currentOnDownloadClick,
+                    onAddToPlaylistClick = currentOnAddToPlaylistClick,
+                    onRemoveFromPlaylistClick = currentOnRemoveFromPlaylistClick,
                     onChannelClick = currentOnChannelClick,
                     onClick = currentOnClick
                 )
@@ -507,6 +521,12 @@ fun VideoList(
                 val currentOnDownloadClick = remember(video, onDownloadClick) {
                     if (onDownloadClick != null) { { onDownloadClick(video) } } else null
                 }
+                val currentOnAddToPlaylistClick = remember(video, onAddToPlaylistClick) {
+                    if (onAddToPlaylistClick != null) { { onAddToPlaylistClick(video) } } else null
+                }
+                val currentOnRemoveFromPlaylistClick = remember(video, onRemoveFromPlaylistClick) {
+                    if (onRemoveFromPlaylistClick != null) { { onRemoveFromPlaylistClick(video) } } else null
+                }
                 val currentOnChannelClick = remember(video, onChannelClick) {
                     if (onChannelClick != null && video.uploaderUrl != null) { { onChannelClick(video.uploaderUrl) } } else null
                 }
@@ -521,6 +541,8 @@ fun VideoList(
                     onFavoriteClick = currentOnFavoriteClick,
                     onNotInterestedClick = currentOnNotInterestedClick,
                     onDownloadClick = currentOnDownloadClick,
+                    onAddToPlaylistClick = currentOnAddToPlaylistClick,
+                    onRemoveFromPlaylistClick = currentOnRemoveFromPlaylistClick,
                     onChannelClick = currentOnChannelClick,
                     onClick = currentOnClick
                 )
@@ -547,9 +569,12 @@ fun VideoItemRow(
     video: VideoItem,
     isDownloaded: Boolean = false,
     isFavorite: Boolean = false,
+    isSaved: Boolean = false,
     onFavoriteClick: (() -> Unit)? = null,
     onNotInterestedClick: (() -> Unit)? = null,
     onDownloadClick: (() -> Unit)? = null,
+    onAddToPlaylistClick: (() -> Unit)? = null,
+    onRemoveFromPlaylistClick: (() -> Unit)? = null,
     onChannelClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
@@ -575,7 +600,12 @@ fun VideoItemRow(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(16.dp))
+                .border(
+                    width = 0.5.dp, 
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f), 
+                    shape = RoundedCornerShape(16.dp)
+                )
         ) {
             ThumbnailImage(
                 videoId = video.id,
@@ -586,20 +616,23 @@ fun VideoItemRow(
                     .aspectRatio(16f / 9f)
             )
             
-            // Duration Badge
+            // High-End Duration Badge
             if (video.duration > 0) {
                 Surface(
-                    color = Color.Black.copy(alpha = 0.8f),
-                    shape = RoundedCornerShape(8.dp),
+                    color = Color.Black.copy(alpha = 0.75f),
+                    shape = RoundedCornerShape(6.dp),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(10.dp)
+                        .padding(8.dp)
                 ) {
                     Text(
                         text = VideoUtils.formatDuration(video.duration),
                         color = Color.White,
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black
+                        ),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
             }
@@ -690,7 +723,7 @@ fun VideoItemRow(
                         modifier = Modifier.weight(1f)
                     )
                     
-                    if (onFavoriteClick != null || onDownloadClick != null || onNotInterestedClick != null) {
+                    if (onFavoriteClick != null || onDownloadClick != null || onNotInterestedClick != null || onAddToPlaylistClick != null || onRemoveFromPlaylistClick != null) {
                         Box {
                             IconButton(
                                 onClick = { showMenu = true },
@@ -740,6 +773,37 @@ fun VideoItemRow(
                                         onClick = {
                                             showMenu = false
                                             onFavoriteClick()
+                                        }
+                                    )
+                                }
+                                if (onAddToPlaylistClick != null) {
+                                    DropdownMenuItem(
+                                        text = { Text(if (isSaved) "Saved" else "Add to Local Playlist") },
+                                        leadingIcon = { 
+                                            Icon(
+                                                imageVector = if (isSaved) Icons.Default.CheckCircle else Icons.AutoMirrored.Filled.PlaylistAdd, 
+                                                contentDescription = null,
+                                                tint = if (isSaved) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                                            ) 
+                                        },
+                                        onClick = {
+                                            showMenu = false
+                                            onAddToPlaylistClick()
+                                        }
+                                    )
+                                }
+                                if (onRemoveFromPlaylistClick != null) {
+                                    DropdownMenuItem(
+                                        text = { Text("Remove from Playlist") },
+                                        leadingIcon = { 
+                                            Icon(
+                                                imageVector = Icons.Default.PlaylistRemove, 
+                                                contentDescription = null
+                                            ) 
+                                        },
+                                        onClick = {
+                                            showMenu = false
+                                            onRemoveFromPlaylistClick()
                                         }
                                     )
                                 }

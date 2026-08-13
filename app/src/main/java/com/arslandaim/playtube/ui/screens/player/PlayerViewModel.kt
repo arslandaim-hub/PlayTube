@@ -43,10 +43,12 @@ class PlayerViewModel @Inject constructor(
     private val addToHistoryUseCase: AddToHistoryUseCase,
     private val toggleFavoriteUseCase: ToggleFavoriteUseCase,
     private val isFavoriteUseCase: IsFavoriteUseCase,
+    private val isSavedUseCase: IsSavedUseCase,
     private val toggleSubscriptionUseCase: ToggleSubscriptionUseCase,
     private val isSubscribedUseCase: IsSubscribedUseCase,
     private val updateWatchProgressUseCase: UpdateWatchProgressUseCase,
     private val updateUserInterestsUseCase: UpdateUserInterestsUseCase,
+    private val getSponsorSegmentsUseCase: GetSponsorSegmentsUseCase,
     private val preferencesManager: PreferencesManager,
     private val connectivityObserver: ConnectivityObserver,
     private val playbackManager: PlaybackManager,
@@ -65,9 +67,13 @@ class PlayerViewModel @Inject constructor(
     val currentPosition: StateFlow<Long> = playbackManager.currentPosition
     val duration: StateFlow<Long> = playbackManager.duration
     val bufferedPosition: StateFlow<Long> = playbackManager.bufferedPosition
+    val playbackStats: StateFlow<PlaybackStats> = playbackManager.playbackStats
 
     private val _isFavorite = MutableStateFlow(false)
     val isFavorite: StateFlow<Boolean> = _isFavorite.asStateFlow()
+
+    private val _isSaved = MutableStateFlow(false)
+    val isSaved: StateFlow<Boolean> = _isSaved.asStateFlow()
 
     private val _isSubscribed = MutableStateFlow(false)
     val isSubscribed: StateFlow<Boolean> = _isSubscribed.asStateFlow()
@@ -97,11 +103,20 @@ class PlayerViewModel @Inject constructor(
     val preferredQuality: StateFlow<String> = preferencesManager.preferredQuality
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Auto")
 
+    val subtitleFontSize: StateFlow<Float> = preferencesManager.subtitleFontSize
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 16f)
+
+    val subtitleBackgroundOpacity: StateFlow<Float> = preferencesManager.subtitleBackgroundOpacity
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.65f)
+
     private val _currentQuality = MutableStateFlow<String?>(null)
     val currentQuality: StateFlow<String?> = _currentQuality.asStateFlow()
 
     private val _playbackSpeed = MutableStateFlow(1f)
     val playbackSpeed: StateFlow<Float> = _playbackSpeed.asStateFlow()
+
+    private val _playbackPitch = MutableStateFlow(1f)
+    val playbackPitch: StateFlow<Float> = _playbackPitch.asStateFlow()
 
     private val _seekAmount = MutableStateFlow(0)
     val seekAmount: StateFlow<Int> = _seekAmount.asStateFlow()
@@ -112,11 +127,22 @@ class PlayerViewModel @Inject constructor(
     private val _isSeekForward = MutableStateFlow(true)
     val isSeekForward: StateFlow<Boolean> = _isSeekForward.asStateFlow()
 
+    private val _showStatsForNerds = MutableStateFlow(false)
+    val showStatsForNerds: StateFlow<Boolean> = _showStatsForNerds.asStateFlow()
+
     private val _snackbarMessage = MutableSharedFlow<String>()
     val snackbarMessage: SharedFlow<String> = _snackbarMessage.asSharedFlow()
 
     private val _downloadState = MutableStateFlow<DownloadDialogState>(DownloadDialogState.Idle)
     val downloadState: StateFlow<DownloadDialogState> = _downloadState.asStateFlow()
+
+    private val _comments = MutableStateFlow<List<CommentItem>>(emptyList())
+    val comments: StateFlow<List<CommentItem>> = _comments.asStateFlow()
+
+    private val _isFetchingComments = MutableStateFlow(false)
+    val isFetchingComments: StateFlow<Boolean> = _isFetchingComments.asStateFlow()
+
+    private var nextCommentsPage: Page? = null
 
     val downloadedVideoIds: StateFlow<Set<String>> = downloadRepository.getAllDownloads()
         .map { list -> 
@@ -145,6 +171,12 @@ class PlayerViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             playbackManager.playbackError.collect { handlePlayerError(it) }
+        }
+        viewModelScope.launch {
+            playbackManager.recoveryRequired.collect { pos ->
+                lastFailedPosition = pos
+                recoverExpiredUrl()
+            }
         }
         viewModelScope.launch {
             playbackManager.mediaItemTransition.collect { videoId ->
@@ -182,16 +214,9 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             playbackManager.isPlaying.collect { playing ->
                 if (playing) {
-                    val now = System.currentTimeMillis()
-                    val pauseDuration = now - lastPauseTimestamp
-                    if (lastPauseTimestamp > 0 && pauseDuration > 5 * 60 * 1000) {
-                        lastFailedPosition = playbackManager.player.currentPosition
-                        recoverExpiredUrl()
-                    }
                     isStalledDueToNetwork = false
                     _isRecovering.value = false
                 } else {
-                    lastPauseTimestamp = System.currentTimeMillis()
                     saveWatchProgress()
                 }
             }
@@ -238,6 +263,12 @@ class PlayerViewModel @Inject constructor(
         // Remote events
         viewModelScope.launch { queueManager.skipToNextEvent.collect { playNext() } }
         viewModelScope.launch { queueManager.skipToPreviousEvent.collect { playPrevious() } }
+
+        viewModelScope.launch {
+            playbackManager.onSponsorSkipped.collect { segment ->
+                _snackbarMessage.emit("Skipped ${segment.category}")
+            }
+        }
     }
 
     private fun loadVideoMetadata(videoId: String) {
@@ -264,6 +295,7 @@ class PlayerViewModel @Inject constructor(
                     
                     val uploaderId = VideoUtils.extractChannelId(bundle.uploaderUrl) ?: bundle.uploaderUrl
                     uploaderId?.let { id -> launch { isSubscribedUseCase(id).collectLatest { _isSubscribed.value = it } } }
+                    launch { isSavedUseCase(videoId).collectLatest { _isSaved.value = it } }
                 }
                 .onFailure { _uiState.value = PlayerUiState.Error(PlayTubeError.fromThrowable(it)) }
         }
@@ -298,7 +330,15 @@ class PlayerViewModel @Inject constructor(
         
         loadingJob = viewModelScope.launch {
             launch { isFavoriteUseCase(videoId).collectLatest { _isFavorite.value = it } }
+            launch { isSavedUseCase(videoId).collectLatest { _isSaved.value = it } }
             
+            // Fetch SponsorBlock segments
+            launch {
+                getSponsorSegmentsUseCase(videoId).onSuccess { segments ->
+                    playbackManager.setSponsorSegments(segments)
+                }
+            }
+
             val downloadedVideo = withContext(Dispatchers.IO) { downloadRepository.getDownloadByVideoId(videoId) }
             if (downloadedVideo != null && downloadedVideo.status == DownloadStatus.COMPLETED) {
                 val localFile = File(downloadedVideo.filePath)
@@ -347,9 +387,13 @@ class PlayerViewModel @Inject constructor(
 
     private fun resetPlaybackState(videoId: String, video: VideoItem) {
         _isFavorite.value = false
+        _isSaved.value = false
         _isSubscribed.value = false
         _currentQuality.value = null
         _isCcEnabled.value = false
+        _comments.value = emptyList()
+        nextCommentsPage = null
+        playbackManager.setSponsorSegments(emptyList())
         lastPauseTimestamp = 0L
         if (!sessionHistory.contains(videoId)) {
             sessionHistory.add(videoId)
@@ -375,6 +419,10 @@ class PlayerViewModel @Inject constructor(
     }
 
     private suspend fun getResumePosition(videoId: String): Long {
+        val lastSessionId = preferencesManager.lastPlayedVideoId.first()
+        if (lastSessionId == videoId) {
+            return preferencesManager.lastPlayedPosition.first()
+        }
         val item = libraryRepository.getHistory().first().find { it.videoId == videoId }
         return if (item != null && item.durationMs > 0 && item.progressMs < item.durationMs * 0.95) item.progressMs else 0
     }
@@ -460,9 +508,30 @@ class PlayerViewModel @Inject constructor(
         val videoId = currentVideoId ?: return
         _isRecovering.value = true
         viewModelScope.launch {
+            // Check if it finished downloading while paused
+            val download = withContext(Dispatchers.IO) { downloadRepository.getDownloadByVideoId(videoId) }
+            if (download != null && download.status == DownloadStatus.COMPLETED) {
+                val localFile = File(download.filePath)
+                if (withContext(Dispatchers.IO) { localFile.exists() }) {
+                    playLocal(videoId, download, localFile, true)
+                    _isRecovering.value = false
+                    return@launch
+                }
+            }
+
             getVideoStreamsUseCase(videoId, forceRefresh = true).onSuccess { bundle ->
                 currentBundle = bundle
-                bundle.videoStreams.find { it.quality.contains("360") } ?: bundle.videoStreams.find { it.quality.contains("480") } ?: bundle.videoStreams.firstOrNull()?.let {
+                _uiState.value = PlayerUiState.Success(bundle.title, bundle.uploaderName, bundle)
+                
+                val preferred = preferredQuality.value
+                val stream = if (preferred == "Auto") {
+                    selectAutoQuality(bundle.videoStreams)
+                } else {
+                    bundle.videoStreams.find { it.quality == preferred } 
+                        ?: selectAutoQuality(bundle.videoStreams)
+                }
+
+                stream?.let {
                     playbackManager.play(videoId, bundle, it, lastFailedPosition)
                     isStalledDueToNetwork = false
                     _isRecovering.value = false
@@ -497,6 +566,9 @@ class PlayerViewModel @Inject constructor(
         lastSavedPosition = pos
         val ratio = pos.toFloat() / dur
         viewModelScope.launch(Dispatchers.IO) {
+            val isLocal = currentQuality.value?.contains("Local") == true
+            preferencesManager.setLastPlayedSession(videoId, pos, isLocal)
+            
             if (preferencesManager.isHistoryEnabled.first()) {
                 updateWatchProgressUseCase(videoId, pos, dur)
                 bundle?.let {
@@ -507,43 +579,70 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun togglePlayPause() = playbackManager.togglePlayPause()
+    fun togglePlayPause() {
+        if (playbackManager.isPlaying.value) {
+            playbackManager.pause()
+        } else {
+            val now = System.currentTimeMillis()
+            val pauseDuration = now - playbackManager.lastPauseTimestamp
+            if (playbackManager.lastPauseTimestamp > 0 && pauseDuration > 3 * 60 * 1000) {
+                lastFailedPosition = playbackManager.player.currentPosition
+                recoverExpiredUrl()
+            } else {
+                playbackManager.resume()
+            }
+        }
+    }
     fun seekTo(pos: Long) { playbackManager.seekTo(pos); saveWatchProgress() }
     fun setPlaybackSpeed(speed: Float) { _playbackSpeed.value = speed; playbackManager.setPlaybackSpeed(speed) }
+    fun setPlaybackPitch(pitch: Float) { _playbackPitch.value = pitch; playbackManager.setPitch(pitch) }
     fun setQuality(stream: StreamItem?) {
         val videoId = currentVideoId ?: return
         val bundle = currentBundle ?: return
-        val pos = playbackManager.currentPosition.value
 
         viewModelScope.launch {
             if (stream == null) {
                 // User selected "Auto"
                 preferencesManager.setPreferredQuality("Auto")
                 val autoStream = selectAutoQuality(bundle.videoStreams)
-                autoStream?.let { playbackManager.play(videoId, bundle, it, pos) }
+                autoStream?.let { 
+                    playbackManager.switchQualitySeamlessly(videoId, bundle, it)
+                    _currentQuality.value = it.quality
+                }
             } else {
                 preferencesManager.setPreferredQuality(stream.quality)
-                playbackManager.play(videoId, bundle, stream, pos)
+                playbackManager.switchQualitySeamlessly(videoId, bundle, stream)
+                _currentQuality.value = stream.quality
             }
         }
+    }
+
+    fun toggleStatsForNerds() {
+        _showStatsForNerds.value = !_showStatsForNerds.value
     }
 
     private fun selectAutoQuality(streams: List<StreamItem>): StreamItem? {
         if (streams.isEmpty()) return null
         
         val estimate = playbackManager.getBandwidthEstimate()
+        val bufferedDuration = playbackManager.player.bufferedPosition - playbackManager.player.currentPosition
+        
         val sortedStreams = streams.sortedBy { 
             it.quality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 
         }
 
         val thresholds = Constants.QualityThresholds
+        
+        // If buffer is very low (less than 5s), stick to a lower quality even if bandwidth is high
+        val maxAllowedQuality = if (bufferedDuration < 5000) thresholds.P480 else Long.MAX_VALUE
+
         return when {
-            estimate >= thresholds.P2160 -> sortedStreams.findLast { it.quality.contains("2160") || it.quality.contains("4K") }
-            estimate >= thresholds.P1440 -> sortedStreams.findLast { it.quality.contains("1440") || it.quality.contains("2K") }
-            estimate >= thresholds.P1080 -> sortedStreams.findLast { it.quality.contains("1080") }
-            estimate >= thresholds.P720 -> sortedStreams.findLast { it.quality.contains("720") }
-            estimate >= thresholds.P480 -> sortedStreams.findLast { it.quality.contains("480") }
-            estimate >= thresholds.P360 -> sortedStreams.findLast { it.quality.contains("360") }
+            estimate >= thresholds.P2160 && thresholds.P2160 <= maxAllowedQuality -> sortedStreams.findLast { it.quality.contains("2160") || it.quality.contains("4K") }
+            estimate >= thresholds.P1440 && thresholds.P1440 <= maxAllowedQuality -> sortedStreams.findLast { it.quality.contains("1440") || it.quality.contains("2K") }
+            estimate >= thresholds.P1080 && thresholds.P1080 <= maxAllowedQuality -> sortedStreams.findLast { it.quality.contains("1080") }
+            estimate >= thresholds.P720 && thresholds.P720 <= maxAllowedQuality -> sortedStreams.findLast { it.quality.contains("720") }
+            estimate >= thresholds.P480 && thresholds.P480 <= maxAllowedQuality -> sortedStreams.findLast { it.quality.contains("480") }
+            estimate >= thresholds.P360 && thresholds.P360 <= maxAllowedQuality -> sortedStreams.findLast { it.quality.contains("360") }
             else -> sortedStreams.firstOrNull()
         } ?: sortedStreams.findLast { it.quality.contains("480") } ?: sortedStreams.firstOrNull()
     }
@@ -622,6 +721,45 @@ class PlayerViewModel @Inject constructor(
         currentVideoId = null
         currentBundle = null
         _uiState.value = PlayerUiState.Loading
+        _comments.value = emptyList()
+        nextCommentsPage = null
+    }
+
+    fun loadComments() {
+        val videoId = currentVideoId ?: return
+        if (_isFetchingComments.value) return
+
+        viewModelScope.launch {
+            _isFetchingComments.value = true
+            try {
+                val result = videoRepository.getComments(videoId)
+                _comments.value = result.items
+                nextCommentsPage = result.nextPage
+            } catch (e: Exception) {
+                PTLog.e("PlayerViewModel", "Error loading comments", e)
+            } finally {
+                _isFetchingComments.value = false
+            }
+        }
+    }
+
+    fun loadNextCommentsPage() {
+        val videoId = currentVideoId ?: return
+        val page = nextCommentsPage ?: return
+        if (_isFetchingComments.value) return
+
+        viewModelScope.launch {
+            _isFetchingComments.value = true
+            try {
+                val result = videoRepository.fetchNextCommentsPage(videoId, page)
+                _comments.value = _comments.value + result.items
+                nextCommentsPage = result.nextPage
+            } catch (e: Exception) {
+                PTLog.e("PlayerViewModel", "Error loading next comments page", e)
+            } finally {
+                _isFetchingComments.value = false
+            }
+        }
     }
 
     fun prepareDownload(video: VideoItem? = null) {

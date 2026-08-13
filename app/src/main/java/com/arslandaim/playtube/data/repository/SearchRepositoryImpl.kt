@@ -10,6 +10,8 @@ import com.arslandaim.playtube.domain.model.SearchSort
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.domain.model.SearchItem
 import com.arslandaim.playtube.domain.model.PlaylistItem
+import com.arslandaim.playtube.domain.model.UploadDateFilter
+import com.arslandaim.playtube.domain.model.DurationFilter
 import com.arslandaim.playtube.domain.repository.SearchRepository
 import com.arslandaim.playtube.data.network.NewPipeInitializer
 import com.arslandaim.playtube.utils.Constants
@@ -27,28 +29,42 @@ import javax.inject.Inject
 class SearchRepositoryImpl @Inject constructor(
     private val initializer: NewPipeInitializer
 ) : SearchRepository {
-    override suspend fun search(query: String, sort: SearchSort): PaginatedList<SearchItem> {
+    override suspend fun search(
+        query: String,
+        sort: SearchSort,
+        uploadDate: UploadDateFilter,
+        duration: DurationFilter
+    ): PaginatedList<SearchItem> {
         initializer.ensureInitialized()
         return withContext(Dispatchers.IO) {
             try {
                 val youtubeService = ServiceList.YouTube
 
-                // NewPipe YouTube extractor expects specific string labels for sort filters.
-                // These are case-sensitive and must match the service's available sort filters.
-                val sortFilter = when (sort) {
-                    SearchSort.RELEVANCE -> "relevance"
-                    SearchSort.UPLOAD_DATE -> "upload_date"
-                    SearchSort.VIEW_COUNT -> "view_count"
-                    SearchSort.RATING -> "rating"
+                val sortFilter = sort.value
+                val contentFilters = mutableListOf<String>()
+                
+                // Base filter
+                if (sort == SearchSort.UPLOAD_DATE) {
+                    contentFilters.add("videos")
+                } else {
+                    contentFilters.add("all")
                 }
 
-                val contentFilter = if (sort == SearchSort.UPLOAD_DATE) Constants.YouTube.SEARCH_FILTERS_UPLOAD_DATE else Constants.YouTube.SEARCH_FILTERS
+                // Add upload date filter if not ALL
+                if (uploadDate != UploadDateFilter.ALL) {
+                    contentFilters.add(uploadDate.value)
+                }
+
+                // Add duration filter if not ALL
+                if (duration != DurationFilter.ALL) {
+                    contentFilters.add(duration.value)
+                }
                 
-                PTLog.d("SearchRepository", "Searching for: $query with sort filter: $sortFilter and content filter: $contentFilter")
+                PTLog.d("SearchRepository", "Searching for: $query with sort: $sortFilter, filters: $contentFilters")
                 
                 val extractor = youtubeService.getSearchExtractor(
                     query,
-                    contentFilter,
+                    contentFilters,
                     sortFilter
                 )
                 extractor.fetchPage()
@@ -87,26 +103,40 @@ class SearchRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun fetchNextPage(query: String, sort: SearchSort, page: Page): PaginatedList<SearchItem> {
+    override suspend fun fetchNextPage(
+        query: String,
+        sort: SearchSort,
+        uploadDate: UploadDateFilter,
+        duration: DurationFilter,
+        page: Page
+    ): PaginatedList<SearchItem> {
         initializer.ensureInitialized()
         return withContext(Dispatchers.IO) {
             try {
                 val youtubeService = ServiceList.YouTube
 
-                val sortFilter = when (sort) {
-                    SearchSort.RELEVANCE -> "relevance"
-                    SearchSort.UPLOAD_DATE -> "upload_date"
-                    SearchSort.VIEW_COUNT -> "view_count"
-                    SearchSort.RATING -> "rating"
+                val sortFilter = sort.value
+                val contentFilters = mutableListOf<String>()
+                
+                if (sort == SearchSort.UPLOAD_DATE) {
+                    contentFilters.add("videos")
+                } else {
+                    contentFilters.add("all")
                 }
 
-                val contentFilter = if (sort == SearchSort.UPLOAD_DATE) Constants.YouTube.SEARCH_FILTERS_UPLOAD_DATE else Constants.YouTube.SEARCH_FILTERS
+                if (uploadDate != UploadDateFilter.ALL) {
+                    contentFilters.add(uploadDate.value)
+                }
+
+                if (duration != DurationFilter.ALL) {
+                    contentFilters.add(duration.value)
+                }
                 
-                PTLog.d("SearchRepository", "Fetching next page for: $query with sort filter: $sortFilter and content filter: $contentFilter")
+                PTLog.d("SearchRepository", "Fetching next page for: $query with filters: $contentFilters")
                 
                 val extractor = youtubeService.getSearchExtractor(
                     query,
-                    contentFilter,
+                    contentFilters,
                     sortFilter
                 )
                 val nextPage = extractor.getPage(page)

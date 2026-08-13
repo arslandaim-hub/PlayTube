@@ -7,6 +7,7 @@ package com.arslandaim.playtube.ui.screens.settings
 
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -59,6 +60,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -70,7 +72,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material3.Slider
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.ui.res.stringResource
 import com.arslandaim.playtube.R
 import androidx.core.net.toUri
@@ -86,24 +91,33 @@ fun SettingsScreen(
     onDataManagement: () -> Unit,
     onBack: () -> Unit
 ) {
-    val isSearchHistoryPaused by viewModel.isSearchHistoryPaused.collectAsState()
-    val isPipEnabled by viewModel.isPipEnabled.collectAsState()
-    val isBackgroundPlayEnabled by viewModel.isBackgroundPlayEnabled.collectAsState()
-    val isRecommendationsPaused by viewModel.isRecommendationsPaused.collectAsState()
-    val isAutoUpdateEnabled by updateViewModel.isAutoUpdateEnabled.collectAsState()
-    val updateInfo by updateViewModel.updateInfo.collectAsState()
+    val isSearchHistoryPaused by viewModel.isSearchHistoryPaused.collectAsStateWithLifecycle()
+    val isPipEnabled by viewModel.isPipEnabled.collectAsStateWithLifecycle()
+    val isBackgroundPlayEnabled by viewModel.isBackgroundPlayEnabled.collectAsStateWithLifecycle()
+    val isRecommendationsPaused by viewModel.isRecommendationsPaused.collectAsStateWithLifecycle()
+    val isDynamicColorEnabled by viewModel.isDynamicColorEnabled.collectAsStateWithLifecycle()
+    val subtitleFontSize by viewModel.subtitleFontSize.collectAsStateWithLifecycle()
+    val subtitleBackgroundOpacity by viewModel.subtitleBackgroundOpacity.collectAsStateWithLifecycle()
+    val isAutoUpdateEnabled by updateViewModel.isAutoUpdateEnabled.collectAsStateWithLifecycle()
+    val updateInfo by updateViewModel.updateInfo.collectAsStateWithLifecycle()
 
     SettingsContent(
         isSearchHistoryPaused = isSearchHistoryPaused,
         isPipEnabled = isPipEnabled,
         isBackgroundPlayEnabled = isBackgroundPlayEnabled,
         isRecommendationsPaused = isRecommendationsPaused,
+        isDynamicColorEnabled = isDynamicColorEnabled,
+        subtitleFontSize = subtitleFontSize,
+        subtitleBackgroundOpacity = subtitleBackgroundOpacity,
         isAutoUpdateEnabled = isAutoUpdateEnabled,
         updateInfo = updateInfo,
         onSetSearchHistoryPaused = viewModel::setSearchHistoryPaused,
         onSetPipEnabled = viewModel::setPipEnabled,
         onSetBackgroundPlayEnabled = viewModel::setBackgroundPlayEnabled,
         onSetRecommendationsPaused = viewModel::setRecommendationsPaused,
+        onSetDynamicColorEnabled = viewModel::setDynamicColorEnabled,
+        onSetSubtitleFontSize = viewModel::setSubtitleFontSize,
+        onSetSubtitleBackgroundOpacity = viewModel::setSubtitleBackgroundOpacity,
         onClearLearnedInterests = viewModel::clearLearnedInterests,
         onSetAutoUpdateEnabled = updateViewModel::setAutoUpdateEnabled,
         onClearAllDownloads = viewModel::clearAllDownloads,
@@ -120,12 +134,18 @@ private fun SettingsContent(
     isPipEnabled: Boolean,
     isBackgroundPlayEnabled: Boolean,
     isRecommendationsPaused: Boolean,
+    isDynamicColorEnabled: Boolean,
+    subtitleFontSize: Float,
+    subtitleBackgroundOpacity: Float,
     isAutoUpdateEnabled: Boolean,
     updateInfo: com.arslandaim.playtube.domain.repository.UpdateInfo,
     onSetSearchHistoryPaused: (Boolean) -> Unit,
     onSetPipEnabled: (Boolean) -> Unit,
     onSetBackgroundPlayEnabled: (Boolean) -> Unit,
     onSetRecommendationsPaused: (Boolean) -> Unit,
+    onSetDynamicColorEnabled: (Boolean) -> Unit,
+    onSetSubtitleFontSize: (Float) -> Unit,
+    onSetSubtitleBackgroundOpacity: (Float) -> Unit,
     onClearLearnedInterests: () -> Unit,
     onSetAutoUpdateEnabled: (Boolean) -> Unit,
     onClearAllDownloads: () -> Unit,
@@ -211,7 +231,7 @@ private fun SettingsContent(
         ) {
             // Update Category
             item {
-                SettingsGroup(title = "Auto-Update") {
+                SettingsGroup(title = "App-Update") {
                     SettingsSwitchItem(
                         title = "Auto Check for Updates",
                         subtitle = "Notify when a new version is available on GitHub",
@@ -311,6 +331,78 @@ private fun SettingsContent(
                         onClick = { showClearInterestsDialog = true },
                         titleColor = MaterialTheme.colorScheme.error
                     )
+                }
+            }
+
+            // Content Category
+            item {
+                SettingsGroup(title = "Appearance & Playback") {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        SettingsSwitchItem(
+                            title = "Material You",
+                            subtitle = "Adapts device theme color",
+                            icon = Icons.Default.AutoAwesome,
+                            checked = isDynamicColorEnabled,
+                            onCheckedChange = onSetDynamicColorEnabled
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                    SettingsItem(
+                        title = "Subtitle Styles",
+                        subtitle = "Customize font size and background",
+                        icon = Icons.Default.ClosedCaption
+                    )
+                    
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Text(
+                            text = "Font Size: ${subtitleFontSize.toInt()}sp",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Slider(
+                            value = subtitleFontSize,
+                            onValueChange = onSetSubtitleFontSize,
+                            valueRange = 12f..32f,
+                            steps = 10,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        Text(
+                            text = "Background Opacity: ${(subtitleBackgroundOpacity * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Slider(
+                            value = subtitleBackgroundOpacity,
+                            onValueChange = onSetSubtitleBackgroundOpacity,
+                            valueRange = 0f..1f,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        // Preview Box
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(60.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Surface(
+                                color = Color.Black.copy(alpha = subtitleBackgroundOpacity),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "Subtitle Preview",
+                                    color = Color.White,
+                                    fontSize = subtitleFontSize.sp,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
 

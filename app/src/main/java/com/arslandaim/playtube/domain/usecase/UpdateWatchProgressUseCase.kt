@@ -21,10 +21,10 @@ class UpdateWatchProgressUseCase @Inject constructor(
         val ratio = progressMs.toFloat() / durationMs
         
         // Threshold Logic:
-        // 1. If watched less than 5%, don't save progress (don't clutter history with misclicks)
+        // 1. If watched less than 10 seconds, don't save progress (don't clutter history with misclicks)
         // 2. If watched more than 95%, mark as fully completed
         val finalProgress = when {
-            ratio < 0.05f -> return 
+            progressMs < 10000 -> return 
             ratio > 0.95f -> durationMs
             else -> progressMs
         }

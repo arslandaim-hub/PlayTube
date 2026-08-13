@@ -11,8 +11,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.arslandaim.playtube.MainViewModel
 import com.arslandaim.playtube.R
-import com.arslandaim.playtube.ui.navigation.Screen
+import com.arslandaim.playtube.ui.navigation.Destination
 import com.arslandaim.playtube.ui.screens.settings.UpdateViewModel
 import com.arslandaim.playtube.ui.theme.IncognitoPurple
 
@@ -85,8 +85,8 @@ fun PlayTubeTopAppBar(
             }
         },
         actions = {
-            if (currentRoute != Screen.Search.route) {
-                IconButton(onClick = { navController.navigate(Screen.Search.navigationRoute) }) {
+            if (currentRoute?.contains("Search") == false) {
+                IconButton(onClick = { navController.navigate(Destination.Search()) }) {
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = stringResource(R.string.search),
@@ -96,8 +96,8 @@ fun PlayTubeTopAppBar(
                 }
             }
             
-            val updateInfo by updateViewModel.updateInfo.collectAsState()
-            val isAutoUpdateEnabled by updateViewModel.isAutoUpdateEnabled.collectAsState()
+            val updateInfo by updateViewModel.updateInfo.collectAsStateWithLifecycle()
+            val isAutoUpdateEnabled by updateViewModel.isAutoUpdateEnabled.collectAsStateWithLifecycle()
 
             IconButton(onClick = { mainViewModel.toggleIncognitoMode() }) {
                 Icon(
@@ -108,7 +108,7 @@ fun PlayTubeTopAppBar(
                 )
             }
 
-            IconButton(onClick = { navController.navigate(Screen.Settings.route) }) {
+            IconButton(onClick = { navController.navigate(Destination.Settings) }) {
                 BadgedBox(
                     badge = {
                         if (isAutoUpdateEnabled && updateInfo.hasUpdate) {
