@@ -57,6 +57,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import kotlin.math.roundToInt
 import androidx.media3.common.Player
 import androidx.media3.common.text.Cue
@@ -72,7 +76,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arslandaim.playtube.R
 import com.arslandaim.playtube.ui.components.InfiniteScrollEffect
-import com.arslandaim.playtube.ui.components.player.ModernPlaybackProgress
 import com.arslandaim.playtube.ui.components.player.PersistentProgressBar
 import com.arslandaim.playtube.ui.components.DownloadSelectionSheet
 import com.arslandaim.playtube.ui.components.PlaybackSpeedSelectionSheet
@@ -366,6 +369,19 @@ private fun PlayerContent(
     }
 
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val view = LocalView.current
+
+    LaunchedEffect(isLandscape) {
+        val window = (context as? Activity)?.window ?: return@LaunchedEffect
+        val controller = WindowCompat.getInsetsController(window, view)
+        
+        if (isLandscape) {
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
 
     // Gesture states
     val audioManager = remember { context.getSystemService(android.content.Context.AUDIO_SERVICE) as AudioManager }
@@ -405,6 +421,12 @@ private fun PlayerContent(
             // Reset orientation on dispose
             val activity = context as? Activity
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            
+            // Restore system bars on dispose
+            val window = activity?.window
+            if (window != null) {
+                WindowCompat.getInsetsController(window, view).show(WindowInsetsCompat.Type.systemBars())
+            }
         }
     }
 
@@ -671,7 +693,8 @@ private fun PlayerContent(
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0) // Force edge-to-edge
     ) { paddingValues ->
         Box(
             modifier = Modifier
@@ -679,7 +702,7 @@ private fun PlayerContent(
                 .background(MaterialTheme.colorScheme.background)
         ) {
             // Dynamic Ambient Mode (Modern Glow Effect)
-            if (uiState is PlayerUiState.Success || initialThumbnail != null) {
+            if (!isLandscape && (uiState is PlayerUiState.Success || initialThumbnail != null)) {
                 val ambientThumbnail = when(uiState) {
                     is PlayerUiState.Success -> uiState.bundle.thumbnailUrl
                     is PlayerUiState.Upcoming -> uiState.thumbnailUrl
@@ -741,7 +764,10 @@ private fun PlayerContent(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .then(if (isLandscape) Modifier.fillMaxHeight() else Modifier.aspectRatio(16f / 9f))
+                        .then(
+                            if (isLandscape) Modifier.fillMaxHeight() 
+                            else Modifier.statusBarsPadding().aspectRatio(16f / 9f)
+                        )
                         .background(Color.Black)
                 ) {
                     when (uiState) {
@@ -828,6 +854,7 @@ private fun PlayerContent(
                             }
                         }
                         is PlayerUiState.Success -> {
+                            val isLive = uiState.bundle.isLive
                             VideoPlayerGestureDetector(
                                 onDoubleTapLeft = onSeekBackward,
                                 onDoubleTapRight = onSeekForward,
@@ -906,23 +933,6 @@ private fun PlayerContent(
                                 modifier = Modifier.align(Alignment.CenterEnd)
                             )
 
-                            // Persistent Progress Bar (Always visible at the very bottom)
-                            val isLive = (uiState as? PlayerUiState.Success)?.bundle?.isLive == true
-                            PersistentProgressBar(
-                                progress = {
-                                    val dur = duration()
-                                    if (isLive) 1f else if (dur > 0) currentPosition().toFloat() / dur else 0f
-                                },
-                                bufferedProgress = {
-                                    val dur = duration()
-                                    if (isLive) 1f else if (dur > 0) bufferedPosition().toFloat() / dur else 0f
-                                },
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .fillMaxWidth()
-                                    .height(1.5.dp)
-                            )
-
                             // Custom Controls Overlay
                             androidx.compose.animation.AnimatedVisibility(
                                 visible = controlsVisible,
@@ -933,7 +943,6 @@ private fun PlayerContent(
                                     isPlaying = isPlaying,
                                     currentPosition = currentPosition,
                                     duration = duration,
-                                    bufferedPosition = bufferedPosition,
                                     isLive = isLive,
                                     isCcEnabled = isCcEnabled,
                                     isIncognito = isIncognito,
@@ -941,13 +950,35 @@ private fun PlayerContent(
                                     onPlayPause = onPlayPause,
                                     onSkipNext = onSkipNext,
                                     onSkipPrevious = onSkipPrevious,
-                                    onSeekTo = onSeekTo,
                                     onToggleSubtitles = onToggleSubtitles,
                                     onShowSubtitleSettings = { showSubtitleSheet = true },
                                     onShowSettings = { showSettingsSheet = true },
                                     onBack = onBack
                                 )
                             }
+
+                            // Persistent Progress Bar (Always visible at the very bottom border)
+                            // We move it after the controls to ensure it stays on top of the darkened overlay background
+                            PersistentProgressBar(
+                                progress = {
+                                    val dur = duration()
+                                    if (isLive) 1f else if (dur > 0) currentPosition().toFloat() / dur else 0f
+                                },
+                                bufferedProgress = {
+                                    val dur = duration()
+                                    if (isLive) 1f else if (dur > 0) bufferedPosition().toFloat() / dur else 0f
+                                },
+                                isInteractive = controlsVisible && !isLive,
+                                onSeek = { percentage ->
+                                    val totalDuration = duration()
+                                    if (totalDuration > 0) {
+                                        onSeekTo((percentage * totalDuration).toLong())
+                                    }
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                            )
 
                             LaunchedEffect(controlsVisible, player.isPlaying) {
                                 if (controlsVisible && player.isPlaying) {
@@ -1003,13 +1034,15 @@ private fun PlayerContent(
 
                 // Metadata Area
                 AnimatedVisibility(
-                    visible = uiState !is PlayerUiState.Error,
+                    visible = !isLandscape && uiState !is PlayerUiState.Error,
                     enter = fadeIn() + expandVertically(),
                     exit = fadeOut() + shrinkVertically()
                 ) {
                     LazyColumn(
                         state = listState,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .navigationBarsPadding()
                     ) {
                         when (uiState) {
                             is PlayerUiState.Loading -> {
@@ -1302,7 +1335,6 @@ private fun PlayerControlsOverlay(
     isPlaying: Boolean,
     currentPosition: () -> Long,
     duration: () -> Long,
-    bufferedPosition: () -> Long,
     isLive: Boolean,
     isCcEnabled: Boolean,
     isIncognito: Boolean,
@@ -1310,7 +1342,6 @@ private fun PlayerControlsOverlay(
     onPlayPause: () -> Unit,
     onSkipNext: () -> Unit,
     onSkipPrevious: () -> Unit,
-    onSeekTo: (Long) -> Unit,
     onToggleSubtitles: () -> Unit,
     onShowSubtitleSettings: () -> Unit,
     onShowSettings: () -> Unit,
@@ -1380,12 +1411,13 @@ private fun PlayerControlsOverlay(
             }
         }
 
-        // Modern Bottom Bar Section
+        // Modern Bottom Bar Section (Timestamps only, Seekbar moved to border)
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(bottom = 12.dp)
+                .displayCutoutPadding()
+                .padding(bottom = 12.dp) // Sit closer to the bottom border
         ) {
             // Time Display & Live Badge
             Row(
@@ -1437,23 +1469,6 @@ private fun PlayerControlsOverlay(
                     )
                 }
             }
-            
-            if (!isLive) {
-                val currentPos = currentPosition().toFloat()
-                val totalDuration = duration().toFloat().coerceAtLeast(1f)
-                val bufferedPos = bufferedPosition().toFloat()
-
-                ModernPlaybackProgress(
-                    progress = currentPos / totalDuration,
-                    bufferedProgress = bufferedPos / totalDuration,
-                    onSeek = { onSeekTo((it * totalDuration).toLong()) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                )
-            } else {
-                Spacer(modifier = Modifier.height(16.dp))
-            }
         }
 
         // Top Action Pill (Glassmorphic)
@@ -1461,6 +1476,8 @@ private fun PlayerControlsOverlay(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
+                .statusBarsPadding()
+                .displayCutoutPadding()
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

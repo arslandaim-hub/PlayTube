@@ -113,6 +113,15 @@ class SubscriptionsFeedViewModel @Inject constructor(
                 }
             }
         }
+
+        // Phase 1: Load cached "All" feed immediately
+        viewModelScope.launch {
+            libraryRepository.getCachedFeed("subs_all").collect { cache ->
+                if (cache != null && _allFeedState.value.videos.isEmpty()) {
+                    _allFeedState.update { it.copy(videos = cache.videos) }
+                }
+            }
+        }
     }
 
     fun onChannelSelected(channelId: String?) {
@@ -131,6 +140,16 @@ class SubscriptionsFeedViewModel @Inject constructor(
                 }
             }
             val cachedState = _channelFeedsCache.getOrPut(channelId) { MutableStateFlow(FeedState()) }
+            
+            // Phase 1: Load channel cache immediately
+            viewModelScope.launch {
+                libraryRepository.getCachedFeed("subs_channel_$channelId").firstOrNull()?.let { cache ->
+                    if (cachedState.value.videos.isEmpty()) {
+                        cachedState.update { it.copy(videos = cache.videos) }
+                    }
+                }
+            }
+
             if (cachedState.value.videos.isEmpty()) {
                 loadSubscriptionsFeed()
             }
@@ -223,6 +242,9 @@ class SubscriptionsFeedViewModel @Inject constructor(
                         
                         state.copy(videos = updated.take(1000))
                     }
+
+                    // Phase 1: Silent Cache Update
+                    libraryRepository.updateCachedFeed("subs_all", _allFeedState.value.videos)
 
                     val progress = ((chunkIndex + 1) * 5).toFloat() / limit.size
                     _thoroughSearchProgress.value = progress.coerceAtMost(1f)
@@ -334,6 +356,11 @@ class SubscriptionsFeedViewModel @Inject constructor(
                     nextPage = if (selectedId != null) updatedNextPage else state.nextPage
                 )
             }
+
+            // Phase 1: Silent Cache Update for specific channel or All
+            val cacheKey = if (selectedId != null) "subs_channel_$selectedId" else "subs_all"
+            libraryRepository.updateCachedFeed(cacheKey, stateFlow.value.videos)
+            
         } catch (e: Exception) {
             stateFlow.update { it.copy(error = PlayTubeError.fromThrowable(e)) }
         }

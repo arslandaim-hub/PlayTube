@@ -94,4 +94,9 @@ object DatabaseModule {
     fun provideLocalPlaylistDao(database: PlayTubeDatabase): com.arslandaim.playtube.data.local.LocalPlaylistDao {
         return database.localPlaylistDao()
     }
+
+    @Provides
+    fun provideFeedCacheDao(database: PlayTubeDatabase): com.arslandaim.playtube.data.local.FeedCacheDao {
+        return database.feedCacheDao()
+    }
 }

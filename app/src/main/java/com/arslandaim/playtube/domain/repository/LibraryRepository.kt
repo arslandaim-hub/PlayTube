@@ -74,4 +74,8 @@ interface LibraryRepository {
     fun isVideoInAnyLocalPlaylist(videoId: String): Flow<Boolean>
     fun getAllSavedVideoIds(): Flow<List<String>>
     fun getPlaylistsContainingVideo(videoId: String): Flow<List<Int>>
+
+    // Feed Cache
+    fun getCachedFeed(key: String): Flow<com.arslandaim.playtube.data.local.FeedCacheEntity?>
+    suspend fun updateCachedFeed(key: String, videos: List<VideoItem>)
 }

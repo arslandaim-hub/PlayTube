@@ -7,6 +7,7 @@ package com.arslandaim.playtube.data.local
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 
 @Database(
     entities = [
@@ -19,10 +20,12 @@ import androidx.room.RoomDatabase
         UserInterestEntity::class,
         BlacklistEntity::class,
         LocalPlaylistEntity::class,
-        LocalPlaylistVideoEntity::class
+        LocalPlaylistVideoEntity::class,
+        FeedCacheEntity::class
     ],
-    version = 13
+    version = 14
 )
+@TypeConverters(Converters::class)
 abstract class PlayTubeDatabase : RoomDatabase() {
     abstract fun downloadDao(): DownloadDao
     abstract fun historyDao(): HistoryDao
@@ -33,4 +36,5 @@ abstract class PlayTubeDatabase : RoomDatabase() {
     abstract fun userInterestDao(): UserInterestDao
     abstract fun blacklistDao(): BlacklistDao
     abstract fun localPlaylistDao(): LocalPlaylistDao
+    abstract fun feedCacheDao(): FeedCacheDao
 }

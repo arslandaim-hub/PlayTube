@@ -324,6 +324,22 @@ class PlayerViewModel @Inject constructor(
         
         updateUiWithPlaceholder(video)
         
+        // Phase 4: Restore Session Metadata (Speed, Pitch, Subtitles)
+        viewModelScope.launch {
+            val speed = preferencesManager.playbackSpeed.first()
+            val pitch = preferencesManager.playbackPitch.first()
+            _playbackSpeed.value = speed
+            _playbackPitch.value = pitch
+            playbackManager.setPlaybackSpeed(speed)
+            playbackManager.setPitch(pitch)
+
+            val subsEnabled = preferencesManager.isSubtitlesEnabled.first()
+            val lang = preferencesManager.preferredSubtitleLanguage.first()
+            _isCcEnabled.value = subsEnabled
+            _selectedSubtitleLanguage.value = lang
+            playbackManager.updateCcState(subsEnabled, lang)
+        }
+        
         viewModelScope.launch {
             if (preferencesManager.isBackgroundPlayEnabled.first()) context.startService(Intent(context, PlaybackService::class.java))
         }
@@ -532,7 +548,8 @@ class PlayerViewModel @Inject constructor(
                 }
 
                 stream?.let {
-                    playbackManager.play(videoId, bundle, it, lastFailedPosition)
+                    // Phase 3: Seamless Hot-Swap Recovery
+                    playbackManager.hotSwapSource(videoId, bundle, it, lastFailedPosition)
                     isStalledDueToNetwork = false
                     _isRecovering.value = false
                 }
@@ -583,19 +600,20 @@ class PlayerViewModel @Inject constructor(
         if (playbackManager.isPlaying.value) {
             playbackManager.pause()
         } else {
-            val now = System.currentTimeMillis()
-            val pauseDuration = now - playbackManager.lastPauseTimestamp
-            if (playbackManager.lastPauseTimestamp > 0 && pauseDuration > 3 * 60 * 1000) {
-                lastFailedPosition = playbackManager.player.currentPosition
-                recoverExpiredUrl()
-            } else {
-                playbackManager.resume()
-            }
+            playbackManager.resume()
         }
     }
     fun seekTo(pos: Long) { playbackManager.seekTo(pos); saveWatchProgress() }
-    fun setPlaybackSpeed(speed: Float) { _playbackSpeed.value = speed; playbackManager.setPlaybackSpeed(speed) }
-    fun setPlaybackPitch(pitch: Float) { _playbackPitch.value = pitch; playbackManager.setPitch(pitch) }
+    fun setPlaybackSpeed(speed: Float) { 
+        _playbackSpeed.value = speed
+        playbackManager.setPlaybackSpeed(speed)
+        viewModelScope.launch { preferencesManager.setPlaybackSpeed(speed) }
+    }
+    fun setPlaybackPitch(pitch: Float) { 
+        _playbackPitch.value = pitch
+        playbackManager.setPitch(pitch)
+        viewModelScope.launch { preferencesManager.setPlaybackPitch(pitch) }
+    }
     fun setQuality(stream: StreamItem?) {
         val videoId = currentVideoId ?: return
         val bundle = currentBundle ?: return

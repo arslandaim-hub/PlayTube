@@ -66,6 +66,14 @@ class HomeViewModel @Inject constructor(
     private var trendingFetchJob: Job? = null
 
     init {
+        // Phase 1: Load cached trending immediately
+        viewModelScope.launch {
+            libraryRepository.getCachedFeed("home_trending").collect { cache ->
+                if (cache != null && _internalState.value.trendingVideos.isEmpty()) {
+                    _internalState.update { it.copy(trendingVideos = cache.videos, isTrendingLoading = false) }
+                }
+            }
+        }
         loadTrending()
     }
 
@@ -112,6 +120,9 @@ class HomeViewModel @Inject constructor(
                     isPersonalized = isRefresh && recommendations.isNotEmpty()
                 )
             }
+
+            // Phase 1: Silent Cache Update
+            libraryRepository.updateCachedFeed("home_trending", combinedVideos)
             
         } catch (e: Exception) {
             _internalState.update { it.copy(error = PlayTubeError.fromThrowable(e)) }
@@ -135,6 +146,8 @@ class HomeViewModel @Inject constructor(
                                     isLoadingMore = false
                                 )
                             }
+                            // Phase 1: Silent Cache Update
+                            libraryRepository.updateCachedFeed("home_trending", _internalState.value.trendingVideos)
                         }
                         .onFailure {
                             _internalState.update { it.copy(isLoadingMore = false) }

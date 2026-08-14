@@ -195,6 +195,9 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
     open val lastPlayedPosition: Flow<Long> = dataStore.data.map { it[LAST_PLAYED_POSITION] ?: 0L }
     open val lastPlayedIsLocal: Flow<Boolean> = dataStore.data.map { it[LAST_PLAYED_IS_LOCAL] ?: false }
 
+    open val playbackSpeed: Flow<Float> = dataStore.data.map { it[PLAYBACK_SPEED] ?: 1.0f }
+    open val playbackPitch: Flow<Float> = dataStore.data.map { it[PLAYBACK_PITCH] ?: 1.0f }
+
     open val isProxyEnabled: Flow<Boolean> = dataStore.data.map { it[PROXY_ENABLED] ?: false }
     open val proxyHost: Flow<String> = dataStore.data.map { it[PROXY_HOST] ?: "" }
     open val proxyPort: Flow<Int> = dataStore.data.map { it[PROXY_PORT] ?: 8080 }
@@ -304,6 +307,18 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
         }
     }
 
+    suspend fun setPlaybackSpeed(speed: Float) {
+        dataStore.edit { preferences ->
+            preferences[PLAYBACK_SPEED] = speed
+        }
+    }
+
+    suspend fun setPlaybackPitch(pitch: Float) {
+        dataStore.edit { preferences ->
+            preferences[PLAYBACK_PITCH] = pitch
+        }
+    }
+
     suspend fun setProxySettings(enabled: Boolean, host: String, port: Int) {
         dataStore.edit { preferences ->
             preferences[PROXY_ENABLED] = enabled
@@ -333,6 +348,9 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
         val LAST_PLAYED_VIDEO_ID = stringPreferencesKey("last_played_video_id")
         val LAST_PLAYED_POSITION = longPreferencesKey("last_played_position")
         val LAST_PLAYED_IS_LOCAL = booleanPreferencesKey("last_played_is_local")
+
+        val PLAYBACK_SPEED = floatPreferencesKey("playback_speed")
+        val PLAYBACK_PITCH = floatPreferencesKey("playback_pitch")
 
         val PROXY_ENABLED = booleanPreferencesKey("proxy_enabled")
         val PROXY_HOST = stringPreferencesKey("proxy_host")

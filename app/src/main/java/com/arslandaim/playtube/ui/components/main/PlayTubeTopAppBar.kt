@@ -42,6 +42,7 @@ fun PlayTubeTopAppBar(
 ) {
     TopAppBar(
         modifier = modifier,
+        windowInsets = WindowInsets(0, 0, 0, 0),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(

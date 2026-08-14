@@ -18,7 +18,8 @@ class LibraryRepositoryImpl @Inject constructor(
     private val searchHistoryDao: SearchHistoryDao,
     private val userInterestDao: UserInterestDao,
     private val blacklistDao: BlacklistDao,
-    private val localPlaylistDao: LocalPlaylistDao
+    private val localPlaylistDao: LocalPlaylistDao,
+    private val feedCacheDao: FeedCacheDao
 ) : LibraryRepository {
 
     override fun getHistory(): Flow<List<HistoryEntity>> = historyDao.getAllHistory()
@@ -184,4 +185,10 @@ class LibraryRepositoryImpl @Inject constructor(
 
     override fun getPlaylistsContainingVideo(videoId: String): Flow<List<Int>> = 
         localPlaylistDao.getPlaylistsContainingVideo(videoId)
+
+    override fun getCachedFeed(key: String): Flow<FeedCacheEntity?> = feedCacheDao.getFeed(key)
+
+    override suspend fun updateCachedFeed(key: String, videos: List<com.arslandaim.playtube.domain.model.VideoItem>) {
+        feedCacheDao.insertFeed(FeedCacheEntity(key, videos))
+    }
 }

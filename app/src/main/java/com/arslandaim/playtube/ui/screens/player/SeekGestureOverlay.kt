@@ -19,8 +19,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
@@ -36,25 +34,12 @@ fun SeekGestureOverlay(
 ) {
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn() + scaleIn(initialScale = 0.7f),
-        exit = fadeOut() + scaleOut(targetScale = 1.3f),
+        enter = fadeIn(),
+        exit = fadeOut(),
         modifier = modifier.fillMaxSize()
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             val alignment = if (isForward) Alignment.CenterEnd else Alignment.CenterStart
-            val gradientColors = if (isForward) {
-                listOf(Color.Transparent, Color.White.copy(alpha = 0.12f))
-            } else {
-                listOf(Color.White.copy(alpha = 0.12f), Color.Transparent)
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(0.35f)
-                    .align(alignment)
-                    .background(Brush.horizontalGradient(gradientColors))
-            )
 
             Column(
                 modifier = Modifier

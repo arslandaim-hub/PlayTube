@@ -36,7 +36,9 @@ import javax.inject.Singleton
 class PlaybackManager @Inject constructor(
     @ApplicationContext private val context: Context,
     val player: ExoPlayer,
+    private val libraryRepository: com.arslandaim.playtube.domain.repository.LibraryRepository,
     private val bandwidthMeter: BandwidthMeter,
+    private val okHttpClient: okhttp3.OkHttpClient,
     @Named("HttpDataSourceFactory") private val httpDataSourceFactory: DataSource.Factory,
     private val dataSourceFactory: DataSource.Factory,
     private val trackManager: PlayerTrackManager
@@ -78,10 +80,17 @@ class PlaybackManager @Inject constructor(
     val lastPauseTimestamp: Long get() = _lastPauseTimestamp
 
     private var currentExtractedAt = 0L
+    private var currentBundle: StreamBundle? = null
+    private var currentStream: StreamItem? = null
+    private var isAutoQualityEnabled = true
     private var sponsorSegments: List<com.arslandaim.playtube.domain.model.SponsorSegment> = emptyList()
 
     private var managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var progressJob: Job? = null
+    private var heartbeatJob: Job? = null
+
+    private val BITRATE_1080P_THRESHOLD = 5_000_000L // 5 Mbps
+    private val BITRATE_720P_THRESHOLD = 2_500_000L // 2.5 Mbps
 
     fun getBandwidthEstimate(): Long {
         return bandwidthMeter.bitrateEstimate
@@ -121,8 +130,10 @@ class PlaybackManager @Inject constructor(
             _isPlaying.value = isPlaying
             if (!isPlaying) {
                 _lastPauseTimestamp = System.currentTimeMillis()
+                startHeartbeat()
             } else {
                 _lastPauseTimestamp = 0L
+                stopHeartbeat()
             }
         }
 
@@ -161,6 +172,9 @@ class PlaybackManager @Inject constructor(
 
     fun play(videoId: String, bundle: StreamBundle, stream: StreamItem, startPosition: Long = 0) {
         currentExtractedAt = bundle.extractedAt
+        currentBundle = bundle
+        currentStream = stream
+        
         val metadata = MediaMetadata.Builder()
             .setTitle(bundle.title)
             .setArtist(bundle.uploaderName)
@@ -193,6 +207,7 @@ class PlaybackManager @Inject constructor(
         val effectiveDataSourceFactory = if (isManifest) httpDataSourceFactory else dataSourceFactory
         val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(effectiveDataSourceFactory)
         
+        stopHeartbeat()
         player.stop()
         player.clearMediaItems()
         
@@ -229,6 +244,7 @@ class PlaybackManager @Inject constructor(
      * Switches the video quality without stopping the player or resetting position.
      */
     fun switchQualitySeamlessly(videoId: String, bundle: StreamBundle, stream: StreamItem) {
+        currentStream = stream
         val currentPosition = player.currentPosition
         val metadata = MediaMetadata.Builder()
             .setTitle(bundle.title)
@@ -296,6 +312,7 @@ class PlaybackManager @Inject constructor(
         player.clearMediaItems()
         currentExtractedAt = 0L
         stopProgressUpdate()
+        stopHeartbeat()
     }
 
     fun pause() {
@@ -304,7 +321,9 @@ class PlaybackManager @Inject constructor(
 
     fun resume() {
         val now = System.currentTimeMillis()
-        val isPausedTooLong = _lastPauseTimestamp > 0 && now - _lastPauseTimestamp > 3 * 60 * 1000
+        val pauseDuration = if (_lastPauseTimestamp > 0) now - _lastPauseTimestamp else 0L
+        
+        val isPausedTooLong = pauseDuration > 60 * 60 * 1000 // 60 minutes
         val isLinkExpired = currentExtractedAt > 0 && now - currentExtractedAt > 5.5 * 60 * 60 * 1000
         
         if (isPausedTooLong || isLinkExpired) {
@@ -312,12 +331,67 @@ class PlaybackManager @Inject constructor(
             PTLog.d("PlaybackManager", "Resume check: isPausedTooLong=$isPausedTooLong, isLinkExpired=$isLinkExpired. Requesting recovery.")
             managerScope.launch { _recoveryRequired.emit(pos) }
             _lastPauseTimestamp = 0L // Reset to prevent multiple emissions
+        } else {
+            // Phase 1: Contextual Rewind
+            if (pauseDuration > 60_000L) {
+                val rewindPos = (player.currentPosition - 3000L).coerceAtLeast(0L)
+                PTLog.d("PlaybackManager", "Applying contextual rewind: -3s to $rewindPos")
+                player.seekTo(rewindPos)
+            }
+            player.play()
         }
-        player.play()
     }
 
-    fun togglePlayPause() {
-        if (player.isPlaying) player.pause() else player.play()
+    /**
+     * Seamlessly swaps the current media source with a fresh one (e.g. after 403 recovery).
+     * Retains the current position and state.
+     */
+    fun hotSwapSource(videoId: String, bundle: StreamBundle, stream: StreamItem, position: Long) {
+        currentExtractedAt = bundle.extractedAt
+        currentBundle = bundle
+        currentStream = stream
+        
+        val metadata = MediaMetadata.Builder()
+            .setTitle(bundle.title)
+            .setArtist(bundle.uploaderName)
+            .setArtworkUri(bundle.thumbnailUrl?.let { Uri.parse(it) })
+            .build()
+
+        val subtitleConfigs = trackManager.createSubtitleConfigs(bundle)
+        val mediaItemBuilder = MediaItem.Builder()
+            .setUri(stream.url)
+            .setMediaId(videoId)
+            .setMediaMetadata(metadata)
+            .setSubtitleConfigurations(subtitleConfigs)
+
+        if (bundle.isLive || stream.format == "m3u8" || stream.format == "mpd") {
+            val mimeType = if (stream.format == "mpd") MimeTypes.APPLICATION_MPD else MimeTypes.APPLICATION_M3U8
+            mediaItemBuilder.setMimeType(mimeType)
+        }
+
+        val mediaItem = mediaItemBuilder.build()
+        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
+        
+        val newSource = if (stream.isAdaptive) {
+            val audioUrl = bundle.bestAudioStreamUrl
+            if (audioUrl != null) {
+                val videoSource = mediaSourceFactory.createMediaSource(mediaItem)
+                val audioSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(audioUrl))
+                MergingMediaSource(videoSource, audioSource)
+            } else {
+                mediaSourceFactory.createMediaSource(mediaItem)
+            }
+        } else {
+            mediaSourceFactory.createMediaSource(mediaItem)
+        }
+
+        PTLog.d("PlaybackManager", "Performing hot-swap for $videoId at position $position")
+        player.setMediaSource(newSource, false) // false = don't reset position
+        player.prepare()
+        if (position > 0) {
+            player.seekTo(position)
+        }
+        player.play()
     }
 
     fun seekTo(position: Long) {
@@ -383,14 +457,60 @@ class PlaybackManager @Inject constructor(
         player.addMediaSource(1, finalSource)
     }
 
+    private fun dropQuality() {
+        val bundle = currentBundle ?: return
+        val currentVideoId = player.currentMediaItem?.mediaId ?: return
+        
+        // Find next lower quality
+        val qualities = listOf("1080", "720", "480", "360")
+        val currentQual = currentStream?.quality ?: ""
+        val currentIndex = qualities.indexOfFirst { currentQual.contains(it) }
+        
+        if (currentIndex != -1 && currentIndex < qualities.size - 1) {
+            val nextQual = qualities[currentIndex + 1]
+            val nextStream = bundle.videoStreams.find { it.quality.contains(nextQual) }
+            if (nextStream != null) {
+                switchQualitySeamlessly(currentVideoId, bundle, nextStream)
+            }
+        }
+    }
+
     private fun startProgressUpdate() {
         progressJob?.cancel()
         progressJob = managerScope.launch {
+            var lastSaveTime = 0L
             while (true) {
                 val currentPos = player.currentPosition
+                val dur = if (player.duration == C.TIME_UNSET) 0L else player.duration
+                
                 _currentPosition.value = currentPos
-                _duration.value = if (player.duration == C.TIME_UNSET) 0L else player.duration
+                _duration.value = dur
                 _bufferedPosition.value = player.bufferedPosition
+
+                // Phase 3: Decoupled High-Frequency Progress Tracking (Every 5 seconds)
+                val now = System.currentTimeMillis()
+                if (now - lastSaveTime >= 5000L && dur > 0 && !player.isCurrentMediaItemLive) {
+                    player.currentMediaItem?.mediaId?.let { videoId ->
+                        withContext(Dispatchers.IO) {
+                            libraryRepository.updateWatchProgress(videoId, currentPos, dur)
+                        }
+                    }
+                    lastSaveTime = now
+                }
+
+                // Phase 2: Dynamic Bitrate Dropping (SABR Strategy)
+                if (isAutoQualityEnabled && !player.isCurrentMediaItemLive) {
+                    val estimate = bandwidthMeter.bitrateEstimate
+                    val currentQual = currentStream?.quality ?: ""
+                    
+                    if (currentQual.contains("1080") && estimate < BITRATE_1080P_THRESHOLD) {
+                        PTLog.w("PlaybackManager", "Bandwidth $estimate dropped below 1080p threshold. Downgrading.")
+                        dropQuality()
+                    } else if (currentQual.contains("720") && estimate < BITRATE_720P_THRESHOLD) {
+                        PTLog.w("PlaybackManager", "Bandwidth $estimate dropped below 720p threshold. Downgrading.")
+                        dropQuality()
+                    }
+                }
 
                 // Update Stats
                 val videoFormat = player.videoFormat
@@ -423,6 +543,35 @@ class PlaybackManager @Inject constructor(
 
     private fun stopProgressUpdate() {
         progressJob?.cancel()
+    }
+
+    private fun startHeartbeat() {
+        heartbeatJob?.cancel()
+        val url = currentStream?.url ?: return
+        if (url.isBlank() || !url.contains("googlevideo.com")) return
+
+        heartbeatJob = managerScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                delay(90_000L) // Ping every 90 seconds
+                try {
+                    val request = okhttp3.Request.Builder()
+                        .url(url)
+                        .header("Range", "bytes=0-1")
+                        .build()
+                    
+                    okHttpClient.newCall(request).execute().use { response ->
+                        PTLog.d("PlaybackManager", "Heartbeat sent to stream server. Status: ${response.code}")
+                    }
+                } catch (e: Exception) {
+                    PTLog.w("PlaybackManager", "Heartbeat failed: ${e.message}")
+                }
+            }
+        }
+    }
+
+    private fun stopHeartbeat() {
+        heartbeatJob?.cancel()
+        heartbeatJob = null
     }
 
     fun cleanUp() {

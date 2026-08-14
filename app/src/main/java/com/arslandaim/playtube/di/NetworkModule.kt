@@ -39,7 +39,8 @@ object NetworkModule {
     @Singleton
     fun provideOkHttpClient(
         @ApplicationContext context: Context,
-        preferencesManager: PreferencesManager
+        preferencesManager: PreferencesManager,
+        poTokenProvider: com.arslandaim.playtube.data.network.PoTokenProvider
     ): OkHttpClient {
         val cacheSize = 50L * 1024L * 1024L // 50MB
         val cacheDirectory = File(context.cacheDir, "http_cache")
@@ -70,10 +71,17 @@ object NetworkModule {
             .connectionPool(pool)
             .dispatcher(dispatcher)
             .addInterceptor { chain ->
-                val request = chain.request().newBuilder()
+                val requestBuilder = chain.request().newBuilder()
                     .header("User-Agent", Constants.DEFAULT_USER_AGENT)
-                    .build()
-                chain.proceed(request)
+                
+                // Phase 3: PoToken Integration for streaming requests
+                if (chain.request().url.host.contains("googlevideo.com")) {
+                    val videoId = chain.request().url.queryParameter("id") 
+                        ?: chain.request().url.queryParameter("v")
+                    requestBuilder.header("X-Goog-Po-Token", poTokenProvider.generatePoToken(videoId))
+                }
+
+                chain.proceed(requestBuilder.build())
             }
             .connectTimeout(60, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)

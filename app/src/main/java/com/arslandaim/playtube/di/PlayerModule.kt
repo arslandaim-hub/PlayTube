@@ -79,15 +79,22 @@ object PlayerModule {
     fun provideDataSourceFactory(
         @ApplicationContext context: Context,
         @Named("HttpDataSourceFactory") httpDataSourceFactory: DataSource.Factory,
+        bandwidthMeter: BandwidthMeter,
         cacheProvider: javax.inject.Provider<SimpleCache>
     ): DataSource.Factory {
         return DataSource.Factory {
             val cache = cacheProvider.get()
             val defaultDataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
             
+            // Phase 2: Wrap with SABRDataSource for chunked loading
+            val sabrFactory = com.arslandaim.playtube.ui.screens.player.SABRDataSourceFactory(
+                defaultDataSourceFactory,
+                bandwidthMeter
+            )
+            
             CacheDataSource.Factory()
                 .setCache(cache)
-                .setUpstreamDataSourceFactory(defaultDataSourceFactory)
+                .setUpstreamDataSourceFactory(sabrFactory)
                 .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
                 .createDataSource()
         }
