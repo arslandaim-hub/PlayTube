@@ -24,6 +24,8 @@
   </a>
   <img src="https://img.shields.io/badge/Android-API%2024%2B-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android Support">
   <img src="https://img.shields.io/badge/Kotlin-100%25-B125EA?style=flat-square&logo=kotlin&logoColor=white" alt="Kotlin">
+  
+  ![Total Downloads](https://img.shields.io/github/downloads/arslandaim-hub/PlayTube/total?style=for-the-badge&color=blue&logo=github)
 </p>
 
 <br>
@@ -115,8 +117,3 @@ If you enjoy using PlayTube and would like to support its continued development,
     <img src="https://img.shields.io/badge/Become%20a%20Patron-Patreon-FF424D?style=for-the-badge&logo=patreon&logoColor=white" alt="Become a Patron">
   </a>
 </div>
-
-<!--
-
-![Total Downloads](https://img.shields.io/github/downloads/arslandaim-hub/PlayTube/total?style=for-the-badge&color=blue&logo=github)
->--
