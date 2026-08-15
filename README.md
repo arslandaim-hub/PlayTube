@@ -86,6 +86,13 @@
 | | Version Catalogs | Centralized dependency and version management |
 
 ---
+## Thanks to
+  - Newpipe extractor.
+  - Newpipe.
+  - LibreTube.
+  - Pipepipe.
+  - Flow.
+**For making this project possible.**
 
 ## 📱 Screenshots
 
