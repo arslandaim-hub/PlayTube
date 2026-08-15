@@ -90,7 +90,7 @@
 ## 📱 Screenshots
 
 <div align="center">
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/home.png" width="18%" alt="Home Screen">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/homescreen.png" width="18%" alt="Home Screen">
   &nbsp;
     <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/playerscreen.png" width="18%" alt="player Screen">
    &nbsp;
