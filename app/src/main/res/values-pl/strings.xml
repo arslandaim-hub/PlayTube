@@ -1,0 +1,135 @@
+<resources>
+    <string name="app_name">PlayTube</string>
+
+    <!-- General -->
+    <string name="retry">Spróbuj ponownie</string>
+    <string name="back">Wróć</string>
+    <string name="cancel">Anuluj</string>
+    <string name="delete">Usuń</string>
+    <string name="search">Szukaj</string>
+    <string name="no_internet">Brak połączenia z internetem</string>
+    <string name="error_prefix">Błąd: %s</string>
+    <string name="clear">Wyczyść</string>
+    <string name="close">Zamknij</string>
+
+    <!-- Home -->
+    <string name="tab_for_you">Dla Ciebie</string>
+    <string name="tab_subscriptions">Subskrybcje</string>
+    <string name="personalized_title">Spersonalizowane dla Ciebie</string>
+    <string name="personalized_desc">Wzorowane na historii Twojego wyszukiwania</string>
+    <string name="no_subscriptions_videos">Nie ma filmów z Twoich subskrybcji na razie.</string>
+    <string name="no_videos_found">Nie znaleziono żadnych filmów.</string>
+
+    <!-- Player -->
+    <string name="quality">Jakość</string>
+    <string name="playback_speed">Prędkość odtwarzania</string>
+    <string name="description">Opis</string>
+    <string name="more">Więcej</string>
+    <string name="related_videos">Powiązane filmy</string>
+    <string name="download">Pobierz</string>
+    <string name="downloaded">Pobrane</string>
+    <string name="like">Polub</string>
+    <string name="liked">Polubione</string>
+    <string name="save">Zapisz</string>
+    <string name="saved">Zapisane</string>
+    <string name="share">Udostępnij</string>
+    <string name="info">Informacje</string>
+    <string name="subscribe">Subskrybuj</string>
+    <string name="subscribed">Subskrybujesz</string>
+    <string name="auto">Automatyczny</string>
+    <string name="normal_speed">Normalny</string>
+    <string name="no_description">Opis niedostępny</string>
+    <string name="loading">Wczytywanie...</string>
+    <string name="toggle_subtitles">Przełącz napisy</string>
+    <string name="settings">Ustawienia</string>
+    <string name="waiting_for_connection">Oczekiwanie na połączenie...</string>
+
+    <!-- Library -->
+    <string name="library">Biblioteka</string>
+    <string name="history">Historia</string>
+    <string name="subscriptions">Subskrybcje</string>
+    <string name="downloads">Pobrane</string>
+    <string name="favorites">Ulubione</string>
+    <string name="see_all">Zobacz wszystkie</string>
+    <string name="no_history">Nie ma jeszcze historii oglądania</string>
+    <string name="no_history_desc">Filmy które oglądasz będą się tu pojawiać.</string>
+    <string name="no_downloads">Nie ma jeszcze pobrań</string>
+    <string name="no_downloads_desc">Pobierz filmy aby oglądać je kiedykolwiek.</string>
+    <string name="no_favorites">Nie ma jeszcze ulubionych</string>
+    <string name="no_favorites_desc">Oznacz filmy jako ulubione aby łatwo je potem odnaleźć.</string>
+    <string name="no_subscriptions">Nie ma jeszcze subskrybcji</string>
+    <string name="no_subscriptions_desc">Subskrybuj swoje ulubione kanały aby zobaczyć je tutaj.</string>
+    <string name="no_playlists">Nie ma jeszcze ulubionych playlist</string>
+    <string name="no_playlists_desc">Twoje zapisane playlisty będą się pokazywać tutaj.</string>
+    <string name="discover_videos">Odnajduj filmy</string>
+    <string name="remove_from_favorites">Usuń z ulubionych</string>
+    <string name="add_to_favorites">Dodaj do ulubionych</string>
+    <string name="delete_download_title">Usunąć z pobranych?</string>
+    <string name="delete_download_desc">Czy jesteś pewny/a że chcesz usunąć ten pobrany film?</string>
+
+    <!-- Search -->
+    <string name="search_placeholder">Przeszukaj PlayTube</string>
+    <string name="discover_new">Odkryj coś nowego</string>
+    <string name="recent_searches">Ostatnie wyszukiwania</string>
+    <string name="clear_all">Wyczyść wszystko</string>
+    <string name="sort_relevance">Trafność</string>
+    <string name="sort_newest">Najnowsze</string>
+    <string name="sort_most_viewed">Najbardziej oglądane</string>
+    <string name="sort_top_rated">Najwyżej oceniane</string>
+
+    <!-- Channel & Playlist -->
+    <string name="videos">Filmy</string>
+    <string name="playlists">Playlisty</string>
+    <string name="subscribers_hidden">Subskrybenci ukryci</string>
+    <string name="subscribers_count">%s subskrybentów</string>
+    <string name="playlist">Playlista</string>
+    <string name="by_author">Od %s</string>
+    <string name="download_all">Pobierz wszystkie</string>
+    <string name="video_count">%s filmów</string>
+    <string name="background_play">Odtwarzanie w tle</string>
+    <string name="background_play_desc">Utrzymuj odtwarzanie dźwięku, gdy aplikacja jest zminimalizowana</string>
+
+    <!-- Final Audit Additions -->
+    <string name="back_online">Internet znów działa</string>
+    <string name="offline_dialog_text">Jesteś aktualnie offline. Sprawdź pobrane filmy.</string>
+    <string name="go_to_downloads">Idź do pobranych</string>
+    <string name="incognito_label">Incognito</string>
+    <string name="smart_cleanup_title">Inteligentne porządki</string>
+    <string name="smart_cleanup_desc">To usunie wszystkie pobrane filmy które już obejrzałeś/aś (>90%).</string>
+    <string name="clean_now">Wyczyść teraz</string>
+    <string name="clear_history_title">Wyczyścić historię przeglądania?</string>
+    <string name="clear_history_desc">Jesteś pewny/a że chcesz wyczyścić historię przeglądania? Ta czynność nie może zostać cofnięta.</string>
+    <string name="pause_watch_history">Wstrzymaj historię odtwarzania</string>
+    <string name="not_interested">Nie interesujące</string>
+    <string name="up_next">Następne</string>
+    <string name="play_now">Odtwarzaj teraz</string>
+    <string name="search_offline">Szukaj offline...</string>
+    <string name="duration">Czas trwania</string>
+    <string name="apply">Zgłoś się</string>
+    <string name="close_app_on_finish">Zamknij aplikację na końcu</string>
+    <string name="close_app_desc">Oszczędzaj baterię zamykając PlayTube</string>
+    <string name="timer_minutes_placeholder">%d minut</string>
+    <string name="subtitles">Napisy</string>
+    <string name="off">Wyłączone</string>
+    <string name="history_cleared">Historia wyczyszczona</string>
+    <string name="ends_at">Kończy się o %s</string>
+    <string name="video_quality">Jakość filmu</string>
+    <string name="video">Wideo</string>
+    <string name="audio">Audio</string>
+    <string name="high_quality">Wysoka jakość</string>
+    <string name="download_quality">Pobierz jakość</string>
+    <string name="playlist_download_quality">Jakość playlisty pobierania</string>
+    <string name="auto_generated">Automatycznie wygenerowane</string>
+    <string name="language_auto_generated">%1$s (%2$s)</string>
+
+    <!-- Sleep Timer -->
+    <string name="sleep_timer">Odmierzacz czasu snu</string>
+    <string name="timer_off">Wyłączony</string>
+    <string name="timer_15">15 minut</string>
+    <string name="timer_30">30 minut</string>
+    <string name="timer_45">45 minut</string>
+    <string name="timer_60">60 minut</string>
+    <string name="timer_end_of_video">Koniec filmu</string>
+    <string name="timer_minutes_remaining">Zostało %d minut</string>
+    <string name="timer_end_of_video_active">Zatrzymuje się przy końcu filmu</string>
+</resources>
