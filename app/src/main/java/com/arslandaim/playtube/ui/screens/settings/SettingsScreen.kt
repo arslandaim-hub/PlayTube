@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PictureInPicture
@@ -81,6 +82,7 @@ import com.arslandaim.playtube.R
 import androidx.core.net.toUri
 import com.arslandaim.playtube.BuildConfig
 import com.arslandaim.playtube.ui.components.GlassSurface
+import com.arslandaim.playtube.ui.components.LanguageSelectionSheet
 import com.arslandaim.playtube.ui.screens.library.GlobalGlassAlpha
 
 @Composable
@@ -98,6 +100,8 @@ fun SettingsScreen(
     val isDynamicColorEnabled by viewModel.isDynamicColorEnabled.collectAsStateWithLifecycle()
     val subtitleFontSize by viewModel.subtitleFontSize.collectAsStateWithLifecycle()
     val subtitleBackgroundOpacity by viewModel.subtitleBackgroundOpacity.collectAsStateWithLifecycle()
+    val appLanguage by viewModel.appLanguage.collectAsStateWithLifecycle()
+    val availableLocales = viewModel.availableLocales
     val isAutoUpdateEnabled by updateViewModel.isAutoUpdateEnabled.collectAsStateWithLifecycle()
     val updateInfo by updateViewModel.updateInfo.collectAsStateWithLifecycle()
 
@@ -109,6 +113,8 @@ fun SettingsScreen(
         isDynamicColorEnabled = isDynamicColorEnabled,
         subtitleFontSize = subtitleFontSize,
         subtitleBackgroundOpacity = subtitleBackgroundOpacity,
+        appLanguage = appLanguage,
+        availableLocales = availableLocales,
         isAutoUpdateEnabled = isAutoUpdateEnabled,
         updateInfo = updateInfo,
         onSetSearchHistoryPaused = viewModel::setSearchHistoryPaused,
@@ -118,6 +124,7 @@ fun SettingsScreen(
         onSetDynamicColorEnabled = viewModel::setDynamicColorEnabled,
         onSetSubtitleFontSize = viewModel::setSubtitleFontSize,
         onSetSubtitleBackgroundOpacity = viewModel::setSubtitleBackgroundOpacity,
+        onSetAppLanguage = viewModel::setAppLanguage,
         onClearLearnedInterests = viewModel::clearLearnedInterests,
         onSetAutoUpdateEnabled = updateViewModel::setAutoUpdateEnabled,
         onClearAllDownloads = viewModel::clearAllDownloads,
@@ -137,6 +144,8 @@ private fun SettingsContent(
     isDynamicColorEnabled: Boolean,
     subtitleFontSize: Float,
     subtitleBackgroundOpacity: Float,
+    appLanguage: String?,
+    availableLocales: List<java.util.Locale>,
     isAutoUpdateEnabled: Boolean,
     updateInfo: com.arslandaim.playtube.domain.repository.UpdateInfo,
     onSetSearchHistoryPaused: (Boolean) -> Unit,
@@ -146,6 +155,7 @@ private fun SettingsContent(
     onSetDynamicColorEnabled: (Boolean) -> Unit,
     onSetSubtitleFontSize: (Float) -> Unit,
     onSetSubtitleBackgroundOpacity: (Float) -> Unit,
+    onSetAppLanguage: (String?) -> Unit,
     onClearLearnedInterests: () -> Unit,
     onSetAutoUpdateEnabled: (Boolean) -> Unit,
     onClearAllDownloads: () -> Unit,
@@ -156,6 +166,7 @@ private fun SettingsContent(
     var showClearDownloadsDialog by remember { mutableStateOf(false) }
     var showClearInterestsDialog by remember { mutableStateOf(false) }
     var showDeveloperDialog by remember { mutableStateOf(false) }
+    var showLanguageSheet by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     val isPipSupported = remember {
@@ -168,7 +179,7 @@ private fun SettingsContent(
         AlertDialog(
             onDismissRequest = { showDeveloperDialog = false },
             title = { Text("About Developer") },
-            text = { Text("Developed by Arslan Daim Shar\nStudent & Developer of Open-Source Applications.") },
+            text = { Text("Developed by Arslan Daim Shar") },
             confirmButton = {
                 TextButton(onClick = { showDeveloperDialog = false }) {
                     Text("OK")
@@ -197,6 +208,18 @@ private fun SettingsContent(
             onConfirm = {
                 onClearLearnedInterests()
                 showClearInterestsDialog = false
+            }
+        )
+    }
+
+    if (showLanguageSheet) {
+        LanguageSelectionSheet(
+            availableLocales = availableLocales,
+            currentLanguageTag = appLanguage,
+            onDismiss = { showLanguageSheet = false },
+            onLanguageSelected = { tag ->
+                onSetAppLanguage(tag)
+                showLanguageSheet = false
             }
         )
     }
@@ -233,7 +256,7 @@ private fun SettingsContent(
             item {
                 SettingsGroup(title = "App-Update") {
                     SettingsSwitchItem(
-                        title = "Auto Check for Updates",
+                        title = "Auto Check for Github-Release",
                         subtitle = "Notify when a new version is available on GitHub",
                         icon = Icons.Default.Info,
                         checked = isAutoUpdateEnabled,
@@ -347,6 +370,16 @@ private fun SettingsContent(
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                     }
+                    SettingsItem(
+                        title = stringResource(R.string.app_language),
+                        subtitle = appLanguage?.let { tag ->
+                            val locale = java.util.Locale.forLanguageTag(tag)
+                            locale.getDisplayLanguage(locale).replaceFirstChar { it.uppercase() }
+                        } ?: "System Default",
+                        icon = Icons.Default.Language,
+                        onClick = { showLanguageSheet = true }
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                     SettingsItem(
                         title = "Subtitle Styles",
                         subtitle = "Customize font size and background",

@@ -132,6 +132,7 @@ fun PlayerScreen(
     val isSubscribed by viewModel.isSubscribed.collectAsStateWithLifecycle()
     val playbackSpeed by viewModel.playbackSpeed.collectAsStateWithLifecycle()
     val currentQuality by viewModel.currentQuality.collectAsStateWithLifecycle()
+    val displayQuality by viewModel.displayQuality.collectAsStateWithLifecycle()
     val isBuffering by viewModel.isBuffering.collectAsStateWithLifecycle()
     val downloadedIds by viewModel.downloadedVideoIds.collectAsStateWithLifecycle()
     val favorites by viewModel.libraryRepository.getFavorites().collectAsStateWithLifecycle(initialValue = emptyList())
@@ -212,6 +213,7 @@ fun PlayerScreen(
             isSubscribed = isSubscribed,
             playbackSpeed = playbackSpeed,
             currentQuality = currentQuality,
+            displayQuality = displayQuality,
             isBuffering = isBuffering,
             isRecovering = isRecovering,
             isPlaying = isPlaying,
@@ -289,6 +291,7 @@ private fun PlayerContent(
     isSubscribed: Boolean,
     playbackSpeed: Float,
     currentQuality: String?,
+    displayQuality: String,
     isBuffering: Boolean,
     isRecovering: Boolean,
     isPlaying: Boolean,
@@ -532,7 +535,7 @@ private fun PlayerContent(
             Column(modifier = Modifier.padding(bottom = 32.dp)) {
                 ListItem(
                     headlineContent = { Text(stringResource(R.string.quality)) },
-                    supportingContent = { Text(currentQuality ?: stringResource(R.string.auto)) },
+                    supportingContent = { Text(displayQuality) },
                     leadingContent = { Icon(Icons.Default.Settings, null) },
                     modifier = Modifier.clickable {
                         showSettingsSheet = false

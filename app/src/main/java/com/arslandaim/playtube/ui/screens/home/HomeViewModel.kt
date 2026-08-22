@@ -20,6 +20,7 @@ import com.arslandaim.playtube.domain.usecase.ToggleFavoriteUseCase
 import com.arslandaim.playtube.ui.components.DownloadDialogState
 import com.arslandaim.playtube.utils.PlayTubeError
 import com.arslandaim.playtube.utils.HistoryUtils.applyHistory
+import com.arslandaim.playtube.utils.HistoryUtils.getContinuePlaying
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -49,7 +50,8 @@ class HomeViewModel @Inject constructor(
         libraryRepository.getHistory()
     ) { state, history ->
         state.copy(
-            trendingVideos = state.trendingVideos.applyHistory(history)
+            trendingVideos = state.trendingVideos.applyHistory(history),
+            continuePlayingVideos = getContinuePlaying(history)
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeState())
 
@@ -274,6 +276,7 @@ class HomeViewModel @Inject constructor(
 
 data class HomeState(
     val trendingVideos: List<VideoItem> = emptyList(),
+    val continuePlayingVideos: List<VideoItem> = emptyList(),
     val nextTrendingPage: org.schabi.newpipe.extractor.Page? = null,
     val isTrendingLoading: Boolean = true,
     val isLoadingMore: Boolean = false,

@@ -25,4 +25,16 @@ object HistoryUtils {
             video.copy(watchProgress = historyMap[video.id])
         }
     }
+
+    /**
+     * Filters history items that are partially watched (between 5% and 95%).
+     * Returns them as VideoItem objects for UI display.
+     */
+    fun getContinuePlaying(history: List<HistoryEntity>): List<VideoItem> {
+        return history.filter { 
+            it.durationMs > 0 && 
+            (it.progressMs.toFloat() / it.durationMs) in 0.05f..0.95f 
+        }.sortedByDescending { it.timestamp }
+        .map { it.toVideoItem() }
+    }
 }

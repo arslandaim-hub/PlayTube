@@ -20,7 +20,9 @@ import com.arslandaim.playtube.domain.usecase.GetDownloadsUseCase
 import com.arslandaim.playtube.domain.usecase.GetFavoritesUseCase
 import com.arslandaim.playtube.domain.usecase.GetHistoryUseCase
 import com.arslandaim.playtube.domain.usecase.GetSubscriptionsUseCase
+import com.arslandaim.playtube.domain.usecase.PauseDownloadUseCase
 import com.arslandaim.playtube.domain.usecase.ResumeDownloadUseCase
+import com.arslandaim.playtube.domain.usecase.SaveToPublicStorageUseCase
 import com.arslandaim.playtube.domain.usecase.SyncSubscriptionMetadataUseCase
 import com.arslandaim.playtube.domain.usecase.ToggleFavoriteUseCase
 import com.arslandaim.playtube.domain.usecase.ToggleSubscriptionUseCase
@@ -39,7 +41,9 @@ class LibraryViewModel @Inject constructor(
     private val getSubscriptionsUseCase: GetSubscriptionsUseCase,
     private val deleteDownloadUseCase: DeleteDownloadUseCase,
     private val cancelDownloadUseCase: CancelDownloadUseCase,
+    private val pauseDownloadUseCase: PauseDownloadUseCase,
     private val resumeDownloadUseCase: ResumeDownloadUseCase,
+    private val saveToPublicStorageUseCase: SaveToPublicStorageUseCase,
     private val toggleFavoriteUseCase: ToggleFavoriteUseCase,
     private val toggleSubscriptionUseCase: ToggleSubscriptionUseCase,
     private val syncSubscriptionMetadataUseCase: SyncSubscriptionMetadataUseCase,
@@ -82,6 +86,9 @@ class LibraryViewModel @Inject constructor(
 
     private val _offlineSearchQuery = MutableStateFlow("")
     val offlineSearchQuery: StateFlow<String> = _offlineSearchQuery.asStateFlow()
+
+    private val _snackbarMessage = MutableSharedFlow<String>()
+    val snackbarMessage: SharedFlow<String> = _snackbarMessage.asSharedFlow()
 
     val filteredDownloads: StateFlow<List<DownloadEntity>> = combine(
         downloads,
@@ -163,9 +170,23 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    fun pauseDownload(videoId: String) {
+        viewModelScope.launch {
+            pauseDownloadUseCase(videoId)
+        }
+    }
+
     fun resumeDownload(videoId: String) {
         viewModelScope.launch {
             resumeDownloadUseCase(videoId)
+        }
+    }
+
+    fun saveToPublicStorage(videoId: String) {
+        viewModelScope.launch {
+            saveToPublicStorageUseCase(videoId)
+                .onSuccess { _snackbarMessage.emit("Saved to gallery") }
+                .onFailure { _snackbarMessage.emit("Failed to save: ${it.message}") }
         }
     }
 

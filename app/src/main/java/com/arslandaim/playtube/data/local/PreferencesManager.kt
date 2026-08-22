@@ -191,6 +191,14 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
             preferences[SUBTITLE_BACKGROUND_OPACITY] ?: 0.65f
         }
 
+    open val appLanguage: Flow<String?> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) emit(emptyPreferences())
+            else throw exception
+        }.map { preferences ->
+            preferences[APP_LANGUAGE]
+        }
+
     open val lastPlayedVideoId: Flow<String?> = dataStore.data.map { it[LAST_PLAYED_VIDEO_ID] }
     open val lastPlayedPosition: Flow<Long> = dataStore.data.map { it[LAST_PLAYED_POSITION] ?: 0L }
     open val lastPlayedIsLocal: Flow<Boolean> = dataStore.data.map { it[LAST_PLAYED_IS_LOCAL] ?: false }
@@ -299,6 +307,13 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
         }
     }
 
+    suspend fun setAppLanguage(tag: String?) {
+        dataStore.edit { preferences ->
+            if (tag == null) preferences.remove(APP_LANGUAGE)
+            else preferences[APP_LANGUAGE] = tag
+        }
+    }
+
     suspend fun setLastPlayedSession(videoId: String, position: Long, isLocal: Boolean) {
         dataStore.edit { preferences ->
             preferences[LAST_PLAYED_VIDEO_ID] = videoId
@@ -344,6 +359,7 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
         val PREFERRED_QUALITY = stringPreferencesKey("preferred_quality")
         val SUBTITLE_FONT_SIZE = floatPreferencesKey("subtitle_font_size")
         val SUBTITLE_BACKGROUND_OPACITY = floatPreferencesKey("subtitle_background_opacity")
+        val APP_LANGUAGE = stringPreferencesKey("app_language")
         
         val LAST_PLAYED_VIDEO_ID = stringPreferencesKey("last_played_video_id")
         val LAST_PLAYED_POSITION = longPreferencesKey("last_played_position")

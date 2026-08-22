@@ -5,12 +5,17 @@
 */
 package com.arslandaim.playtube.ui.screens.settings
 
+import android.content.Context
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.arslandaim.playtube.data.local.PreferencesManager
 import com.arslandaim.playtube.domain.repository.DownloadRepository
 import com.arslandaim.playtube.domain.repository.LibraryRepository
+import com.arslandaim.playtube.utils.LocaleUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +28,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val preferencesManager: PreferencesManager,
     private val downloadRepository: DownloadRepository,
     private val libraryRepository: LibraryRepository
@@ -54,6 +60,11 @@ class SettingsViewModel @Inject constructor(
 
     val subtitleBackgroundOpacity: StateFlow<Float> = preferencesManager.subtitleBackgroundOpacity
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.65f)
+
+    val appLanguage: StateFlow<String?> = preferencesManager.appLanguage
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val availableLocales = LocaleUtils.getAvailableLocales(context)
 
     fun setHistoryEnabled(enabled: Boolean) {
         viewModelScope.launch {
@@ -106,6 +117,18 @@ class SettingsViewModel @Inject constructor(
     fun setSubtitleBackgroundOpacity(opacity: Float) {
         viewModelScope.launch {
             preferencesManager.setSubtitleBackgroundOpacity(opacity)
+        }
+    }
+
+    fun setAppLanguage(tag: String?) {
+        viewModelScope.launch {
+            preferencesManager.setAppLanguage(tag)
+            val appLocale: LocaleListCompat = if (tag == null) {
+                LocaleListCompat.getEmptyLocaleList()
+            } else {
+                LocaleListCompat.forLanguageTags(tag)
+            }
+            AppCompatDelegate.setApplicationLocales(appLocale)
         }
     }
 

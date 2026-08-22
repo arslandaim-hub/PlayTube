@@ -5,6 +5,8 @@
 */
 package com.arslandaim.playtube.ui.screens.home
 
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -100,6 +102,86 @@ fun HomeScreen(
         onChannelClick = onChannelClick,
         onNavigateToDownloads = onNavigateToDownloads // Pass it down
     )
+}
+
+@Composable
+private fun ContinuePlayingSection(
+    videos: List<VideoItem>,
+    onVideoClick: (VideoItem) -> Unit
+) {
+    if (videos.isEmpty()) return
+
+    Column(modifier = Modifier.padding(vertical = 16.dp)) {
+        Text(
+            text = stringResource(R.string.continue_playing),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(
+                items = videos,
+                key = { it.id }
+            ) { video ->
+                ContinueWatchingCard(video = video, onClick = { onVideoClick(video) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContinueWatchingCard(
+    video: VideoItem,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .width(200.dp)
+            .clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(112.dp)
+                .clip(RoundedCornerShape(12.dp))
+        ) {
+            com.arslandaim.playtube.ui.components.ThumbnailImage(
+                videoId = video.id,
+                thumbnailUrl = video.thumbnailUrl,
+                modifier = Modifier.fillMaxSize()
+            )
+            
+            video.watchProgress?.let { progress ->
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .align(Alignment.BottomCenter),
+                    color = Color.Red,
+                    trackColor = Color.White.copy(alpha = 0.3f)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = video.title,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = video.uploaderName,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -248,6 +330,12 @@ private fun HomeContent(
                         onAddToPlaylistClick = onAddToPlaylistClick,
                         onLoadMore = onLoadMore,
                         isLoadingMore = state.isLoadingMore,
+                        header = {
+                            ContinuePlayingSection(
+                                videos = state.continuePlayingVideos,
+                                onVideoClick = onVideoClick
+                            )
+                        },
                         contentPadding = PaddingValues(
                             top = with(density) { headerHeightPx.toDp() },
                             bottom = 100.dp

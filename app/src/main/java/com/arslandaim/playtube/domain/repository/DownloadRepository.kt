@@ -30,4 +30,5 @@ interface DownloadRepository {
     suspend fun resumeAllPausedDownloads()
     suspend fun deleteDownload(videoId: String)
     suspend fun clearAllDownloads()
+    suspend fun saveToPublicStorage(videoId: String): Result<Unit>
 }

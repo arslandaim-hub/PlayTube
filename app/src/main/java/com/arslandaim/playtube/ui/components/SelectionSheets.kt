@@ -363,6 +363,63 @@ fun PlaylistDownloadSelectionSheet(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LanguageSelectionSheet(
+    availableLocales: List<java.util.Locale>,
+    currentLanguageTag: String?,
+    onDismiss: () -> Unit,
+    onLanguageSelected: (String?) -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(modifier = Modifier.padding(bottom = 32.dp)) {
+            Text(
+                text = stringResource(R.string.app_language),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+            
+            LazyColumn {
+                item {
+                    ListItem(
+                        headlineContent = { Text(text = "System Default") },
+                        leadingContent = { 
+                            RadioButton(
+                                selected = currentLanguageTag == null || currentLanguageTag == "",
+                                onClick = null 
+                            ) 
+                        },
+                        modifier = Modifier.clickable { onLanguageSelected(null) }
+                    )
+                }
+                
+                items(availableLocales) { locale ->
+                    val tag = locale.toLanguageTag()
+                    ListItem(
+                        headlineContent = { 
+                            Text(text = locale.getDisplayLanguage(locale).replaceFirstChar { it.uppercase() }) 
+                        },
+                        supportingContent = { 
+                            Text(text = locale.getDisplayLanguage(java.util.Locale.ENGLISH))
+                        },
+                        leadingContent = { 
+                            RadioButton(
+                                selected = currentLanguageTag == tag,
+                                onClick = null 
+                            ) 
+                        },
+                        modifier = Modifier.clickable { onLanguageSelected(tag) }
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun SectionHeader(title: String, icon: ImageVector) {
     Row(

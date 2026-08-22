@@ -52,6 +52,14 @@ fun DownloadsScreen(
     var isSearchActive by remember { mutableStateOf(false) }
     var showCleanupConfirm by remember { mutableStateOf(false) }
 
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(Unit) {
+        viewModel.snackbarMessage.collect { message ->
+            snackbarHostState.showSnackbar(message)
+        }
+    }
+
     val scrollVisibilityConnection = rememberScrollVisibilityConnection(onBarsVisibilityChange)
 
     if (showCleanupConfirm) {
@@ -103,6 +111,7 @@ fun DownloadsScreen(
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollVisibilityConnection),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -242,7 +251,9 @@ fun DownloadsScreen(
                                 onClick = { onVideoClick(download.toVideoItem()) },
                                 onDeleteClick = { videoIdToDelete = download.videoId },
                                 onCancelClick = { viewModel.cancelDownload(download.videoId) },
-                                onRetryClick = { viewModel.resumeDownload(download.videoId) },
+                                onPauseClick = { viewModel.pauseDownload(download.videoId) },
+                                onResumeClick = { viewModel.resumeDownload(download.videoId) },
+                                onSaveToDeviceClick = { viewModel.saveToPublicStorage(download.videoId) },
                                 onAddToPlaylistClick = { onAddToPlaylistClick(download.toVideoItem()) },
                                 modifier = Modifier.padding(start = 24.dp)
                             )
@@ -257,7 +268,9 @@ fun DownloadsScreen(
                         onClick = { onVideoClick(download.toVideoItem()) },
                         onDeleteClick = { videoIdToDelete = download.videoId },
                         onCancelClick = { viewModel.cancelDownload(download.videoId) },
-                        onRetryClick = { viewModel.resumeDownload(download.videoId) },
+                        onPauseClick = { viewModel.pauseDownload(download.videoId) },
+                        onResumeClick = { viewModel.resumeDownload(download.videoId) },
+                        onSaveToDeviceClick = { viewModel.saveToPublicStorage(download.videoId) },
                         onAddToPlaylistClick = { onAddToPlaylistClick(download.toVideoItem()) }
                     )
                 }

@@ -31,6 +31,9 @@ interface DownloadDao {
     @Query("UPDATE downloads SET status = :status, downloadedSize = :downloadedSize, totalSize = :totalSize WHERE videoId = :videoId")
     suspend fun updateProgress(videoId: String, status: DownloadStatus, downloadedSize: Long, totalSize: Long)
 
+    @Query("UPDATE downloads SET status = :status WHERE videoId = :videoId")
+    suspend fun setDownloadStatus(videoId: String, status: DownloadStatus)
+
     @Query("SELECT * FROM downloads WHERE status = 'DOWNLOADING' OR status = 'PENDING'")
     suspend fun getActiveDownloads(): List<DownloadEntity>
 

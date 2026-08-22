@@ -112,6 +112,21 @@ class PlayerViewModel @Inject constructor(
     private val _currentQuality = MutableStateFlow<String?>(null)
     val currentQuality: StateFlow<String?> = _currentQuality.asStateFlow()
 
+    val displayQuality: StateFlow<String> = combine(
+        preferredQuality,
+        currentQuality,
+        playbackStats
+    ) { preferred, current, stats ->
+        if (preferred == "Auto") {
+            val res = stats.resolution.split("x").lastOrNull()?.let { "${it}p" }
+                ?: current?.filter { it.isDigit() }?.let { "${it}p" }
+                ?: ""
+            if (res.isNotEmpty()) "Auto ($res)" else "Auto"
+        } else {
+            preferred
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Auto")
+
     private val _playbackSpeed = MutableStateFlow(1f)
     val playbackSpeed: StateFlow<Float> = _playbackSpeed.asStateFlow()
 
@@ -239,11 +254,19 @@ class PlayerViewModel @Inject constructor(
 
         // Load preferences
         viewModelScope.launch {
-            combine(preferencesManager.isSubtitlesEnabled, preferencesManager.preferredSubtitleLanguage) { enabled, lang ->
+            preferencesManager.isSubtitlesEnabled.collect { enabled ->
                 _isCcEnabled.value = enabled
-                _selectedSubtitleLanguage.value = lang
-                playbackManager.updateCcState(enabled, lang)
-            }.collect()
+                playbackManager.updateCcState(enabled, _selectedSubtitleLanguage.value)
+            }
+        }
+        viewModelScope.launch {
+            preferencesManager.preferredSubtitleLanguage.collect { lang ->
+                val available = (uiState.value as? PlayerUiState.Success)?.bundle?.subtitles ?: emptyList()
+                if (available.isEmpty() || lang == null || available.any { it.languageTag == lang }) {
+                    _selectedSubtitleLanguage.value = lang
+                    playbackManager.updateCcState(_isCcEnabled.value, lang)
+                }
+            }
         }
         viewModelScope.launch {
             preferencesManager.isAutoplayEnabled.collect { _isAutoplayEnabled.value = it }
@@ -292,6 +315,7 @@ class PlayerViewModel @Inject constructor(
                     nextRelatedPage = bundle.nextRelatedVideosPage
                     _uiState.value = PlayerUiState.Success(bundle.title, bundle.uploaderName, bundle)
                     miniPlayerManager.updateMetadata(currentVideoItem)
+                    syncSubtitles(bundle)
                     
                     val uploaderId = VideoUtils.extractChannelId(bundle.uploaderUrl) ?: bundle.uploaderUrl
                     uploaderId?.let { id -> launch { isSubscribedUseCase(id).collectLatest { _isSubscribed.value = it } } }
@@ -368,6 +392,7 @@ class PlayerViewModel @Inject constructor(
                 currentBundle = bundle
                 nextRelatedPage = bundle.nextRelatedVideosPage
                 _uiState.value = PlayerUiState.Success(bundle.title, bundle.uploaderName, bundle)
+                syncSubtitles(bundle)
                 
                 val preferred = preferredQuality.value
                 val stream = if (preferred == "Auto") {
@@ -380,7 +405,8 @@ class PlayerViewModel @Inject constructor(
                 stream?.let {
                     if (!isSameVideo || playbackManager.player.playbackState == Player.STATE_IDLE) {
                         playbackManager.play(videoId, bundle, it, if (bundle.isLive) 0 else getResumePosition(videoId))
-                    } else _currentQuality.value = it.quality
+                    }
+                    _currentQuality.value = it.quality
                 }
 
                 val uploaderId = VideoUtils.extractChannelId(bundle.uploaderUrl) ?: bundle.uploaderUrl
@@ -538,6 +564,7 @@ class PlayerViewModel @Inject constructor(
             getVideoStreamsUseCase(videoId, forceRefresh = true).onSuccess { bundle ->
                 currentBundle = bundle
                 _uiState.value = PlayerUiState.Success(bundle.title, bundle.uploaderName, bundle)
+                syncSubtitles(bundle)
                 
                 val preferred = preferredQuality.value
                 val stream = if (preferred == "Auto") {
@@ -550,6 +577,7 @@ class PlayerViewModel @Inject constructor(
                 stream?.let {
                     // Phase 3: Seamless Hot-Swap Recovery
                     playbackManager.hotSwapSource(videoId, bundle, it, lastFailedPosition)
+                    _currentQuality.value = it.quality
                     isStalledDueToNetwork = false
                     _isRecovering.value = false
                 }
@@ -641,16 +669,16 @@ class PlayerViewModel @Inject constructor(
 
     private fun selectAutoQuality(streams: List<StreamItem>): StreamItem? {
         if (streams.isEmpty()) return null
-        
+
         val estimate = playbackManager.getBandwidthEstimate()
         val bufferedDuration = playbackManager.player.bufferedPosition - playbackManager.player.currentPosition
-        
-        val sortedStreams = streams.sortedBy { 
-            it.quality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 
+
+        val sortedStreams = streams.sortedBy {
+            it.quality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0
         }
 
         val thresholds = Constants.QualityThresholds
-        
+
         // If buffer is very low (less than 5s), stick to a lower quality even if bandwidth is high
         val maxAllowedQuality = if (bufferedDuration < 5000) thresholds.P480 else Long.MAX_VALUE
 
@@ -680,6 +708,22 @@ class PlayerViewModel @Inject constructor(
     fun seekForward() = performSeek(true)
     fun seekBackward() = performSeek(false)
     fun toggleSubtitles() = setSubtitlesEnabled(!_isCcEnabled.value)
+
+    private fun syncSubtitles(bundle: StreamBundle) {
+        val available = bundle.subtitles
+        if (available.isEmpty()) {
+            _selectedSubtitleLanguage.value = null
+            return
+        }
+
+        val currentLang = _selectedSubtitleLanguage.value
+        if (currentLang == null || available.none { it.languageTag == currentLang }) {
+            val newLang = available.find { !it.isAutoGenerated }?.languageTag 
+                ?: available.firstOrNull()?.languageTag
+            _selectedSubtitleLanguage.value = newLang
+            playbackManager.updateCcState(_isCcEnabled.value, newLang)
+        }
+    }
 
     fun shareVideo() {
         val videoId = currentVideoId ?: return

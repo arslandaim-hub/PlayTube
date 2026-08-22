@@ -774,6 +774,9 @@ fun VideoRow(
     onDeleteClick: (() -> Unit)? = null,
     onCancelClick: (() -> Unit)? = null,
     onRetryClick: (() -> Unit)? = null,
+    onPauseClick: (() -> Unit)? = null,
+    onResumeClick: (() -> Unit)? = null,
+    onSaveToDeviceClick: (() -> Unit)? = null,
     onFavoriteClick: (() -> Unit)? = null,
     onDownloadClick: (() -> Unit)? = null,
     onAddToPlaylistClick: (() -> Unit)? = null,
@@ -939,6 +942,9 @@ fun VideoRow(
                                 onRemoveFromPlaylistClick = onRemoveFromPlaylistClick,
                                 onDeleteClick = onDeleteClick,
                                 onRetryClick = onRetryClick,
+                                onPauseClick = onPauseClick,
+                                onResumeClick = onResumeClick,
+                                onSaveToDeviceClick = onSaveToDeviceClick,
                                 onCancelClick = onCancelClick,
                                 deleteText = deleteText,
                                 dismissMenu = { showMenu = false }
@@ -962,10 +968,58 @@ private fun VideoRowMenuContent(
     onRemoveFromPlaylistClick: (() -> Unit)?,
     onDeleteClick: (() -> Unit)? = null,
     onRetryClick: (() -> Unit)? = null,
+    onPauseClick: (() -> Unit)? = null,
+    onResumeClick: (() -> Unit)? = null,
+    onSaveToDeviceClick: (() -> Unit)? = null,
     onCancelClick: (() -> Unit)? = null,
     deleteText: String = "Delete",
     dismissMenu: () -> Unit
 ) {
+    if (onSaveToDeviceClick != null) {
+        DropdownMenuItem(
+            text = { Text("Save to Device") },
+            leadingIcon = { 
+                Icon(
+                    imageVector = Icons.Default.Save, 
+                    contentDescription = null
+                ) 
+            },
+            onClick = {
+                dismissMenu()
+                onSaveToDeviceClick()
+            }
+        )
+    }
+    if (onPauseClick != null) {
+        DropdownMenuItem(
+            text = { Text("Pause Download") },
+            leadingIcon = { 
+                Icon(
+                    imageVector = Icons.Default.Pause, 
+                    contentDescription = null
+                ) 
+            },
+            onClick = {
+                dismissMenu()
+                onPauseClick()
+            }
+        )
+    }
+    if (onResumeClick != null) {
+        DropdownMenuItem(
+            text = { Text("Resume Download") },
+            leadingIcon = { 
+                Icon(
+                    imageVector = Icons.Default.PlayArrow, 
+                    contentDescription = null
+                ) 
+            },
+            onClick = {
+                dismissMenu()
+                onResumeClick()
+            }
+        )
+    }
     if (onDownloadClick != null) {
         DropdownMenuItem(
             text = { Text(if (isDownloaded) "Downloaded" else "Download") },
@@ -1236,7 +1290,9 @@ fun DownloadItemRow(
     onClick: () -> Unit,
     onDeleteClick: () -> Unit,
     onCancelClick: () -> Unit,
-    onRetryClick: () -> Unit,
+    onPauseClick: () -> Unit,
+    onResumeClick: () -> Unit,
+    onSaveToDeviceClick: () -> Unit,
     onAddToPlaylistClick: (() -> Unit)? = null,
     onRemoveFromPlaylistClick: (() -> Unit)? = null
 ) {
@@ -1254,10 +1310,15 @@ fun DownloadItemRow(
         onAddToPlaylistClick = onAddToPlaylistClick,
         onRemoveFromPlaylistClick = onRemoveFromPlaylistClick,
         onDeleteClick = onDeleteClick,
-        onRetryClick = if (download.status == com.arslandaim.playtube.data.local.DownloadStatus.FAILED) onRetryClick else null,
+        onRetryClick = if (download.status == com.arslandaim.playtube.data.local.DownloadStatus.FAILED) onResumeClick else null,
         onCancelClick = if (download.status == com.arslandaim.playtube.data.local.DownloadStatus.DOWNLOADING || 
                            download.status == com.arslandaim.playtube.data.local.DownloadStatus.PENDING || 
                            download.status == com.arslandaim.playtube.data.local.DownloadStatus.WAITING) onCancelClick else null,
+        onPauseClick = if (download.status == com.arslandaim.playtube.data.local.DownloadStatus.DOWNLOADING || 
+                          download.status == com.arslandaim.playtube.data.local.DownloadStatus.PENDING || 
+                          download.status == com.arslandaim.playtube.data.local.DownloadStatus.WAITING) onPauseClick else null,
+        onResumeClick = if (download.status == com.arslandaim.playtube.data.local.DownloadStatus.PAUSED) onResumeClick else null,
+        onSaveToDeviceClick = if (download.status == com.arslandaim.playtube.data.local.DownloadStatus.COMPLETED) onSaveToDeviceClick else null,
         deleteText = "Delete Download",
         metadata = {
             Row(

@@ -502,7 +502,7 @@ class PlaybackManager @Inject constructor(
                 if (isAutoQualityEnabled && !player.isCurrentMediaItemLive) {
                     val estimate = bandwidthMeter.bitrateEstimate
                     val currentQual = currentStream?.quality ?: ""
-                    
+
                     if (currentQual.contains("1080") && estimate < BITRATE_1080P_THRESHOLD) {
                         PTLog.w("PlaybackManager", "Bandwidth $estimate dropped below 1080p threshold. Downgrading.")
                         dropQuality()

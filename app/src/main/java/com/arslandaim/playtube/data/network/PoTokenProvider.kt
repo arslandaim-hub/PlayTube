@@ -11,6 +11,17 @@ import javax.inject.Singleton
 @Singleton
 class PoTokenProvider @Inject constructor() {
     private val tokenCache = mutableMapOf<String, String>()
+    private var visitorData: String? = null
+
+    /**
+     * Returns a stable VisitorData ID for the session.
+     */
+    fun getVisitorData(): String {
+        if (visitorData == null) {
+            visitorData = "visitor_data_${System.currentTimeMillis()}"
+        }
+        return visitorData!!
+    }
 
     /**
      * Generates a Proof of Origin (PoToken) to legitimize streaming sessions.

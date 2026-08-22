@@ -5,7 +5,11 @@
 */
 package com.arslandaim.playtube.data.repository
 
+import android.content.ContentValues
 import android.content.Context
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.work.*
 import com.arslandaim.playtube.data.local.DownloadDao
 import com.arslandaim.playtube.data.local.DownloadEntity
@@ -14,7 +18,9 @@ import com.arslandaim.playtube.domain.repository.DownloadRepository
 import com.arslandaim.playtube.workers.DownloadWorker
 import com.arslandaim.playtube.utils.PTLog
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 
@@ -171,5 +177,48 @@ class DownloadRepositoryImpl @Inject constructor(
             }
         }
         downloadDao.clearAll()
+    }
+
+    override suspend fun saveToPublicStorage(videoId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val entity = downloadDao.getDownloadById(videoId) ?: return@withContext Result.failure(Exception("Download not found"))
+            if (entity.status != DownloadStatus.COMPLETED) return@withContext Result.failure(Exception("Download not completed"))
+
+            val file = File(entity.filePath)
+            if (!file.exists()) return@withContext Result.failure(Exception("File not found"))
+
+            val extension = if (entity.format?.contains("webm", ignoreCase = true) == true) "webm" else "mp4"
+            val mimeType = if (extension == "webm") "video/webm" else "video/mp4"
+            val displayName = "${entity.title}_${entity.videoId}.$extension"
+
+            val contentValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/PlayTube")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+            }
+
+            val resolver = context.contentResolver
+            val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, contentValues) ?: return@withContext Result.failure(Exception("Failed to insert into MediaStore"))
+
+            resolver.openOutputStream(uri)?.use { output ->
+                file.inputStream().use { input ->
+                    input.copyTo(output)
+                }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                contentValues.clear()
+                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(uri, contentValues, null, null)
+            }
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            PTLog.e("DownloadRepository", "Failed to save to public storage", e)
+            Result.failure(e)
+        }
     }
 }
