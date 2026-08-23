@@ -52,7 +52,8 @@
 *   **Background Play with media controls.** 
 *   **Picture-in-Picture (PiP).** 
 *   **Subtitles Support.**
-*   **Incognito Mode**
+*   **Comments.**
+*   **Incognito Mode.**
 *   **High-Quality Downloads.**
 *   **Gesture Controls.**
 *   **Orientation Flexibility:** Push up/down landscape and portrait modes.
