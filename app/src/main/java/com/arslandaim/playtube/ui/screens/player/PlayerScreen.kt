@@ -160,6 +160,9 @@ fun PlayerScreen(
     val playbackStats by viewModel.playbackStats.collectAsStateWithLifecycle()
     val comments by viewModel.comments.collectAsStateWithLifecycle()
     val isFetchingComments by viewModel.isFetchingComments.collectAsStateWithLifecycle()
+    val replies by viewModel.replies.collectAsStateWithLifecycle()
+    val isFetchingReplies by viewModel.isFetchingReplies.collectAsStateWithLifecycle()
+    val activeReplyParent by viewModel.activeReplyParent.collectAsStateWithLifecycle()
     val syncTransition = rememberSyncShimmerTransition()
 
     var activeCues by remember { mutableStateOf<List<Cue>>(emptyList()) }
@@ -275,7 +278,13 @@ fun PlayerScreen(
             comments = comments,
             isFetchingComments = isFetchingComments,
             onLoadComments = viewModel::loadComments,
-            onLoadNextCommentsPage = viewModel::loadNextCommentsPage
+            onLoadNextCommentsPage = viewModel::loadNextCommentsPage,
+            replies = replies,
+            isFetchingReplies = isFetchingReplies,
+            activeReplyParent = activeReplyParent,
+            onLoadReplies = viewModel::loadReplies,
+            onLoadNextRepliesPage = viewModel::loadNextRepliesPage,
+            onCloseReplies = viewModel::closeReplies
         )
 }
 
@@ -353,7 +362,13 @@ private fun PlayerContent(
     comments: List<com.arslandaim.playtube.domain.model.CommentItem>,
     isFetchingComments: Boolean,
     onLoadComments: () -> Unit,
-    onLoadNextCommentsPage: () -> Unit
+    onLoadNextCommentsPage: () -> Unit,
+    replies: List<com.arslandaim.playtube.domain.model.CommentItem>,
+    isFetchingReplies: Boolean,
+    activeReplyParent: com.arslandaim.playtube.domain.model.CommentItem?,
+    onLoadReplies: (com.arslandaim.playtube.domain.model.CommentItem) -> Unit,
+    onLoadNextRepliesPage: () -> Unit,
+    onCloseReplies: () -> Unit
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -515,7 +530,10 @@ private fun PlayerContent(
 
     if (showCommentsSheet) {
         ModalBottomSheet(
-            onDismissRequest = { showCommentsSheet = false },
+            onDismissRequest = { 
+                showCommentsSheet = false
+                onCloseReplies()
+            },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             scrimColor = Color.Black.copy(alpha = 0.25f)
         ) {
@@ -523,7 +541,16 @@ private fun PlayerContent(
                 comments = comments,
                 isFetching = isFetchingComments,
                 onLoadMore = onLoadNextCommentsPage,
-                onDismiss = { showCommentsSheet = false }
+                onDismiss = { 
+                    showCommentsSheet = false
+                    onCloseReplies()
+                },
+                activeReplyParent = activeReplyParent,
+                replies = replies,
+                isFetchingReplies = isFetchingReplies,
+                onRepliesClick = onLoadReplies,
+                onLoadMoreReplies = onLoadNextRepliesPage,
+                onCloseReplies = onCloseReplies
             )
         }
     }

@@ -20,6 +20,7 @@ import com.arslandaim.playtube.data.local.PlayTubeDatabase
 import com.arslandaim.playtube.data.local.SubscriptionEntity
 import com.arslandaim.playtube.domain.repository.VideoRepository
 import com.arslandaim.playtube.domain.usecase.UpdateUserInterestsUseCase
+import com.arslandaim.playtube.R
 import com.arslandaim.playtube.utils.PTLog
 import com.arslandaim.playtube.utils.VideoUtils
 import com.google.gson.Gson
@@ -71,73 +72,93 @@ class ImportWorker @AssistedInject constructor(
     }
 
     private suspend fun importHistory(uri: Uri): Result {
-        updateProgress(0f, "Analyzing history...")
+        updateProgress(0f, context.getString(R.string.loading))
         
         var importedCount = 0
-        val inputStream = getStreamForFile(uri, "watch-history.json") ?: return Result.failure()
+        var malformedCount = 0
+        val inputStream = getStreamForFile(uri, listOf("watch-history.json", "MyActivity.json")) 
+            ?: return Result.failure(Data.Builder().putString("error", context.getString(R.string.error_history_not_found)).build())
 
         inputStream.use { stream ->
             val reader = JsonReader(InputStreamReader(stream, "UTF-8"))
-            reader.beginArray()
-            
-            val batchSize = 100
-            val currentBatch = mutableListOf<HistoryEntity>()
-            
-            while (reader.hasNext()) {
-                if (isStopped) return Result.retry()
+            try {
+                reader.beginArray()
                 
-                val item = gson.fromJson<com.arslandaim.playtube.data.repository.TakeoutHistoryItem>(reader, com.arslandaim.playtube.data.repository.TakeoutHistoryItem::class.java)
-                val videoId = VideoUtils.extractVideoId(item.titleUrl)
+                val batchSize = 100
+                val currentBatch = mutableListOf<HistoryEntity>()
                 
-                if (videoId.isNotBlank() && item.title != null) {
-                    val entity = HistoryEntity(
-                        videoId = videoId,
-                        title = item.title.removePrefix("Watched "),
-                        thumbnailUrl = VideoUtils.getBestThumbnailUrl(videoId),
-                        uploaderName = item.subtitles?.firstOrNull()?.name ?: "Unknown",
-                        timestamp = parseTakeoutTime(item.time)
-                    )
-                    currentBatch.add(entity)
-                    updateUserInterestsUseCase(entity.title, 0.3f, 1.0f)
-                }
+                while (reader.hasNext()) {
+                    if (isStopped) return Result.retry()
+                    
+                    try {
+                        val item = gson.fromJson<com.arslandaim.playtube.data.repository.TakeoutHistoryItem>(reader, com.arslandaim.playtube.data.repository.TakeoutHistoryItem::class.java)
+                        val videoId = VideoUtils.extractVideoId(item.titleUrl)
+                        
+                        if (videoId.isNotBlank() && item.title != null) {
+                            val entity = HistoryEntity(
+                                videoId = videoId,
+                                title = item.title.removePrefix("Watched "),
+                                thumbnailUrl = VideoUtils.getBestThumbnailUrl(videoId),
+                                uploaderName = item.subtitles?.firstOrNull()?.name ?: "Unknown",
+                                timestamp = parseTakeoutTime(item.time)
+                            )
+                            currentBatch.add(entity)
+                        }
+                    } catch (e: Exception) {
+                        malformedCount++
+                        reader.skipValue() 
+                        continue
+                    }
 
-                if (currentBatch.size >= batchSize) {
+                    if (currentBatch.size >= batchSize) {
+                        database.historyDao().insertAllIgnoreSync(currentBatch)
+                        importedCount += currentBatch.size
+                        currentBatch.clear()
+                        updateProgress(0.5f, context.getString(R.string.importing_items, importedCount))
+                    }
+                }
+                
+                if (currentBatch.isNotEmpty()) {
                     database.historyDao().insertAllIgnoreSync(currentBatch)
                     importedCount += currentBatch.size
-                    currentBatch.clear()
-                    updateProgress(0.5f, "Imported $importedCount history items...")
                 }
+                
+                reader.endArray()
+            } catch (e: Exception) {
+                PTLog.e("ImportWorker", "History parsing error", e)
+                return Result.failure(Data.Builder().putString("error", context.getString(R.string.error_malformed_history)).build())
             }
-            
-            if (currentBatch.isNotEmpty()) {
-                database.historyDao().insertAllIgnoreSync(currentBatch)
-                importedCount += currentBatch.size
-            }
-            
-            reader.endArray()
         }
         
         return Result.success(Data.Builder().putInt(COUNT_KEY, importedCount).build())
     }
 
     private suspend fun importSubscriptions(uri: Uri): Result {
-        updateProgress(0f, "Analyzing subscriptions...")
+        updateProgress(0f, context.getString(R.string.loading))
         
         val channelIds = mutableListOf<String>()
-        val inputStream = getStreamForFile(uri, "subscriptions.csv") ?: return Result.failure()
+        val inputStream = getStreamForFile(uri, listOf("subscriptions.csv")) 
+            ?: return Result.failure(Data.Builder().putString("error", context.getString(R.string.error_subscriptions_not_found)).build())
 
         inputStream.use { stream ->
             val reader = stream.bufferedReader()
-            reader.readLine() // Skip header
-            
-            reader.forEachLine { line ->
-                val parts = line.split(",")
-                if (parts.size >= 2) {
-                    val channelId = parts[0].trim().removePrefix("\"").removeSuffix("\"")
-                    if (channelId.startsWith("UC")) {
-                        channelIds.add(channelId)
+            try {
+                reader.readLine() // Skip header
+                
+                reader.forEachLine { line ->
+                    try {
+                        val parts = line.split(",")
+                        if (parts.size >= 2) {
+                            val channelId = parts[0].trim().removePrefix("\"").removeSuffix("\"")
+                            if (channelId.startsWith("UC")) {
+                                channelIds.add(channelId)
+                            }
+                        }
+                    } catch (e: Exception) {
                     }
                 }
+            } catch (e: Exception) {
+                return Result.failure(Data.Builder().putString("error", context.getString(R.string.error_malformed_csv)).build())
             }
         }
 
@@ -177,19 +198,59 @@ class ImportWorker @AssistedInject constructor(
         return Result.success(Data.Builder().putInt(COUNT_KEY, importedCount).build())
     }
 
-    private fun getStreamForFile(uri: Uri, targetFileName: String): InputStream? {
+    private fun getStreamForFile(uri: Uri, targetFileNames: List<String>): InputStream? {
         val cr = context.contentResolver
-        val zipInputStream = ZipInputStream(cr.openInputStream(uri))
-        var entry = zipInputStream.nextEntry
-        while (entry != null) {
-            if (entry.name.endsWith(targetFileName, ignoreCase = true)) {
-                return zipInputStream
+        val type = cr.getType(uri)
+        val isZip = type == "application/zip" || 
+                    uri.path?.endsWith(".zip", ignoreCase = true) == true ||
+                    type == "application/x-zip-compressed"
+
+        if (!isZip) {
+            // Check if the single file matches any of our targets
+            val fileName = getFileName(uri) ?: ""
+            return if (targetFileNames.any { fileName.endsWith(it, ignoreCase = true) }) {
+                cr.openInputStream(uri)
+            } else {
+                null
             }
-            zipInputStream.closeEntry()
-            entry = zipInputStream.nextEntry
         }
-        zipInputStream.close()
-        return null
+
+        // Search in ZIP
+        return try {
+            val zipInputStream = ZipInputStream(cr.openInputStream(uri))
+            var entry = zipInputStream.nextEntry
+            while (entry != null) {
+                val name = entry.name
+                if (targetFileNames.any { name.endsWith(it, ignoreCase = true) }) {
+                    return zipInputStream
+                }
+                zipInputStream.closeEntry()
+                entry = zipInputStream.nextEntry
+            }
+            zipInputStream.close()
+            null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun getFileName(uri: Uri): String? {
+        var result: String? = null
+        if (uri.scheme == "content") {
+            val cursor = context.contentResolver.query(uri, null, null, null, null)
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    val index = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (index != -1) result = it.getString(index)
+                }
+            }
+        }
+        if (result == null) {
+            result = uri.path
+            val cut = result?.lastIndexOf('/') ?: -1
+            if (cut != -1) result = result?.substring(cut + 1)
+        }
+        return result
     }
 
     private fun parseTakeoutTime(time: String?): Long {

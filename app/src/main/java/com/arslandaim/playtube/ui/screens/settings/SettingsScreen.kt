@@ -178,11 +178,11 @@ private fun SettingsContent(
     if (showDeveloperDialog) {
         AlertDialog(
             onDismissRequest = { showDeveloperDialog = false },
-            title = { Text("About Developer") },
-            text = { Text("Developed by Arslan Daim Shar") },
+            title = { Text(stringResource(R.string.about_developer)) },
+            text = { Text(stringResource(R.string.developed_by)) },
             confirmButton = {
                 TextButton(onClick = { showDeveloperDialog = false }) {
-                    Text("OK")
+                    Text(stringResource(R.string.ok))
                 }
             }
         )
@@ -190,8 +190,8 @@ private fun SettingsContent(
 
     if (showClearDownloadsDialog) {
         ConfirmationDialog(
-            title = "Clear all downloads?",
-            message = "Are you sure you want to delete all downloaded videos? This action cannot be undone.",
+            title = stringResource(R.string.clear_all_downloads_title),
+            message = stringResource(R.string.clear_all_downloads_desc),
             onDismiss = { showClearDownloadsDialog = false },
             onConfirm = {
                 onClearAllDownloads()
@@ -202,8 +202,8 @@ private fun SettingsContent(
 
     if (showClearInterestsDialog) {
         ConfirmationDialog(
-            title = "Clear learned data?",
-            message = "This will wipe all learned user interests and reset the recommendation engine. This action cannot be undone.",
+            title = stringResource(R.string.clear_learned_data_title),
+            message = stringResource(R.string.clear_learned_data_desc),
             onDismiss = { showClearInterestsDialog = false },
             onConfirm = {
                 onClearLearnedInterests()
@@ -229,10 +229,10 @@ private fun SettingsContent(
         topBar = {
             GlassSurface(tonalElevation = 0.dp) {
                 LargeTopAppBar(
-                    title = { Text("Settings", fontWeight = FontWeight.Bold) },
+                    title = { Text(stringResource(R.string.settings), fontWeight = FontWeight.Bold) },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                         }
                     },
                     scrollBehavior = scrollBehavior,
@@ -254,10 +254,10 @@ private fun SettingsContent(
         ) {
             // Update Category
             item {
-                SettingsGroup(title = "App-Update") {
+                SettingsGroup(title = stringResource(R.string.settings_group_update)) {
                     SettingsSwitchItem(
-                        title = "Auto Check for Github-Release",
-                        subtitle = "Notify when a new version is available on GitHub",
+                        title = stringResource(R.string.settings_auto_update),
+                        subtitle = stringResource(R.string.settings_auto_update_desc),
                         icon = Icons.Default.Info,
                         checked = isAutoUpdateEnabled,
                         onCheckedChange = onSetAutoUpdateEnabled
@@ -266,7 +266,7 @@ private fun SettingsContent(
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
-                                text = "New Update Available: ${updateInfo.latestVersion}",
+                                text = stringResource(R.string.update_available, updateInfo.latestVersion),
                                 style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Bold
@@ -285,7 +285,7 @@ private fun SettingsContent(
                                 },
                                 contentPadding = PaddingValues(0.dp)
                             ) {
-                                Text("Download from GitHub", fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.download_from_github), fontWeight = FontWeight.Bold)
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
                             }
@@ -296,18 +296,18 @@ private fun SettingsContent(
 
             // History & Privacy Category
             item {
-                SettingsGroup(title = "History & Privacy") {
+                SettingsGroup(title = stringResource(R.string.settings_group_history_privacy)) {
                     SettingsItem(
-                        title = "View history",
-                        subtitle = "Manage your watched videos",
+                        title = stringResource(R.string.settings_view_history),
+                        subtitle = stringResource(R.string.settings_view_history_desc),
                         icon = Icons.Default.History,
                         onClick = onViewHistory,
                         trailingIcon = Icons.AutoMirrored.Filled.KeyboardArrowRight
                     )
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                     SettingsSwitchItem(
-                        title = "Pause search history",
-                        subtitle = "Suggestions will also be paused",
+                        title = stringResource(R.string.settings_pause_search_history),
+                        subtitle = stringResource(R.string.settings_pause_search_history_desc),
                         icon = Icons.Default.Pause,
                         checked = isSearchHistoryPaused,
                         onCheckedChange = onSetSearchHistoryPaused
@@ -315,8 +315,8 @@ private fun SettingsContent(
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                     if (isPipSupported) {
                         SettingsSwitchItem(
-                            title = "Picture-in-Picture",
-                            subtitle = "Keep watching in a small window",
+                            title = stringResource(R.string.settings_pip),
+                            subtitle = stringResource(R.string.settings_pip_desc),
                             icon = Icons.Default.PictureInPicture,
                             checked = isPipEnabled,
                             onCheckedChange = onSetPipEnabled
@@ -332,24 +332,24 @@ private fun SettingsContent(
                     )
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                     SettingsItem(
-                        title = "Data & Backup",
-                        subtitle = "Import Takeout and native backups",
+                        title = stringResource(R.string.settings_data_backup),
+                        subtitle = stringResource(R.string.settings_data_backup_desc),
                         icon = Icons.Default.Info,
                         onClick = onDataManagement,
                         trailingIcon = Icons.AutoMirrored.Filled.KeyboardArrowRight
                     )
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                     SettingsSwitchItem(
-                        title = "Pause Recommendations",
-                        subtitle = "Stop learning your interests temporarily",
+                        title = stringResource(R.string.settings_pause_recommendations),
+                        subtitle = stringResource(R.string.settings_pause_recommendations_desc),
                         icon = Icons.Default.Recommend,
                         checked = isRecommendationsPaused,
                         onCheckedChange = onSetRecommendationsPaused
                     )
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                     SettingsItem(
-                        title = "Clear learned data",
-                        subtitle = "Reset recommendation engine profile",
+                        title = stringResource(R.string.settings_clear_learned_data),
+                        subtitle = stringResource(R.string.settings_clear_learned_data_desc_item),
                         icon = Icons.Default.AutoAwesome,
                         onClick = { showClearInterestsDialog = true },
                         titleColor = MaterialTheme.colorScheme.error
@@ -359,11 +359,11 @@ private fun SettingsContent(
 
             // Content Category
             item {
-                SettingsGroup(title = "Appearance & Playback") {
+                SettingsGroup(title = stringResource(R.string.settings_group_appearance_playback)) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         SettingsSwitchItem(
-                            title = "Material You",
-                            subtitle = "Adapts device theme color",
+                            title = stringResource(R.string.settings_material_you),
+                            subtitle = stringResource(R.string.settings_material_you_desc),
                             icon = Icons.Default.AutoAwesome,
                             checked = isDynamicColorEnabled,
                             onCheckedChange = onSetDynamicColorEnabled
@@ -375,20 +375,20 @@ private fun SettingsContent(
                         subtitle = appLanguage?.let { tag ->
                             val locale = java.util.Locale.forLanguageTag(tag)
                             locale.getDisplayLanguage(locale).replaceFirstChar { it.uppercase() }
-                        } ?: "System Default",
+                        } ?: stringResource(R.string.system_default),
                         icon = Icons.Default.Language,
                         onClick = { showLanguageSheet = true }
                     )
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                     SettingsItem(
-                        title = "Subtitle Styles",
-                        subtitle = "Customize font size and background",
+                        title = stringResource(R.string.settings_subtitle_styles),
+                        subtitle = stringResource(R.string.settings_subtitle_styles_desc),
                         icon = Icons.Default.ClosedCaption
                     )
                     
                     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                         Text(
-                            text = "Font Size: ${subtitleFontSize.toInt()}sp",
+                            text = stringResource(R.string.subtitle_font_size, subtitleFontSize.toInt()),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -403,7 +403,7 @@ private fun SettingsContent(
                         Spacer(modifier = Modifier.height(8.dp))
                         
                         Text(
-                            text = "Background Opacity: ${(subtitleBackgroundOpacity * 100).toInt()}%",
+                            text = stringResource(R.string.subtitle_background_opacity, (subtitleBackgroundOpacity * 100).toInt()),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -428,7 +428,7 @@ private fun SettingsContent(
                                 shape = RoundedCornerShape(4.dp)
                             ) {
                                 Text(
-                                    text = "Subtitle Preview",
+                                    text = stringResource(R.string.subtitle_preview),
                                     color = Color.White,
                                     fontSize = subtitleFontSize.sp,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -441,10 +441,10 @@ private fun SettingsContent(
 
             // Content Category
             item {
-                SettingsGroup(title = "Content") {
+                SettingsGroup(title = stringResource(R.string.settings_group_content)) {
                     SettingsItem(
-                        title = "Clear all downloads",
-                        subtitle = "Remove all offline videos",
+                        title = stringResource(R.string.settings_clear_downloads),
+                        subtitle = stringResource(R.string.settings_clear_downloads_desc),
                         icon = Icons.Default.Delete,
                         onClick = { showClearDownloadsDialog = true },
                         titleColor = MaterialTheme.colorScheme.error
@@ -454,17 +454,17 @@ private fun SettingsContent(
 
             // About Category
             item {
-                SettingsGroup(title = "About") {
+                SettingsGroup(title = stringResource(R.string.settings_group_about)) {
                     SettingsItem(
-                        title = "About Developer",
-                        subtitle = "Information about the creator",
+                        title = stringResource(R.string.settings_about_developer),
+                        subtitle = stringResource(R.string.settings_about_developer_desc),
                         icon = Icons.Default.Person,
                         onClick = { showDeveloperDialog = true }
                     )
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                     SettingsItem(
-                        title = "View source code",
-                        subtitle = "Check out the project on GitHub",
+                        title = stringResource(R.string.settings_view_source),
+                        subtitle = stringResource(R.string.settings_view_source_desc),
                         icon = Icons.Default.Code,
                         onClick = {
                             val intent = Intent(Intent.ACTION_VIEW, "https://github.com/arslandaim-hub/PlayTube".toUri())
@@ -474,7 +474,7 @@ private fun SettingsContent(
                     )
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                     SettingsItem(
-                        title = "App Version",
+                        title = stringResource(R.string.settings_app_version),
                         subtitle = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                         icon = Icons.Default.Info,
                         onClick = null
@@ -653,12 +653,12 @@ fun ConfirmationDialog(
                 onClick = onConfirm,
                 colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
             ) {
-                Text("Confirm")
+                Text(stringResource(R.string.confirm))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         }
     )

@@ -35,6 +35,7 @@ class VideoRepositoryImpl @Inject constructor(
     private val initializer: NewPipeInitializer
 ) : VideoRepository {
     private val streamCache = LruCache<String, StreamBundle>(Constants.STREAM_CACHE_SIZE)
+    private val commentsCache = LruCache<String, CommentsInfoItem>(100)
 
     private suspend fun ensureInit() {
         initializer.ensureInitialized()
@@ -276,7 +277,36 @@ class VideoRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun getCommentReplies(videoId: String, comment: CommentItem): PaginatedList<CommentItem> {
+        ensureInit()
+        return withContext(Dispatchers.IO) {
+            val infoItem = commentsCache.get(comment.commentId) 
+                ?: throw IllegalStateException("Comment info not found in cache")
+            
+            val repliesPage = infoItem.getReplies()
+            if (repliesPage == null) {
+                return@withContext PaginatedList(emptyList(), null)
+            }
+            
+            val videoUrl = Constants.YouTube.VIDEO_URL_PREFIX + videoId
+            val result = CommentsInfo.getMoreItems(ServiceList.YouTube, videoUrl, repliesPage)
+            val items = result.items.filterIsInstance<CommentsInfoItem>().map { mapToCommentItem(it) }
+            PaginatedList(items, if (result.hasNextPage()) result.nextPage else null)
+        }
+    }
+
+    override suspend fun fetchNextCommentRepliesPage(videoId: String, commentId: String, page: Page): PaginatedList<CommentItem> {
+        ensureInit()
+        return withContext(Dispatchers.IO) {
+            val videoUrl = Constants.YouTube.VIDEO_URL_PREFIX + videoId
+            val result = CommentsInfo.getMoreItems(ServiceList.YouTube, videoUrl, page)
+            val items = result.items.filterIsInstance<CommentsInfoItem>().map { mapToCommentItem(it) }
+            PaginatedList(items, if (result.hasNextPage()) result.nextPage else null)
+        }
+    }
+
     private fun mapToCommentItem(item: CommentsInfoItem): CommentItem {
+        item.commentId?.let { commentsCache.put(it, item) }
         return CommentItem(
             authorName = item.uploaderName ?: "Unknown",
             authorThumbnailUrl = item.uploaderAvatars?.firstOrNull()?.url,

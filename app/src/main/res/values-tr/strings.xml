@@ -2,4 +2,58 @@
 <resources>
     <string name="app_language">Uygulama Dili</string>
     <string name="background_play">Arkaplanda Çal</string>
+    <string name="background_play_desc">Uygulama simge durumuna küçültüldüğünde ses çalmaya devam etsin</string>
+
+    <!-- Settings -->
+    <string name="about_developer">Geliştirici Hakkında</string>
+    <string name="developed_by">Arslan Daim Shar tarafından geliştirildi</string>
+    <string name="ok">Tamam</string>
+    <string name="confirm">Onayla</string>
+    <string name="clear_all_downloads_title">Tüm indirmeler temizlensin mi?</string>
+    <string name="clear_all_downloads_desc">Tüm indirilmiş videoları silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.</string>
+    <string name="clear_learned_data_title">Öğrenilen veriler temizlensin mi?</string>
+    <string name="clear_learned_data_desc">Bu, öğrenilen tüm kullanıcı ilgi alanlarını silecek ve öneri motorunu sıfırlayacaktır. Bu işlem geri alınamaz.</string>
+    <string name="settings_group_update">Uygulama Güncellemesi</string>
+    <string name="settings_auto_update">GitHub Sürümlerini Otomatik Kontrol Et</string>
+    <string name="settings_auto_update_desc">GitHub\'da yeni bir sürüm mevcut olduğunda bildir</string>
+    <string name="update_available">Yeni Güncelleme Mevcut: %s</string>
+    <string name="download_from_github">GitHub\'dan İndir</string>
+    <string name="settings_group_history_privacy">Geçmiş ve Gizlilik</string>
+    <string name="settings_view_history">Geçmişi görüntüle</string>
+    <string name="settings_view_history_desc">İzlediğiniz videoları yönetin</string>
+    <string name="settings_pause_search_history">Arama geçmişini duraklat</string>
+    <string name="settings_pause_search_history_desc">Öneriler de duraklatılacak</string>
+    <string name="settings_pip">Resim içinde Resim (PiP)</string>
+    <string name="settings_pip_desc">Küçük bir pencerede izlemeye devam edin</string>
+    <string name="settings_data_backup">Veri ve Yedekleme</string>
+    <string name="settings_data_backup_desc">Takeout ve yerel yedekleri içe aktar</string>
+    <string name="settings_pause_recommendations">Önerileri Duraklat</string>
+    <string name="settings_pause_recommendations_desc">İlgi alanlarınızı öğrenmeyi geçici olarak durdurun</string>
+    <string name="settings_clear_learned_data">Öğrenilen verileri temizle</string>
+    <string name="settings_clear_learned_data_desc_item">Öneri motoru profilini sıfırla</string>
+    <string name="settings_group_appearance_playback">Görünüm ve Oynatma</string>
+    <string name="settings_material_you">Material You</string>
+    <string name="settings_material_you_desc">Cihaz tema rengine uyum sağlar</string>
+    <string name="system_default">Sistem Varsayılanı</string>
+    <string name="settings_subtitle_styles">Altyazı Stilleri</string>
+    <string name="settings_subtitle_styles_desc">Yazı tipi boyutunu ve arka planı özelleştirin</string>
+    <string name="subtitle_font_size">Yazı Tipi Boyutu: %dsp</string>
+    <string name="subtitle_background_opacity">Arka Plan Opaklığı: %d%%</string>
+    <string name="subtitle_preview">Altyazı Önizleme</string>
+    <string name="settings_group_content">İçerik</string>
+    <string name="settings_clear_downloads">Tüm indirmeleri temizle</string>
+    <string name="settings_clear_downloads_desc">Tüm çevrimdışı videoları kaldır</string>
+    <string name="settings_group_about">Hakkında</string>
+    <string name="settings_about_developer">Geliştirici Hakkında</string>
+    <string name="settings_about_developer_desc">Oluşturucu hakkında bilgiler</string>
+    <string name="settings_view_source">Kaynak kodunu görüntüle</string>
+    <string name="settings_view_source_desc">GitHub\'daki projeye göz atın</string>
+    <string name="settings_app_version">Uygulama Sürümü</string>
+
+    <!-- Import Errors -->
+    <string name="error_history_not_found">ZIP veya seçim içinde geçmiş dosyası bulunamadı</string>
+    <string name="error_subscriptions_not_found">ZIP veya seçim içinde abonelikler dosyası bulunamadı</string>
+    <string name="error_malformed_history">Hatalı geçmiş dosyası formatı</string>
+    <string name="error_malformed_csv">Hatalı abonelikler dosyası formatı</string>
+    <string name="importing_items">%d öğe içe aktarıldı...</string>
 </resources>

@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Favorite
@@ -37,6 +38,7 @@ import com.arslandaim.playtube.utils.VideoUtils
 @Composable
 fun CommentItemRow(
     comment: CommentItem,
+    onRepliesClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -120,7 +122,10 @@ fun CommentItemRow(
                         text = "${comment.replyCount} replies",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Black
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.clickable(enabled = onRepliesClick != null) {
+                            onRepliesClick?.invoke()
+                        }
                     )
                 }
             }
@@ -208,9 +213,18 @@ fun CommentsSheet(
     comments: List<CommentItem>,
     isFetching: Boolean,
     onLoadMore: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    activeReplyParent: CommentItem? = null,
+    replies: List<CommentItem> = emptyList(),
+    isFetchingReplies: Boolean = false,
+    onRepliesClick: (CommentItem) -> Unit = {},
+    onLoadMoreReplies: () -> Unit = {},
+    onCloseReplies: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
+    val repliesListState = rememberLazyListState()
+    
+    val isViewingReplies = activeReplyParent != null
     
     Column(modifier = Modifier.fillMaxHeight(0.65f)) {
         // Immersive Header
@@ -222,15 +236,25 @@ fun CommentsSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                if (isViewingReplies) {
+                    IconButton(
+                        onClick = onCloseReplies,
+                        modifier = Modifier.padding(end = 12.dp)
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+                
                 Text(
-                    text = "Comments",
+                    text = if (isViewingReplies) "Replies" else "Comments",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Black,
-                    letterSpacing = (-0.5).sp
+                    letterSpacing = (-0.5).sp,
+                    modifier = Modifier.weight(1f)
                 )
+                
                 IconButton(
                     onClick = onDismiss,
                     modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), CircleShape)
@@ -243,29 +267,27 @@ fun CommentsSheet(
         HorizontalDivider(thickness = 0.4.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
         
         Box(modifier = Modifier.weight(1f)) {
-            if (comments.isEmpty() && isFetching) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(strokeWidth = 3.dp)
-                }
-            } else if (comments.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "No comments found.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
+            if (isViewingReplies) {
                 LazyColumn(
-                    state = listState,
+                    state = repliesListState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 32.dp)
                 ) {
-                    items(comments, key = { it.commentId }) { comment ->
-                        CommentItemRow(comment = comment)
+                    item {
+                        activeReplyParent.let { parent ->
+                            CommentItemRow(
+                                comment = parent,
+                                modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                            )
+                            HorizontalDivider(thickness = 0.4.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        }
                     }
                     
-                    if (isFetching) {
+                    items(replies, key = { it.commentId }) { reply ->
+                        CommentItemRow(comment = reply)
+                    }
+                    
+                    if (isFetchingReplies) {
                         item {
                             Box(
                                 modifier = Modifier
@@ -279,8 +301,52 @@ fun CommentsSheet(
                     }
                 }
                 
-                InfiniteScrollEffect(listState = listState, buffer = 5) {
-                    onLoadMore()
+                InfiniteScrollEffect(listState = repliesListState, buffer = 5) {
+                    onLoadMoreReplies()
+                }
+            } else {
+                if (comments.isEmpty() && isFetching) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(strokeWidth = 3.dp)
+                    }
+                } else if (comments.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "No comments found.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 32.dp)
+                    ) {
+                        items(comments, key = { it.commentId }) { comment ->
+                            CommentItemRow(
+                                comment = comment,
+                                onRepliesClick = { onRepliesClick(comment) }
+                            )
+                        }
+                        
+                        if (isFetching) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
+                                }
+                            }
+                        }
+                    }
+                    
+                    InfiniteScrollEffect(listState = listState, buffer = 5) {
+                        onLoadMore()
+                    }
                 }
             }
         }

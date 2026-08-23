@@ -157,7 +157,17 @@ class PlayerViewModel @Inject constructor(
     private val _isFetchingComments = MutableStateFlow(false)
     val isFetchingComments: StateFlow<Boolean> = _isFetchingComments.asStateFlow()
 
+    private val _replies = MutableStateFlow<List<CommentItem>>(emptyList())
+    val replies: StateFlow<List<CommentItem>> = _replies.asStateFlow()
+
+    private val _isFetchingReplies = MutableStateFlow(false)
+    val isFetchingReplies: StateFlow<Boolean> = _isFetchingReplies.asStateFlow()
+
+    private val _activeReplyParent = MutableStateFlow<CommentItem?>(null)
+    val activeReplyParent: StateFlow<CommentItem?> = _activeReplyParent.asStateFlow()
+
     private var nextCommentsPage: Page? = null
+    private var nextRepliesPage: Page? = null
 
     val downloadedVideoIds: StateFlow<Set<String>> = downloadRepository.getAllDownloads()
         .map { list -> 
@@ -824,6 +834,53 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    fun loadReplies(parent: CommentItem) {
+        val videoId = currentVideoId ?: return
+        if (_isFetchingReplies.value) return
+
+        viewModelScope.launch {
+            _activeReplyParent.value = parent
+            _replies.value = emptyList()
+            nextRepliesPage = null
+            _isFetchingReplies.value = true
+            try {
+                val result = videoRepository.getCommentReplies(videoId, parent)
+                _replies.value = result.items
+                nextRepliesPage = result.nextPage
+            } catch (e: Exception) {
+                PTLog.e("PlayerViewModel", "Error loading replies", e)
+            } finally {
+                _isFetchingReplies.value = false
+            }
+        }
+    }
+
+    fun loadNextRepliesPage() {
+        val videoId = currentVideoId ?: return
+        val parent = _activeReplyParent.value ?: return
+        val page = nextRepliesPage ?: return
+        if (_isFetchingReplies.value) return
+
+        viewModelScope.launch {
+            _isFetchingReplies.value = true
+            try {
+                val result = videoRepository.fetchNextCommentRepliesPage(videoId, parent.commentId, page)
+                _replies.value = _replies.value + result.items
+                nextRepliesPage = result.nextPage
+            } catch (e: Exception) {
+                PTLog.e("PlayerViewModel", "Error loading next replies page", e)
+            } finally {
+                _isFetchingReplies.value = false
+            }
+        }
+    }
+
+    fun closeReplies() {
+        _activeReplyParent.value = null
+        _replies.value = emptyList()
+        nextRepliesPage = null
+    }
+
     fun prepareDownload(video: VideoItem? = null) {
         val target = video ?: currentVideoItem ?: return
         if (target.id == currentVideoId && currentBundle != null && !currentBundle!!.videoStreams.isEmpty()) {
@@ -861,6 +918,8 @@ class PlayerViewModel @Inject constructor(
         loadingJob?.cancel()
         retryJob?.cancel()
         preloadingJob?.cancel()
+        _replies.value = emptyList()
+        _activeReplyParent.value = null
         super.onCleared()
     }
 }

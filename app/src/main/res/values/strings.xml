@@ -134,4 +134,57 @@
     <string name="timer_end_of_video">End of Video</string>
     <string name="timer_minutes_remaining">%d minutes remaining</string>
     <string name="timer_end_of_video_active">Stops at end of video</string>
+
+    <!-- Settings -->
+    <string name="about_developer">About Developer</string>
+    <string name="developed_by">Developed by Arslan Daim Shar</string>
+    <string name="ok">OK</string>
+    <string name="confirm">Confirm</string>
+    <string name="clear_all_downloads_title">Clear all downloads?</string>
+    <string name="clear_all_downloads_desc">Are you sure you want to delete all downloaded videos? This action cannot be undone.</string>
+    <string name="clear_learned_data_title">Clear learned data?</string>
+    <string name="clear_learned_data_desc">This will wipe all learned user interests and reset the recommendation engine. This action cannot be undone.</string>
+    <string name="settings_group_update">App-Update</string>
+    <string name="settings_auto_update">Auto Check for Github-Release</string>
+    <string name="settings_auto_update_desc">Notify when a new version is available on GitHub</string>
+    <string name="update_available">New Update Available: %s</string>
+    <string name="download_from_github">Download from GitHub</string>
+    <string name="settings_group_history_privacy">History &amp; Privacy</string>
+    <string name="settings_view_history">View history</string>
+    <string name="settings_view_history_desc">Manage your watched videos</string>
+    <string name="settings_pause_search_history">Pause search history</string>
+    <string name="settings_pause_search_history_desc">Suggestions will also be paused</string>
+    <string name="settings_pip">Picture-in-Picture</string>
+    <string name="settings_pip_desc">Keep watching in a small window</string>
+    <string name="settings_data_backup">Data &amp; Backup</string>
+    <string name="settings_data_backup_desc">Import Takeout and native backups</string>
+    <string name="settings_pause_recommendations">Pause Recommendations</string>
+    <string name="settings_pause_recommendations_desc">Stop learning your interests temporarily</string>
+    <string name="settings_clear_learned_data">Clear learned data</string>
+    <string name="settings_clear_learned_data_desc_item">Reset recommendation engine profile</string>
+    <string name="settings_group_appearance_playback">Appearance &amp; Playback</string>
+    <string name="settings_material_you">Material You</string>
+    <string name="settings_material_you_desc">Adapts device theme color</string>
+    <string name="system_default">System Default</string>
+    <string name="settings_subtitle_styles">Subtitle Styles</string>
+    <string name="settings_subtitle_styles_desc">Customize font size and background</string>
+    <string name="subtitle_font_size">Font Size: %dsp</string>
+    <string name="subtitle_background_opacity">Background Opacity: %d%%</string>
+    <string name="subtitle_preview">Subtitle Preview</string>
+    <string name="settings_group_content">Content</string>
+    <string name="settings_clear_downloads">Clear all downloads</string>
+    <string name="settings_clear_downloads_desc">Remove all offline videos</string>
+    <string name="settings_group_about">About</string>
+    <string name="settings_about_developer">About Developer</string>
+    <string name="settings_about_developer_desc">Information about the creator</string>
+    <string name="settings_view_source">View source code</string>
+    <string name="settings_view_source_desc">Check out the project on GitHub</string>
+    <string name="settings_app_version">App Version</string>
+
+    <!-- Import Errors -->
+    <string name="error_history_not_found">History file not found in ZIP or selection</string>
+    <string name="error_subscriptions_not_found">Subscriptions file not found in ZIP or selection</string>
+    <string name="error_malformed_history">Malformed history file</string>
+    <string name="error_malformed_csv">Malformed subscriptions file</string>
+    <string name="importing_items">Imported %d items...</string>
 </resources>

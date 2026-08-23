@@ -575,10 +575,11 @@ class PlaybackManager @Inject constructor(
     }
 
     fun cleanUp() {
+        stopProgressUpdate()
+        stopHeartbeat()
         player.removeListener(playerListener)
-        managerScope.cancel()
-        // Re-initialize scope so the singleton can be used again if the process lives on
-        managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        managerScope.coroutineContext.cancelChildren()
+        // We don't cancel the scope itself because it's a singleton and might be reused
     }
 }
 

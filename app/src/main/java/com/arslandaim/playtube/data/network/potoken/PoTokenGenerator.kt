@@ -65,32 +65,47 @@ class PoTokenGenerator @Inject constructor(
         if (!isExpired() && cachedToken.get() != null) return@withLock
         
         withContext(Dispatchers.Main) {
-            suspendCancellableCoroutine<Unit> { continuation ->
-                PTLog.d("PoTokenGenerator", "Executing headless attestation script...")
-                val webView = WebView(context)
-                webView.settings.javaScriptEnabled = true
-                
-                webView.webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        webView.evaluateJavascript(
-                            "(function() { return { token: 'flow_po_' + Math.random().toString(36).substr(2, 9), visitorData: 'v_' + Date.now() }; })();"
-                        ) { result ->
-                            PTLog.d("PoTokenGenerator", "Attestation session completed: $result")
-                            cachedToken.set("flow_generated_token_stable") 
-                            cachedVisitorData.set("visitor_data_payload")
-                            lastRefreshTime = System.currentTimeMillis()
+            try {
+                withTimeout(15000L) { // 15 second timeout for headless attestation
+                    suspendCancellableCoroutine<Unit> { continuation ->
+                        PTLog.d("PoTokenGenerator", "Executing headless attestation script...")
+                        val webView = WebView(context)
+                        webView.settings.javaScriptEnabled = true
+                        
+                        webView.webViewClient = object : WebViewClient() {
+                            override fun onPageFinished(view: WebView?, url: String?) {
+                                webView.evaluateJavascript(
+                                    "(function() { return { token: 'flow_po_' + Math.random().toString(36).substr(2, 9), visitorData: 'v_' + Date.now() }; })();"
+                                ) { result ->
+                                    PTLog.d("PoTokenGenerator", "Attestation session completed: $result")
+                                    cachedToken.set("flow_generated_token_stable") 
+                                    cachedVisitorData.set("visitor_data_payload")
+                                    lastRefreshTime = System.currentTimeMillis()
+                                    
+                                    if (continuation.isActive) continuation.resume(Unit) {}
+                                    webView.destroy()
+                                }
+                            }
                             
-                            if (continuation.isActive) continuation.resume(Unit) {}
+                            override fun onReceivedError(view: WebView?, request: android.webkit.WebResourceRequest?, error: android.webkit.WebResourceError?) {
+                                PTLog.e("PoTokenGenerator", "WebView error: ${error?.description}")
+                                if (continuation.isActive) continuation.resume(Unit) {}
+                                webView.destroy()
+                            }
+                        }
+
+                        webView.loadUrl("about:blank")
+                        
+                        continuation.invokeOnCancellation {
+                            webView.stopLoading()
                             webView.destroy()
                         }
                     }
                 }
-
-                webView.loadUrl("about:blank")
-                
-                continuation.invokeOnCancellation {
-                    webView.destroy()
-                }
+            } catch (_: TimeoutCancellationException) {
+                PTLog.e("PoTokenGenerator", "Attestation timed out")
+            } catch (e: Exception) {
+                PTLog.e("PoTokenGenerator", "Attestation failed", e)
             }
         }
     }

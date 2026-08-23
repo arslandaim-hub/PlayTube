@@ -132,4 +132,57 @@
     <string name="timer_end_of_video">Koniec filmu</string>
     <string name="timer_minutes_remaining">Zostało %d minut</string>
     <string name="timer_end_of_video_active">Zatrzymuje się przy końcu filmu</string>
+
+    <!-- Settings -->
+    <string name="about_developer">O deweloperze</string>
+    <string name="developed_by">Stworzone przez Arslan Daim Shar</string>
+    <string name="ok">OK</string>
+    <string name="confirm">Potwierdź</string>
+    <string name="clear_all_downloads_title">Wyczyścić wszystkie pobrania?</string>
+    <string name="clear_all_downloads_desc">Czy na pewno chcesz usunąć wszystkie pobrane filmy? Tej czynności nie można cofnąć.</string>
+    <string name="clear_learned_data_title">Wyczyścić wyuczone dane?</string>
+    <string name="clear_learned_data_desc">To usunie wszystkie wyuczone zainteresowania użytkownika i zresetuje silnik rekomendacji. Tej czynności nie można cofnąć.</string>
+    <string name="settings_group_update">Aktualizacja aplikacji</string>
+    <string name="settings_auto_update">Automatycznie sprawdzaj wydania na GitHubie</string>
+    <string name="settings_auto_update_desc">Powiadamiaj, gdy nowa wersja jest dostępna na GitHubie</string>
+    <string name="update_available">Dostępna nowa aktualizacja: %s</string>
+    <string name="download_from_github">Pobierz z GitHuba</string>
+    <string name="settings_group_history_privacy">Historia i prywatność</string>
+    <string name="settings_view_history">Zobacz historię</string>
+    <string name="settings_view_history_desc">Zarządzaj obejrzanymi filmami</string>
+    <string name="settings_pause_search_history">Wstrzymaj historię wyszukiwania</string>
+    <string name="settings_pause_search_history_desc">Sugestie również zostaną wstrzymane</string>
+    <string name="settings_pip">Obraz w obrazie (PiP)</string>
+    <string name="settings_pip_desc">Oglądaj dalej w małym oknie</string>
+    <string name="settings_data_backup">Dane i kopia zapasowa</string>
+    <string name="settings_data_backup_desc">Importuj dane z Google Takeout i natywne kopie</string>
+    <string name="settings_pause_recommendations">Wstrzymaj rekomendacje</string>
+    <string name="settings_pause_recommendations_desc">Tymczasowo przestań uczyć się Twoich zainteresowań</string>
+    <string name="settings_clear_learned_data">Wyczyść wyuczone dane</string>
+    <string name="settings_clear_learned_data_desc_item">Zresetuj profil silnika rekomendacji</string>
+    <string name="settings_group_appearance_playback">Wygląd i odtwarzanie</string>
+    <string name="settings_material_you">Material You</string>
+    <string name="settings_material_you_desc">Dostosowuje kolory do motywu urządzenia</string>
+    <string name="system_default">Domyślny systemowy</string>
+    <string name="settings_subtitle_styles">Style napisów</string>
+    <string name="settings_subtitle_styles_desc">Dostosuj rozmiar czcionki i tła</string>
+    <string name="subtitle_font_size">Rozmiar czcionki: %dsp</string>
+    <string name="subtitle_background_opacity">Przezroczystość tła: %d%%</string>
+    <string name="subtitle_preview">Podgląd napisów</string>
+    <string name="settings_group_content">Zawartość</string>
+    <string name="settings_clear_downloads">Wyczyść wszystkie pobrania</string>
+    <string name="settings_clear_downloads_desc">Usuń wszystkie filmy offline</string>
+    <string name="settings_group_about">O aplikacji</string>
+    <string name="settings_about_developer">O deweloperze</string>
+    <string name="settings_about_developer_desc">Informacje o twórcy</string>
+    <string name="settings_view_source">Zobacz kod źródłowy</string>
+    <string name="settings_view_source_desc">Sprawdź projekt na GitHubie</string>
+    <string name="settings_app_version">Wersja aplikacji</string>
+
+    <!-- Import Errors -->
+    <string name="error_history_not_found">Nie znaleziono pliku historii w ZIP lub wyborze</string>
+    <string name="error_subscriptions_not_found">Nie znaleziono pliku subskrypcji w ZIP lub wyborze</string>
+    <string name="error_malformed_history">Nieprawidłowy format pliku historii</string>
+    <string name="error_malformed_csv">Nieprawidłowy format pliku subskrypcji</string>
+    <string name="importing_items">Zaimportowano %d elementów...</string>
 </resources>

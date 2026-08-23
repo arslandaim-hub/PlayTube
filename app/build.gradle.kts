@@ -15,8 +15,8 @@ android {
         minSdk = 24
         targetSdk = 36
 
-        versionCode = 14
-        versionName = "1.3.9"
+        versionCode = 15
+        versionName = "1.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -71,6 +71,7 @@ dependencies {
 
     // Hilt
     implementation(libs.hilt.android)
+    debugImplementation(libs.leakcanary)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
     implementation(libs.hilt.work)
@@ -109,6 +110,8 @@ dependencies {
     // JSON
     implementation(libs.gson)
     implementation(libs.kotlinx.serialization.json)
+
+    debugImplementation(libs.leakcanary.android)
 
     // Ktor
     implementation(libs.ktor.client.core)
