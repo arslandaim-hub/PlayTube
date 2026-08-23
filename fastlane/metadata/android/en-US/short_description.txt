@@ -1,1 +1,1 @@
-Feature-rich YouTube client, fast and secure with Material 3 design
+Feature-rich YouTube client, simple fast and secure.
