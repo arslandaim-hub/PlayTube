@@ -1,10 +1,10 @@
 New in v1.4.0
 
 - Added a Continue Watching section to the Home screen.
-- Comment replies can now be viewed directly.
-- Added resumable downloads for interrupted downloads.
-- Downloaded videos can now be saved directly to your gallery without requiring storage permission.
-- Some bug fixes and minor improvements
-🇵🇱 Added Polish language support, thanks to @HolyPaladin1 for contribution.
-🇹🇷 Added Turkish language support (currently incomplete).
+- Comment replies can now be viewed.
+- Resumeable downloads.
+- Downloaded videos can now be saved directly to your gallery.
+- Polish language support.
+- Turkish language support (currently incomplete).
+- Some bug fixes and minor improvements.
 Please create a backup file before updating, in case you lose your data.
