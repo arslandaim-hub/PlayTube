@@ -14,6 +14,8 @@ import android.os.StrictMode
 import androidx.work.Configuration
 import com.arslandaim.playtube.BuildConfig
 import com.arslandaim.playtube.data.network.YouTubeDownloader
+import com.arslandaim.playtube.data.local.PreferencesManager
+import com.arslandaim.playtube.data.local.PlayTubeDatabase
 import androidx.hilt.work.HiltWorkerFactory
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
@@ -24,11 +26,14 @@ import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import javax.inject.Inject
+import java.io.File
 
 @HiltAndroidApp
 class PlayTubeApp : Application(), Configuration.Provider, SingletonImageLoader.Factory {
@@ -37,6 +42,8 @@ class PlayTubeApp : Application(), Configuration.Provider, SingletonImageLoader.
     @Inject lateinit var imageLoader: ImageLoader
     @Inject lateinit var downloadRepository: DownloadRepository
     @Inject lateinit var connectivityObserver: ConnectivityObserver
+    @Inject lateinit var preferencesManager: PreferencesManager
+    @Inject lateinit var database: PlayTubeDatabase
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     
@@ -71,10 +78,52 @@ class PlayTubeApp : Application(), Configuration.Provider, SingletonImageLoader.
 
             createNotificationChannel()
             observeConnectivity()
+            checkVersionAndCleanup()
             prewarmNetwork()
         } catch (e: Exception) {
             PTLog.e("PlayTubeApp", "Critical error during Application initialization", e)
         }
+    }
+
+    private fun checkVersionAndCleanup() {
+        applicationScope.launch(Dispatchers.IO) {
+            try {
+                val lastVersion = preferencesManager.lastAppVersion.first()
+                val currentVersion = BuildConfig.VERSION_CODE
+                
+                if (lastVersion != currentVersion) {
+                    PTLog.i("PlayTubeApp", "Detected update from $lastVersion to $currentVersion. Performing cache cleanup.")
+                    performUpdateCleanup()
+                    preferencesManager.setLastAppVersion(currentVersion)
+                }
+            } catch (e: Exception) {
+                PTLog.e("PlayTubeApp", "Version check or cleanup failed", e)
+            }
+        }
+    }
+
+    private suspend fun performUpdateCleanup() {
+        try {
+            // 1. Clear Feed Cache (Crucial for avoiding VideoItem serialization crashes)
+            database.feedCacheDao().clearAll()
+            
+            // 2. Clear technical library caches (OkHttp, Coil, ExoPlayer)
+            val cacheDir = applicationContext.cacheDir
+            cacheDir.listFiles()?.forEach { file ->
+                deleteRecursively(file)
+            }
+            
+            PTLog.i("PlayTubeApp", "Update cleanup completed successfully")
+        } catch (e: Exception) {
+            PTLog.e("PlayTubeApp", "Error during update cleanup", e)
+        }
+    }
+
+    private fun deleteRecursively(file: File) {
+        if (file.isDirectory) {
+            file.listFiles()?.forEach { deleteRecursively(it) }
+        }
+        file.delete()
     }
 
     private fun prewarmNetwork() {

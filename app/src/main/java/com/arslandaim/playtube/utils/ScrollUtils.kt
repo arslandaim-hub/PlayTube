@@ -14,38 +14,39 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 fun rememberScrollVisibilityConnection(
     onVisibilityChange: (Boolean) -> Unit
 ): NestedScrollConnection {
-    // Threshold to prevent jitter (accumulated scroll delta before changing state)
-    val scrollOffset = remember { mutableFloatStateOf(0f) }
+    // Local state to keep track of visibility
     var isCurrentlyVisible by remember { mutableStateOf(true) }
-    val hideThreshold = -50f // Require more scroll to hide
-    val showThreshold = 30f  // Quick reappearance
-
+    
     // Reset offset when connection is recreated or on specific events if needed
     return remember(onVisibilityChange) {
+        var accumulatedDelta = 0f
+        val hideThreshold = -50f // Require more scroll to hide
+        val showThreshold = 30f  // Quick reappearance
+        
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (source != NestedScrollSource.UserInput) return Offset.Zero
 
                 val delta = available.y
-                scrollOffset.floatValue += delta
+                accumulatedDelta += delta
 
-                if (scrollOffset.floatValue < hideThreshold) {
+                if (accumulatedDelta < hideThreshold) {
                     if (isCurrentlyVisible) {
                         onVisibilityChange(false)
                         isCurrentlyVisible = false
                     }
-                    scrollOffset.floatValue = 0f
-                } else if (scrollOffset.floatValue > showThreshold) {
+                    accumulatedDelta = 0f
+                } else if (accumulatedDelta > showThreshold) {
                     if (!isCurrentlyVisible) {
                         onVisibilityChange(true)
                         isCurrentlyVisible = true
                     }
-                    scrollOffset.floatValue = 0f
+                    accumulatedDelta = 0f
                 }
 
                 // Reset offset if direction changes significantly but hasn't hit threshold
-                if ((delta > 0 && scrollOffset.floatValue < 0) || (delta < 0 && scrollOffset.floatValue > 0)) {
-                    scrollOffset.floatValue = 0f
+                if ((delta > 0 && accumulatedDelta < 0) || (delta < 0 && accumulatedDelta > 0)) {
+                    accumulatedDelta = 0f
                 }
 
                 return Offset.Zero

@@ -20,7 +20,13 @@ class Converters {
 
     @TypeConverter
     fun toVideoItemList(value: String?): List<VideoItem>? {
-        val listType = object : TypeToken<List<VideoItem>>() {}.type
-        return gson.fromJson(value, listType)
+        if (value == null) return null
+        return try {
+            val listType = object : TypeToken<List<VideoItem>>() {}.type
+            gson.fromJson(value, listType)
+        } catch (e: Exception) {
+            com.arslandaim.playtube.utils.PTLog.e("Converters", "Failed to deserialize VideoItem list", e)
+            emptyList()
+        }
     }
 }

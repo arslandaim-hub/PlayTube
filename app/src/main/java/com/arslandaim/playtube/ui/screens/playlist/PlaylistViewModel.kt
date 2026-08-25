@@ -243,15 +243,22 @@ class PlaylistViewModel @Inject constructor(
                 bestAudio?.url
             } else null
 
+            // Fallback to standalone progressive stream if adaptive audio pairing fails
+            val finalUrl = if (isAdaptive && audioUrl == null) {
+                bundle.videoStreams.find { !it.isAdaptive }?.url ?: url
+            } else url
+
+            val finalIsAdaptive = isAdaptive && audioUrl != null
+
             downloadVideoUseCase(
                 videoId = video.id,
-                url = url,
+                url = finalUrl,
                 title = video.title,
                 thumbnailUrl = video.thumbnailUrl,
                 uploaderName = video.uploaderName,
                 quality = quality,
                 format = format,
-                audioUrl = audioUrl
+                audioUrl = if (finalIsAdaptive) audioUrl else null
             )
             _snackbarMessage.emit("Downloading started")
             _downloadState.value = com.arslandaim.playtube.ui.components.DownloadDialogState.Idle

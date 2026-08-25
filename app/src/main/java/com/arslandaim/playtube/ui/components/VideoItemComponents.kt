@@ -6,6 +6,7 @@
 package com.arslandaim.playtube.ui.components
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -675,14 +676,14 @@ fun VideoItemRow(
             // Channel Avatar
             Surface(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(40.dp)
                     .clickable(
                         enabled = onChannelClick != null,
                         onClick = { onChannelClick?.invoke() }
                     ),
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                tonalElevation = 2.dp
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
             ) {
                 AsyncImage(
                     model = video.uploaderThumbnailUrl,
@@ -697,14 +698,15 @@ fun VideoItemRow(
                     Box(contentAlignment = Alignment.Center) {
                         Text(
                             text = video.uploaderName.take(1).uppercase(),
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Black,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
             }
             
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(14.dp))
             
             Column(modifier = Modifier.weight(1f)) {
                 Row(
@@ -715,12 +717,14 @@ fun VideoItemRow(
                     Text(
                         text = video.title,
                         style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            lineHeight = 22.sp
+                            fontWeight = FontWeight.Black,
+                            lineHeight = 22.sp,
+                            letterSpacing = (-0.2).sp
                         ),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     
                     if (onFavoriteClick != null || onDownloadClick != null || onNotInterestedClick != null || onAddToPlaylistClick != null || onRemoveFromPlaylistClick != null) {

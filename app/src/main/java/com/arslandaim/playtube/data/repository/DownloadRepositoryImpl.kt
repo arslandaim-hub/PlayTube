@@ -184,8 +184,22 @@ class DownloadRepositoryImpl @Inject constructor(
             val entity = downloadDao.getDownloadById(videoId) ?: return@withContext Result.failure(Exception("Download not found"))
             if (entity.status != DownloadStatus.COMPLETED) return@withContext Result.failure(Exception("Download not completed"))
 
-            val file = File(entity.filePath)
-            if (!file.exists()) return@withContext Result.failure(Exception("File not found"))
+            var file = File(entity.filePath)
+            if (!file.exists()) {
+                // Task: Resilient fallback check for alternate extensions
+                val baseDir = context.getExternalFilesDir(null)
+                val webmFile = File(baseDir, "$videoId.webm")
+                val mp4File = File(baseDir, "$videoId.mp4")
+                
+                file = when {
+                    webmFile.exists() -> webmFile
+                    mp4File.exists() -> mp4File
+                    else -> return@withContext Result.failure(Exception("File not found at ${entity.filePath}"))
+                }
+                
+                // Sync the DB path if we found it elsewhere
+                downloadDao.updateDownload(entity.copy(filePath = file.absolutePath))
+            }
 
             val extension = if (entity.format?.contains("webm", ignoreCase = true) == true) "webm" else "mp4"
             val mimeType = if (extension == "webm") "video/webm" else "video/mp4"

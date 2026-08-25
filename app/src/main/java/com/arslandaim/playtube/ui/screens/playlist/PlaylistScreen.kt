@@ -34,8 +34,10 @@ import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.ui.screens.library.VideoRow
 import com.arslandaim.playtube.utils.PlayTubeError
 import androidx.compose.material.icons.filled.*
-
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
 import kotlinx.coroutines.flow.map
@@ -122,14 +124,17 @@ private fun PlaylistContent(
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val scrollVisibilityConnection = rememberScrollVisibilityConnection(onBarsVisibilityChange)
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     LaunchedEffect(playlistId) {
         onLoadPlaylist(playlistId)
     }
 
-    LaunchedEffect(Unit) {
-        snackbarMessage.collect { message ->
-            snackbarHostState.showSnackbar(message)
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            snackbarMessage.collect { message ->
+                snackbarHostState.showSnackbar(message)
+            }
         }
     }
 

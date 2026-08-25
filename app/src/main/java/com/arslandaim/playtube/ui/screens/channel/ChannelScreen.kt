@@ -235,9 +235,11 @@ private fun ChannelContent(
                                         androidx.compose.ui.graphics.Brush.verticalGradient(
                                             colors = listOf(
                                                 Color.Transparent,
-                                                MaterialTheme.colorScheme.background.copy(alpha = 0.7f),
+                                                MaterialTheme.colorScheme.background.copy(alpha = 0.85f),
                                                 MaterialTheme.colorScheme.background
-                                            )
+                                            ),
+                                            startY = 0f,
+                                            endY = Float.POSITIVE_INFINITY
                                         )
                                     )
                             )
@@ -271,14 +273,25 @@ private fun ChannelContent(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         item(span = { GridItemSpan(columns) }) {
-                            Spacer(modifier = Modifier.height(bannerHeight - 50.dp))
+                            // Increased spacer to push metadata lower and avoid banner overlap
+                            Spacer(modifier = Modifier.height(bannerHeight - 20.dp))
                         }
                             
                         item(span = { GridItemSpan(columns) }) {
-                            // Professional Channel Header (Redesigned to fix overlap and modernize)
+                            // Professional Channel Header (Redesigned with protection layer)
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .background(
+                                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                                            colors = listOf(
+                                                Color.Transparent,
+                                                MaterialTheme.colorScheme.background.copy(alpha = 0.95f),
+                                                MaterialTheme.colorScheme.background
+                                            ),
+                                            startY = -100f
+                                        )
+                                    )
                                     .padding(horizontal = 20.dp, vertical = 24.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {

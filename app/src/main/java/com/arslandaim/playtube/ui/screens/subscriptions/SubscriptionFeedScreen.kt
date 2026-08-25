@@ -46,6 +46,9 @@ import com.arslandaim.playtube.ui.components.EmptyState
 import com.arslandaim.playtube.utils.PlayTubeError
 import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 @Composable
 fun SubscriptionFeedScreen(
@@ -140,10 +143,13 @@ private fun SubscriptionFeedContent(
     isReady: Boolean
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    LaunchedEffect(Unit) {
-        snackbarMessage.collect { message ->
-            snackbarHostState.showSnackbar(message)
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            snackbarMessage.collect { message ->
+                snackbarHostState.showSnackbar(message)
+            }
         }
     }
 
@@ -166,6 +172,14 @@ private fun SubscriptionFeedContent(
         val ambientColorSource = selectedChannelThumbnail ?: firstVideoThumbnail
 
         if (!ambientColorSource.isNullOrBlank()) {
+            val blurEffect = remember(ambientColorSource) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    android.graphics.RenderEffect.createBlurEffect(
+                        120f, 120f, android.graphics.Shader.TileMode.CLAMP
+                    ).asComposeRenderEffect()
+                } else null
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -173,9 +187,7 @@ private fun SubscriptionFeedContent(
                     .graphicsLayer {
                         alpha = 0.35f
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                            renderEffect = android.graphics.RenderEffect.createBlurEffect(
-                                120f, 120f, android.graphics.Shader.TileMode.CLAMP
-                            ).asComposeRenderEffect()
+                            renderEffect = blurEffect
                         }
                     }
                     .then(

@@ -18,4 +18,7 @@ interface FeedCacheDao {
 
     @Query("DELETE FROM feed_cache WHERE feedKey = :key")
     suspend fun deleteFeed(key: String)
+
+    @Query("DELETE FROM feed_cache")
+    suspend fun clearAll()
 }

@@ -28,6 +28,7 @@ import com.arslandaim.playtube.ui.screens.player.PlayerScreen
 import com.arslandaim.playtube.ui.screens.player.PlayerViewModel
 import com.arslandaim.playtube.ui.screens.playlist.PlaylistScreen
 import com.arslandaim.playtube.ui.screens.playlist.PlaylistViewModel
+import com.arslandaim.playtube.ui.screens.playlist.PlaylistUiState
 import com.arslandaim.playtube.ui.screens.search.SearchScreen
 import com.arslandaim.playtube.ui.screens.search.SearchViewModel
 import com.arslandaim.playtube.ui.screens.settings.SettingsScreen
@@ -279,7 +280,11 @@ fun NavGraph(
                 },
                 onBack = { navController.popBackStack() },
                 onVideoClick = { video ->
-                    playerViewModel.loadVideo(video)
+                    playerViewModel.loadVideo(
+                        video = video,
+                        playlistId = playlist.playlistId,
+                        playlistTitle = (viewModel.uiState.value as? PlaylistUiState.Success)?.details?.title
+                    )
                 },
                 onAddToPlaylistClick = { video ->
                     mainViewModel.showPlaylistSelection(video)

@@ -163,6 +163,8 @@ fun PlayerScreen(
     val replies by viewModel.replies.collectAsStateWithLifecycle()
     val isFetchingReplies by viewModel.isFetchingReplies.collectAsStateWithLifecycle()
     val activeReplyParent by viewModel.activeReplyParent.collectAsStateWithLifecycle()
+    val currentPlaylist by viewModel.currentPlaylist.collectAsStateWithLifecycle()
+    val playlistIndex by viewModel.playlistIndex.collectAsStateWithLifecycle()
     val syncTransition = rememberSyncShimmerTransition()
 
     var activeCues by remember { mutableStateOf<List<Cue>>(emptyList()) }
@@ -284,7 +286,12 @@ fun PlayerScreen(
             activeReplyParent = activeReplyParent,
             onLoadReplies = viewModel::loadReplies,
             onLoadNextRepliesPage = viewModel::loadNextRepliesPage,
-            onCloseReplies = viewModel::closeReplies
+            onCloseReplies = viewModel::closeReplies,
+            currentPlaylist = currentPlaylist,
+            playlistIndex = playlistIndex,
+            onPlaylistVideoClick = { video ->
+                currentPlaylist?.let { viewModel.loadVideo(video, it.id, it.title) }
+            }
         )
 }
 
@@ -368,7 +375,10 @@ private fun PlayerContent(
     activeReplyParent: com.arslandaim.playtube.domain.model.CommentItem?,
     onLoadReplies: (com.arslandaim.playtube.domain.model.CommentItem) -> Unit,
     onLoadNextRepliesPage: () -> Unit,
-    onCloseReplies: () -> Unit
+    onCloseReplies: () -> Unit,
+    currentPlaylist: com.arslandaim.playtube.domain.model.PlaylistDetails?,
+    playlistIndex: Int,
+    onPlaylistVideoClick: (VideoItem) -> Unit
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -1043,16 +1053,18 @@ private fun PlayerContent(
                                 ) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         CircularProgressIndicator(
-                                            modifier = Modifier.size(48.dp),
+                                            modifier = Modifier.size(52.dp),
                                             color = Color.White,
-                                            strokeWidth = 4.dp
+                                            strokeWidth = 3.dp
                                         )
+                                        
                                         if (isRecovering) {
-                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Spacer(modifier = Modifier.height(16.dp))
                                             Text(
                                                 text = stringResource(R.string.waiting_for_connection),
                                                 color = Color.White,
-                                                style = MaterialTheme.typography.bodyMedium
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold
                                             )
                                         }
                                     }
@@ -1087,6 +1099,15 @@ private fun PlayerContent(
                                 }
                             }
                             is PlayerUiState.Success -> {
+                                item {
+                                    if (currentPlaylist != null && playlistIndex != -1) {
+                                        PlaylistStack(
+                                            playlist = currentPlaylist,
+                                            currentIndex = playlistIndex,
+                                            onVideoClick = onPlaylistVideoClick
+                                        )
+                                    }
+                                }
                                 item {
                                     UnifiedMetadataHub(
                                         title = uiState.title,

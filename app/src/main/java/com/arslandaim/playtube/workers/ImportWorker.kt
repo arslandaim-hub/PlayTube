@@ -91,22 +91,32 @@ class ImportWorker @AssistedInject constructor(
                     if (isStopped) return Result.retry()
                     
                     try {
-                        val item = gson.fromJson<com.arslandaim.playtube.data.repository.TakeoutHistoryItem>(reader, com.arslandaim.playtube.data.repository.TakeoutHistoryItem::class.java)
-                        val videoId = VideoUtils.extractVideoId(item.titleUrl)
-                        
-                        if (videoId.isNotBlank() && item.title != null) {
-                            val entity = HistoryEntity(
-                                videoId = videoId,
-                                title = item.title.removePrefix("Watched "),
-                                thumbnailUrl = VideoUtils.getBestThumbnailUrl(videoId),
-                                uploaderName = item.subtitles?.firstOrNull()?.name ?: "Unknown",
-                                timestamp = parseTakeoutTime(item.time)
-                            )
-                            currentBatch.add(entity)
+                        // Task 4: Robust deserialization with skipValue fallback
+                        val item = try {
+                            gson.fromJson<com.arslandaim.playtube.data.repository.TakeoutHistoryItem>(reader, com.arslandaim.playtube.data.repository.TakeoutHistoryItem::class.java)
+                        } catch (e: Exception) {
+                            PTLog.e("ImportWorker", "Malformed history item skipped", e)
+                            reader.skipValue()
+                            null
+                        }
+
+                        if (item != null) {
+                            val videoId = VideoUtils.extractVideoId(item.titleUrl)
+                            
+                            if (videoId.isNotBlank() && item.title != null) {
+                                val entity = HistoryEntity(
+                                    videoId = videoId,
+                                    title = item.title.removePrefix("Watched "),
+                                    thumbnailUrl = VideoUtils.getBestThumbnailUrl(videoId),
+                                    uploaderName = item.subtitles?.firstOrNull()?.name ?: "Unknown",
+                                    timestamp = parseTakeoutTime(item.time)
+                                )
+                                currentBatch.add(entity)
+                            }
                         }
                     } catch (e: Exception) {
                         malformedCount++
-                        reader.skipValue() 
+                        try { reader.skipValue() } catch (ex: Exception) {}
                         continue
                     }
 

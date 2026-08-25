@@ -10,6 +10,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 sealed interface Destination {
     val isTopLevel: Boolean get() = false
+    val routeRoot: String get() = this::class.simpleName ?: ""
 
     @Serializable data object Home : Destination {
         override val isTopLevel: Boolean get() = true
@@ -31,7 +32,9 @@ sealed interface Destination {
     @Serializable data class Player(
         val videoId: String,
         val title: String? = null,
-        val thumbnailUrl: String? = null
+        val thumbnailUrl: String? = null,
+        val playlistId: String? = null,
+        val playlistTitle: String? = null
     ) : Destination
     @Serializable data class Playlist(val playlistId: String) : Destination
     @Serializable data object Onboarding : Destination
@@ -44,7 +47,13 @@ fun String?.toDestination(): Destination? {
         route.contains("Home") -> Destination.Home
         route.contains("Subscriptions") -> Destination.Subscriptions
         route.contains("Library") -> Destination.Library
-        route.contains("Search") -> Destination.Search()
+        route.contains("Search") -> {
+            // Extract query if available
+            val query = if (route.contains("query=")) {
+                route.substringAfter("query=").substringBefore("&").substringBefore("}")
+            } else null
+            Destination.Search(query)
+        }
         route.contains("Settings") -> Destination.Settings
         route.contains("History") -> Destination.History
         route.contains("SubscriptionsList") -> Destination.SubscriptionsList

@@ -115,10 +115,18 @@ class PlaybackManager @Inject constructor(
 
         override fun onPlayerError(error: PlaybackException) {
             val cause = error.cause
-            if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS &&
-                cause is HttpDataSource.InvalidResponseCodeException &&
-                cause.responseCode == 403) {
+            val isNetworkError = error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+                                error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                                error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+                                error.errorCode == PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE ||
+                                error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+
+            if (isNetworkError && (cause is HttpDataSource.InvalidResponseCodeException && cause.responseCode == 403)) {
                 PTLog.w("PlaybackManager", "403 Forbidden detected. Triggering immediate recovery.")
+                val pos = player.currentPosition
+                managerScope.launch { _recoveryRequired.emit(pos) }
+            } else if (isNetworkError) {
+                PTLog.w("PlaybackManager", "Transient network error (${error.errorCode}). Attempting hot-swap recovery.")
                 val pos = player.currentPosition
                 managerScope.launch { _recoveryRequired.emit(pos) }
             } else {
@@ -514,13 +522,14 @@ class PlaybackManager @Inject constructor(
 
                 // Update Stats
                 val videoFormat = player.videoFormat
+                val bandwidth = bandwidthMeter.bitrateEstimate
                 _playbackStats.update { stats ->
                     stats.copy(
                         videoFormat = videoFormat?.sampleMimeType,
                         bitrate = videoFormat?.bitrate ?: 0,
                         resolution = videoFormat?.let { "${it.width}x${it.height}" } ?: "",
                         droppedFrames = player.videoDecoderCounters?.droppedBufferCount ?: 0,
-                        bandwidthEstimate = bandwidthMeter.bitrateEstimate
+                        bandwidthEstimate = bandwidth
                     )
                 }
 

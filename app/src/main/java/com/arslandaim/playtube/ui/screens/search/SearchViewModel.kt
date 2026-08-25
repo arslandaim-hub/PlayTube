@@ -83,19 +83,21 @@ class SearchViewModel @Inject constructor(
             val videoMap = videos.associateBy { it.id }
 
             // Step 2: Reconstruct items with updated progress and subscription status
-            val updatedItems = state.items.map { item ->
-                when (item) {
-                    is SearchItem.Video -> {
-                        SearchItem.Video(videoMap[item.video.id] ?: item.video)
+            val updatedItems = state.items
+                .distinctBy { it.uniqueKey }
+                .map { item ->
+                    when (item) {
+                        is SearchItem.Video -> {
+                            SearchItem.Video(videoMap[item.video.id] ?: item.video)
+                        }
+                        is SearchItem.Channel -> {
+                            val channelId = VideoUtils.extractChannelId(item.id) ?: item.id
+                            val isSubscribed = subs.any { it.channelId.contains(channelId) || channelId.contains(it.channelId) }
+                            item.copy(isSubscribed = isSubscribed)
+                        }
+                        is SearchItem.Playlist -> item
                     }
-                    is SearchItem.Channel -> {
-                        val channelId = VideoUtils.extractChannelId(item.id) ?: item.id
-                        val isSubscribed = subs.any { it.channelId.contains(channelId) || channelId.contains(it.channelId) }
-                        item.copy(isSubscribed = isSubscribed)
-                    }
-                    is SearchItem.Playlist -> item
                 }
-            }
 
             // Step 2: Apply Local Sorting Fallback with Partitioning
             // We separate videos from "static" items (Channels, Playlists) to ensure
@@ -384,15 +386,22 @@ class SearchViewModel @Inject constructor(
                     ?.url ?: compatibleStreams.maxByOrNull { it.quality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }?.url
             } else null
 
+            // Fallback to standalone progressive stream if adaptive audio pairing fails
+            val finalUrl = if (isAdaptive && audioUrl == null) {
+                bundle.videoStreams.find { !it.isAdaptive }?.url ?: url
+            } else url
+
+            val finalIsAdaptive = isAdaptive && audioUrl != null
+
             downloadVideoUseCase(
                 videoId = video.id,
-                url = url,
+                url = finalUrl,
                 title = video.title,
                 thumbnailUrl = video.thumbnailUrl,
                 uploaderName = video.uploaderName,
                 quality = quality,
                 format = format,
-                audioUrl = audioUrl
+                audioUrl = if (finalIsAdaptive) audioUrl else null
             )
             _snackbarMessage.emit("Downloading started")
             _downloadState.value = DownloadDialogState.Idle

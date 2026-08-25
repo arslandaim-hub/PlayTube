@@ -41,6 +41,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.util.Consumer
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -181,12 +183,15 @@ class MainActivity : AppCompatActivity() {
                 val navController = rememberNavController()
                 val uiState by mainViewModel.uiState.collectAsStateWithLifecycle()
 
-                LaunchedEffect(navController, isOnboardingCompleted) {
+                val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+                LaunchedEffect(navController, isOnboardingCompleted, lifecycleOwner) {
                     if (isOnboardingCompleted == true) {
-                        pendingDeepLink.collectLatest { intent ->
-                            if (intent != null) {
-                                handleDeepLink(intent, navController)
-                                pendingDeepLink.value = null
+                        lifecycleOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                            pendingDeepLink.collectLatest { intent ->
+                                if (intent != null) {
+                                    handleDeepLink(intent, navController)
+                                    pendingDeepLink.value = null
+                                }
                             }
                         }
                     }
@@ -547,24 +552,27 @@ fun PlayTubeBottomBar(navController: androidx.navigation.NavHostController) {
         tonalElevation = 0.dp
     ) {
         val navBackStackEntry by navController.currentBackStackEntryAsState()
-        val currentRoute = navBackStackEntry?.destination?.route
-        val currentScreen = remember(currentRoute) { currentRoute?.toDestination() }
+        val currentDestination = navBackStackEntry?.destination
         
         items.forEach { (destination, icon, label) ->
-            // Match the base class to highlight the active tab accurately
-            val isSelected = currentScreen != null && currentScreen::class == destination::class
+            // Use hierarchy to highlight active tab accurately, even with parameterized routes
+            val isSelected = currentDestination?.hierarchy?.any { 
+                it.route?.contains(destination.routeRoot, ignoreCase = true) == true 
+            } == true
             
             NavigationBarItem(
                 icon = { Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp).offset(y = 2.dp)) },
                 label = { Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.offset(y = (-2).dp)) },
                 selected = isSelected,
                 onClick = {
-                    navController.navigate(destination) {
-                        popUpTo(navController.graph.findStartDestination().id) {
-                            saveState = true
+                    if (!isSelected) {
+                        navController.navigate(destination) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
                         }
-                        launchSingleTop = true
-                        restoreState = true
                     }
                 }
             )

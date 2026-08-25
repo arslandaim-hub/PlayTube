@@ -14,6 +14,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,16 +37,21 @@ fun DataManagementScreen(
     val importProgress by viewModel.importProgress.collectAsStateWithLifecycle()
     val isProcessing by viewModel.isProcessing.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    LaunchedEffect(Unit) {
-        viewModel.importSnackbarMessage.collect { message ->
-            snackbarHostState.showSnackbar(message)
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            viewModel.importSnackbarMessage.collect { message ->
+                snackbarHostState.showSnackbar(message)
+            }
         }
     }
     
-    LaunchedEffect(Unit) {
-        viewModel.localSnackbarMessage.collect { message ->
-            snackbarHostState.showSnackbar(message)
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            viewModel.localSnackbarMessage.collect { message ->
+                snackbarHostState.showSnackbar(message)
+            }
         }
     }
 

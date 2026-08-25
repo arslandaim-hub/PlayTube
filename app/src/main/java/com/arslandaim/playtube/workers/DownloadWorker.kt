@@ -43,8 +43,19 @@ class DownloadWorker @AssistedInject constructor(
     private val videoRepository: VideoRepository
 ) : CoroutineWorker(context, params) {
 
+    private val workerOkHttpClient by lazy {
+        okHttpClient.newBuilder()
+            .dispatcher(okhttp3.Dispatcher().apply {
+                maxRequestsPerHost = 20
+                maxRequests = 64
+            })
+            .connectionPool(okhttp3.ConnectionPool(20, 5, java.util.concurrent.TimeUnit.MINUTES))
+            .build()
+    }
+
     companion object {
         private val downloadMutex = Mutex()
+        private val muxingMutex = Mutex()
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -55,63 +66,76 @@ class DownloadWorker @AssistedInject constructor(
         var format = inputData.getString("format") ?: "mp4"
         val preferredQuality = inputData.getString("quality")
 
-        // Wait for turn in queue
-        downloadMutex.withLock {
-            // Re-check status inside lock. If it's no longer WAITING/PENDING (e.g. cancelled/paused), skip.
+        // Phase 1: Status check and metadata preparation (Sequential)
+        val initialData = downloadMutex.withLock {
             val currentDownload = downloadDao.getDownloadById(videoId)
             val currentStatus = currentDownload?.status
             if (currentStatus != DownloadStatus.WAITING && currentStatus != DownloadStatus.PENDING) {
                 PTLog.d("DownloadWorker", "Skipping $videoId as status is $currentStatus")
-                return@withContext Result.success()
+                return@withLock null
             }
 
-            // Fetch metadata if missing (typically for playlists)
             if (videoUrl == null) {
-                val metadata = fetchStreamMetadata(videoId, preferredQuality)
-                if (metadata == null) {
+                val metadata = fetchStreamMetadata(videoId, preferredQuality) ?: run {
                     downloadDao.updateProgress(videoId, DownloadStatus.FAILED, 0, 0)
-                    return@withContext Result.failure()
+                    return@withLock null
                 }
-
                 videoUrl = metadata.videoUrl
                 format = metadata.format
                 audioUrl = metadata.audioUrl
-
-                // Update DB with fetched metadata
+                
+                // Update DB with fetched metadata and correct file path extension
                 currentDownload?.let {
+                    val extension = if (format!!.contains("webm", ignoreCase = true)) "webm" else "mp4"
+                    val newFilePath = File(applicationContext.getExternalFilesDir(null), "$videoId.$extension").absolutePath
+                    
                     downloadDao.updateDownload(it.copy(
                         videoUrl = videoUrl,
                         audioUrl = audioUrl,
                         quality = metadata.quality,
-                        format = format
+                        format = format,
+                        filePath = newFilePath
                     ))
                 }
             }
-            
-            // Once we have the lock and metadata, start downloading
-            try {
-                doDownload(videoId, videoUrl!!, audioUrl, title, format)
-            } catch (e: ExpiredUrlException) {
-                PTLog.w("DownloadWorker", "URL expired for $videoId, re-fetching metadata...")
-                try {
-                    val metadata = fetchStreamMetadata(videoId, preferredQuality)
-                    if (metadata == null) return@withContext Result.failure()
-                    
-                    videoUrl = metadata.videoUrl
-                    audioUrl = metadata.audioUrl
-                    
-                    // Update DB with fresh URLs
-                    currentDownload?.let {
-                        downloadDao.updateDownload(it.copy(videoUrl = videoUrl, audioUrl = audioUrl))
-                    }
+            Triple(videoUrl!!, audioUrl, format)
+        } ?: return@withContext Result.success()
 
-                    // Retry download once
-                    doDownload(videoId, videoUrl!!, audioUrl, title, format)
-                } catch (ex: Exception) {
-                    PTLog.e("DownloadWorker", "Failed to refresh metadata for $videoId", ex)
-                    downloadDao.updateProgress(videoId, DownloadStatus.FAILED, 0, 0)
-                    Result.failure()
+        var currentVideoUrl = initialData.first
+        var currentAudioUrl = initialData.second
+        val currentFormat = initialData.third
+
+        // Phase 2: Actual Download (Parallel)
+        return@withContext try {
+            doDownload(videoId, currentVideoUrl, currentAudioUrl, title, currentFormat)
+        } catch (e: ExpiredUrlException) {
+            PTLog.w("DownloadWorker", "URL expired for $videoId, re-fetching metadata...")
+            val retryData = downloadMutex.withLock {
+                val metadata = fetchStreamMetadata(videoId, preferredQuality) ?: return@withLock null
+                currentVideoUrl = metadata.videoUrl
+                currentAudioUrl = metadata.audioUrl
+                val retryFormat = metadata.format
+                
+                downloadDao.getDownloadById(videoId)?.let {
+                    val extension = if (retryFormat.contains("webm", ignoreCase = true)) "webm" else "mp4"
+                    val newFilePath = File(applicationContext.getExternalFilesDir(null), "$videoId.$extension").absolutePath
+                    
+                    downloadDao.updateDownload(it.copy(
+                        videoUrl = currentVideoUrl, 
+                        audioUrl = currentAudioUrl,
+                        format = retryFormat,
+                        filePath = newFilePath
+                    ))
                 }
+                currentVideoUrl to currentAudioUrl
+            } ?: return@withContext Result.failure()
+
+            try {
+                doDownload(videoId, retryData.first, retryData.second, title, currentFormat)
+            } catch (ex: Exception) {
+                PTLog.e("DownloadWorker", "Retry failed for $videoId", ex)
+                downloadDao.updateProgress(videoId, DownloadStatus.FAILED, 0, 0)
+                Result.failure()
             }
         }
     }
@@ -140,14 +164,31 @@ class DownloadWorker @AssistedInject constructor(
 
             val videoUrl = videoStream.url
             val format = videoStream.format
+            val isWebm = format.contains("webm", ignoreCase = true)
             val audioUrl = if (videoStream.isAdaptive) {
-                bundle.audioStreams.find {
-                    it.format.contains("m4a", ignoreCase = true) ||
-                    it.format.contains("aac", ignoreCase = true)
-                }?.url ?: bundle.audioStreams.firstOrNull()?.url
+                val compatibleStreams = bundle.audioStreams.filter { audio ->
+                    if (isWebm) {
+                        audio.format.contains("webm", ignoreCase = true) || 
+                        audio.format.contains("opus", ignoreCase = true)
+                    } else {
+                        audio.format.contains("m4a", ignoreCase = true) || 
+                        audio.format.contains("aac", ignoreCase = true)
+                    }
+                }
+
+                val bestAudio = compatibleStreams.filter { it.trackType == "ORIGINAL" }
+                    .maxByOrNull { it.quality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }
+                    ?: compatibleStreams.maxByOrNull { it.quality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }
+                
+                bestAudio?.url
             } else null
 
             if (videoStream.isAdaptive && audioUrl == null) {
+                // Fallback to progressive stream if adaptive pairing fails
+                val progressiveStream = bundle.videoStreams.find { !it.isAdaptive }
+                if (progressiveStream != null) {
+                    return StreamMetadata(progressiveStream.url, null, progressiveStream.format, progressiveStream.quality)
+                }
                 PTLog.e("DownloadWorker", "Adaptive stream selected but no audio found for $videoId")
                 return null
             }
@@ -166,11 +207,11 @@ class DownloadWorker @AssistedInject constructor(
         title: String,
         format: String
     ): Result {
-        setForeground(createForegroundInfo(title, 0))
+        setForeground(createForegroundInfo(title, 0, videoId))
 
         val extension = if (format.contains("webm", ignoreCase = true)) "webm" else "mp4"
         val finalFile = File(applicationContext.getExternalFilesDir(null), "$videoId.$extension")
-        val videoFile = if (audioUrl != null) File(applicationContext.cacheDir, "${videoId}_video.tmp") else finalFile
+        val videoFile = File(applicationContext.cacheDir, "${videoId}_video.tmp")
         val audioFile = if (audioUrl != null) File(applicationContext.cacheDir, "${videoId}_audio.tmp") else null
 
         return try {
@@ -196,11 +237,10 @@ class DownloadWorker @AssistedInject constructor(
             }
             PTLog.d("DownloadWorker", "Video downloaded successfully: $videoSize bytes")
             
-            // If initial HEAD request failed, update total size now that we have it from GET
+            // If probe failed, update total size now that we have it from GET
             if (totalVideoSize == 0L) {
                 totalVideoSize = videoSize
                 combinedTotalSize = totalVideoSize + totalAudioSize
-                PTLog.d("DownloadWorker", "Updated combinedTotalSize after video GET: $combinedTotalSize")
             }
 
             // Download Audio if needed
@@ -224,11 +264,20 @@ class DownloadWorker @AssistedInject constructor(
             if (audioUrl != null && audioFile != null) {
                 // Mux Video and Audio
                 PTLog.d("DownloadWorker", "Muxing video and audio for $videoId")
-                setForeground(createForegroundInfo("Muxing $title", 99))
-                muxVideoAudio(videoFile, audioFile, finalFile, format)
-                PTLog.d("DownloadWorker", "Muxing complete, deleting temporary files")
-                videoFile.delete()
-                audioFile.delete()
+                setForeground(createForegroundInfo("Muxing $title", 99, videoId))
+                
+                // Task: Sequential Muxing to prevent disk thrashing
+                muxingMutex.withLock {
+                    muxVideoAudio(videoFile, audioFile, finalFile, format)
+                }
+            } else {
+                // Bypass Muxer for Standalone Streams
+                PTLog.d("DownloadWorker", "Bypassing muxer for standalone stream")
+                if (finalFile.exists()) finalFile.delete()
+                if (!videoFile.renameTo(finalFile)) {
+                    videoFile.copyTo(finalFile, overwrite = true)
+                    videoFile.delete()
+                }
             }
 
             PTLog.d("DownloadWorker", "Download task completed successfully for $videoId")
@@ -303,20 +352,30 @@ class DownloadWorker @AssistedInject constructor(
         // Aggressive chunk scaling to bypass YouTube's per-connection speed limits
         val numChunks = when {
             totalSize < 512 * 1024 -> 1 
-            totalSize < 5 * 1024 * 1024 -> 4 // 4 chunks for audio or small videos
+            totalSize < 5 * 1024 * 1024 -> 4 
             totalSize < 20 * 1024 * 1024 -> 8 
             totalSize < 100 * 1024 * 1024 -> 12
-            else -> 16 // Max 16 chunks for high-res videos to maximize throughput
+            else -> 16 
         }
         
         if (numChunks == 1) return@withContext -1 
         
         val chunkSize = totalSize / numChunks
         val downloadedBytes = AtomicLong(0L)
-        var lastUpdateTime = 0L
-        var lastProgressUpdate = 0
-        val progressMutex = Mutex()
         val partFiles = mutableListOf<File>()
+
+        // 1Hz Ticker Coroutine for stable progress updates
+        val tickerJob = launch {
+            while (isActive) {
+                delay(1000)
+                val currentTotalDownloaded = previousDownloaded + downloadedBytes.get()
+                val effectiveTotalSize = if (combinedTotalSize > 0) combinedTotalSize else (previousDownloaded + totalSize)
+                val progress = if (effectiveTotalSize > 0) ((currentTotalDownloaded * 100) / effectiveTotalSize).toInt() else 0
+                
+                setForeground(createForegroundInfo(title, progress, videoId))
+                downloadDao.updateProgress(videoId, DownloadStatus.DOWNLOADING, currentTotalDownloaded, effectiveTotalSize)
+            }
+        }
 
         try {
             val jobs = (0 until numChunks).map { i ->
@@ -326,31 +385,17 @@ class DownloadWorker @AssistedInject constructor(
                 partFiles.add(partFile)
                 
                 async {
-                    downloadChunk(url, partFile, start, end, videoId, title, isPart, previousDownloaded, combinedTotalSize, downloadedBytes) {
-                        progressMutex.withLock {
-                            val currentTime = System.currentTimeMillis()
-                            val currentTotalDownloaded = previousDownloaded + downloadedBytes.get()
-                            val effectiveTotalSize = if (combinedTotalSize > 0) combinedTotalSize else (previousDownloaded + totalSize)
-                            val progress = if (effectiveTotalSize > 0) ((currentTotalDownloaded * 100) / effectiveTotalSize).toInt() else 0
-
-                            if (isStopped) throw CancellationException("Worker stopped during parallel download")
-
-                            if (progress > lastProgressUpdate || currentTime - lastUpdateTime > 1000) {
-                                lastUpdateTime = currentTime
-                                lastProgressUpdate = progress
-                                
-                                setForeground(createForegroundInfo(
-                                    if (isPart) "Downloading $title" else "Downloading $title",
-                                    progress
-                                ))
-                                downloadDao.updateProgress(videoId, DownloadStatus.DOWNLOADING, currentTotalDownloaded, effectiveTotalSize)
-                            }
-                        }
-                    }
+                    downloadChunk(url, partFile, start, end, videoId, title, isPart, previousDownloaded, combinedTotalSize, downloadedBytes)
                 }
             }
 
             jobs.awaitAll()
+            tickerJob.cancel()
+
+            // Final progress update
+            val finalTotalDownloaded = previousDownloaded + downloadedBytes.get()
+            val finalEffectiveSize = if (combinedTotalSize > 0) combinedTotalSize else (previousDownloaded + totalSize)
+            downloadDao.updateProgress(videoId, DownloadStatus.DOWNLOADING, finalTotalDownloaded, finalEffectiveSize)
             
             // CLEAN TRUNCATE: Ensure the file is fresh before merging to avoid corruption
             if (file.exists()) file.delete()
@@ -367,8 +412,8 @@ class DownloadWorker @AssistedInject constructor(
 
             downloadedBytes.get()
         } catch (e: Exception) {
+            tickerJob.cancel()
             PTLog.e("DownloadWorker", "Parallel download failed: ${e.message}")
-            // Do NOT delete part files here to allow resuming later
             if (e is ExpiredUrlException) throw e
             -1
         }
@@ -398,7 +443,7 @@ class DownloadWorker @AssistedInject constructor(
         var response: okhttp3.Response? = null
         try {
             val result = withTimeoutOrNull(300_000L) {
-                response = okHttpClient.newCall(request).execute()
+                response = workerOkHttpClient.newCall(request).execute()
                 
                 // Handle 416 (Range Not Satisfiable) - usually means file changed or offset is wrong
                 if (response!!.code == 416) {
@@ -441,7 +486,7 @@ class DownloadWorker @AssistedInject constructor(
                                 lastUpdateTime = currentTime
                                 lastProgressUpdate = progress
                                 
-                                setForeground(createForegroundInfo("Downloading $title", progress))
+                                setForeground(createForegroundInfo("Downloading $title", progress, videoId))
                                 downloadDao.updateProgress(videoId, DownloadStatus.DOWNLOADING, previousDownloaded + downloaded, effectiveTotalSize.coerceAtLeast(previousDownloaded + downloaded))
                             }
                         }
@@ -469,14 +514,12 @@ class DownloadWorker @AssistedInject constructor(
         isPart: Boolean,
         previousDownloaded: Long,
         combinedTotalSize: Long,
-        downloadedBytes: AtomicLong,
-        onProgress: suspend () -> Unit
+        downloadedBytes: AtomicLong
     ) {
         val existingSize = if (partFile.exists()) partFile.length() else 0L
         if (existingSize >= (end - start + 1)) {
             // Already fully downloaded this chunk
             downloadedBytes.addAndGet(existingSize)
-            onProgress()
             return
         }
 
@@ -490,14 +533,14 @@ class DownloadWorker @AssistedInject constructor(
         var response: okhttp3.Response? = null
         try {
             withTimeoutOrNull(300_000L) {
-                response = okHttpClient.newCall(request).execute()
+                response = workerOkHttpClient.newCall(request).execute()
                 
                 if (response!!.code == 403) throw ExpiredUrlException()
                 
                 if (response!!.code == 416) {
                     PTLog.w("DownloadWorker", "Range not satisfiable for chunk of $videoId, restarting chunk")
                     partFile.delete()
-                    return@withTimeoutOrNull downloadChunk(url, partFile, start, end, videoId, title, isPart, previousDownloaded, combinedTotalSize, downloadedBytes, onProgress)
+                    return@withTimeoutOrNull downloadChunk(url, partFile, start, end, videoId, title, isPart, previousDownloaded, combinedTotalSize, downloadedBytes)
                 }
 
                 if (!response!!.isSuccessful) throw Exception("Chunk download failed: ${response!!.code}")
@@ -514,7 +557,6 @@ class DownloadWorker @AssistedInject constructor(
                             ensureActive()
                             output.write(buffer, 0, bytesRead)
                             downloadedBytes.addAndGet(bytesRead.toLong())
-                            onProgress()
                         }
                     }
                 }
@@ -529,15 +571,37 @@ class DownloadWorker @AssistedInject constructor(
 
     private fun getRemoteFileSize(url: String): Long {
         return try {
-            val request = Request.Builder()
+            val headRequest = Request.Builder()
                 .url(url)
                 .header("User-Agent", userAgent)
                 .head()
                 .build()
-            okHttpClient.newCall(request).execute().use { response ->
+            
+            workerOkHttpClient.newCall(headRequest).execute().use { response ->
                 if (response.code == 403) throw ExpiredUrlException()
+                
                 val length = response.header("Content-Length")?.toLong() ?: response.body.contentLength()
-                if (response.isSuccessful && length > 0) length else 0L
+                if (response.isSuccessful && length > 0) {
+                    return length
+                }
+            }
+            
+            // Fallback to probe GET request
+            val probeRequest = Request.Builder()
+                .url(url)
+                .header("User-Agent", userAgent)
+                .header("Range", "bytes=0-0")
+                .build()
+            
+            workerOkHttpClient.newCall(probeRequest).execute().use { response ->
+                if (response.code == 403) throw ExpiredUrlException()
+                
+                val contentRange = response.header("Content-Range")
+                if (contentRange != null && contentRange.contains("/")) {
+                    val total = contentRange.substringAfterLast("/").toLongOrNull()
+                    if (total != null) return total
+                }
+                response.body.contentLength().coerceAtLeast(0L)
             }
         } catch (e: Exception) {
             if (e is ExpiredUrlException) throw e
@@ -546,56 +610,51 @@ class DownloadWorker @AssistedInject constructor(
     }
 
     private fun muxVideoAudio(videoFile: File, audioFile: File, outputFile: File, videoFormat: String) {
-        PTLog.d("DownloadWorker", "Starting robust muxing for ${outputFile.name}")
+        PTLog.d("DownloadWorker", "Starting high-speed direct muxing for ${outputFile.name}")
         
-        val tempOutputFile = File(applicationContext.cacheDir, "${outputFile.name}.mux.tmp")
-        if (tempOutputFile.exists()) tempOutputFile.delete()
+        val tmpOutputFile = File("${outputFile.absolutePath}.tmp")
+        if (tmpOutputFile.exists()) tmpOutputFile.delete()
         
         val videoExtractor = MediaExtractor()
         val audioExtractor = MediaExtractor()
         var muxer: MediaMuxer? = null
+        
+        var videoFis: java.io.FileInputStream? = null
+        var audioFis: java.io.FileInputStream? = null
 
         try {
-            try {
-                videoExtractor.setDataSource(videoFile.absolutePath)
-                audioExtractor.setDataSource(audioFile.absolutePath)
-            } catch (e: Exception) {
-                PTLog.e("DownloadWorker", "Failed to set data source for muxer. Files might be corrupted.")
-                videoFile.delete()
-                audioFile.delete()
-                throw IllegalStateException("Media stream corrupted or unreadable")
+            videoFis = java.io.FileInputStream(videoFile)
+            audioFis = java.io.FileInputStream(audioFile)
+            videoExtractor.setDataSource(videoFis.fd)
+            audioExtractor.setDataSource(audioFis.fd)
+
+            val outputFormat = when {
+                videoFormat.contains("webm", ignoreCase = true) || outputFile.extension.equals("webm", true) -> 
+                    MediaMuxer.OutputFormat.MUXER_OUTPUT_WEBM
+                else -> MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
             }
 
-            val outputFormat = if (videoFormat.contains("webm", ignoreCase = true)) {
-                MediaMuxer.OutputFormat.MUXER_OUTPUT_WEBM
-            } else {
-                MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
-            }
+            muxer = MediaMuxer(tmpOutputFile.absolutePath, outputFormat)
 
-            muxer = MediaMuxer(tempOutputFile.absolutePath, outputFormat)
-
-            // Video Track Setup
             var videoTrackIndex = -1
-            var videoFormatSelected: MediaFormat? = null
+            var audioTrackIndex = -1
+
+            // Setup Video Track
             for (i in 0 until videoExtractor.trackCount) {
                 val format = videoExtractor.getTrackFormat(i)
                 if (format.getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true) {
                     videoExtractor.selectTrack(i)
                     videoTrackIndex = muxer.addTrack(format)
-                    videoFormatSelected = format
                     break
                 }
             }
 
-            // Audio Track Setup
-            var audioTrackIndex = -1
-            var audioFormatSelected: MediaFormat? = null
+            // Setup Audio Track
             for (i in 0 until audioExtractor.trackCount) {
                 val format = audioExtractor.getTrackFormat(i)
                 if (format.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true) {
                     audioExtractor.selectTrack(i)
                     audioTrackIndex = muxer.addTrack(format)
-                    audioFormatSelected = format
                     break
                 }
             }
@@ -606,72 +665,85 @@ class DownloadWorker @AssistedInject constructor(
 
             muxer.start()
 
-            val buffer = ByteBuffer.allocate(2 * 1024 * 1024) // 2MB buffer
+            // Seek to 0 immediately before the loop
+            videoExtractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
+            audioExtractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
+            val videoStartTime = videoExtractor.sampleTime
+            val audioStartTime = audioExtractor.sampleTime
+
+            val videoBuffer = ByteBuffer.allocateDirect(4 * 1024 * 1024)
+            val audioBuffer = ByteBuffer.allocateDirect(1 * 1024 * 1024)
             val bufferInfo = MediaCodec.BufferInfo()
 
-            // Process Video
-            videoExtractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
-            var videoStartTime: Long = -1
-            while (true) {
-                if (isStopped) throw CancellationException("Worker stopped during video muxing")
-                bufferInfo.size = videoExtractor.readSampleData(buffer, 0)
-                if (bufferInfo.size < 0) break
-                
-                if (videoStartTime == -1L) videoStartTime = videoExtractor.sampleTime
-                bufferInfo.presentationTimeUs = videoExtractor.sampleTime - videoStartTime
-                bufferInfo.offset = 0
-                bufferInfo.flags = videoExtractor.sampleFlags
-                
-                muxer.writeSampleData(videoTrackIndex, buffer, bufferInfo)
-                videoExtractor.advance()
-            }
+            var videoDone = false
+            var audioDone = false
 
-            // Process Audio
-            audioExtractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
-            var audioStartTime: Long = -1
-            while (true) {
-                if (isStopped) throw CancellationException("Worker stopped during audio muxing")
-                bufferInfo.size = audioExtractor.readSampleData(buffer, 0)
-                if (bufferInfo.size < 0) break
-                
-                if (audioStartTime == -1L) audioStartTime = audioExtractor.sampleTime
-                bufferInfo.presentationTimeUs = audioExtractor.sampleTime - audioStartTime
-                bufferInfo.offset = 0
-                bufferInfo.flags = audioExtractor.sampleFlags
-                
-                muxer.writeSampleData(audioTrackIndex, buffer, bufferInfo)
-                audioExtractor.advance()
+            while (!videoDone || !audioDone) {
+                if (isStopped) throw CancellationException("Worker stopped during muxing")
+
+                val videoTime = if (!videoDone) videoExtractor.sampleTime else Long.MAX_VALUE
+                val audioTime = if (!audioDone) audioExtractor.sampleTime else Long.MAX_VALUE
+
+                if (!videoDone && videoTime <= audioTime) {
+                    bufferInfo.size = videoExtractor.readSampleData(videoBuffer, 0)
+                    if (bufferInfo.size < 0) {
+                        videoDone = true
+                    } else {
+                        bufferInfo.presentationTimeUs = videoExtractor.sampleTime - videoStartTime
+                        bufferInfo.offset = 0
+                        bufferInfo.flags = if ((videoExtractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
+                            MediaCodec.BUFFER_FLAG_KEY_FRAME
+                        } else 0
+                        muxer.writeSampleData(videoTrackIndex, videoBuffer, bufferInfo)
+                        videoExtractor.advance()
+                    }
+                } else {
+                    bufferInfo.size = audioExtractor.readSampleData(audioBuffer, 0)
+                    if (bufferInfo.size < 0) {
+                        audioDone = true
+                    } else {
+                        bufferInfo.presentationTimeUs = audioExtractor.sampleTime - audioStartTime
+                        bufferInfo.offset = 0
+                        bufferInfo.flags = if ((audioExtractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
+                            MediaCodec.BUFFER_FLAG_KEY_FRAME
+                        } else 0
+                        muxer.writeSampleData(audioTrackIndex, audioBuffer, bufferInfo)
+                        audioExtractor.advance()
+                    }
+                }
             }
 
             muxer.stop()
             muxer.release()
             muxer = null
 
-            // Finalize
             if (outputFile.exists()) outputFile.delete()
-            if (!tempOutputFile.renameTo(outputFile)) {
-                // Fallback: Copy instead of rename
-                tempOutputFile.inputStream().use { input ->
-                    outputFile.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                tempOutputFile.delete()
+            if (!tmpOutputFile.renameTo(outputFile)) {
+                tmpOutputFile.copyTo(outputFile, overwrite = true)
+                tmpOutputFile.delete()
             }
-            PTLog.d("DownloadWorker", "Muxing successful: ${outputFile.length()} bytes")
+            
+            PTLog.d("DownloadWorker", "Direct muxing successful: ${outputFile.length()} bytes")
         } catch (e: Exception) {
-            PTLog.e("DownloadWorker", "Muxing critical error: ${e.message}", e)
-            if (tempOutputFile.exists()) tempOutputFile.delete()
+            PTLog.e("DownloadWorker", "Muxing failed: ${e.message}", e)
+            if (tmpOutputFile.exists()) tmpOutputFile.delete()
             throw e
         } finally {
             try { muxer?.release() } catch (ex: Exception) {}
             try { videoExtractor.release() } catch (ex: Exception) {}
             try { audioExtractor.release() } catch (ex: Exception) {}
+            try { videoFis?.close() } catch (ex: Exception) {}
+            try { audioFis?.close() } catch (ex: Exception) {}
+            
+            // Clean up temporary source streams immediately inside finally
+            if (videoFile.exists()) videoFile.delete()
+            if (audioFile.exists()) audioFile.delete()
         }
     }
 
-    private fun createForegroundInfo(title: String, progress: Int): ForegroundInfo {
+    private fun createForegroundInfo(title: String, progress: Int, videoId: String): ForegroundInfo {
         val id = "download_channel"
+        val notifId = (videoId.hashCode() and 0x7FFFFFFF)
         val notification = NotificationCompat.Builder(context, id)
             .setContentTitle(title)
             .setSmallIcon(android.R.drawable.stat_sys_download)
@@ -680,9 +752,9 @@ class DownloadWorker @AssistedInject constructor(
             .build()
         
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ForegroundInfo(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            ForegroundInfo(notifId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
-            ForegroundInfo(1, notification)
+            ForegroundInfo(notifId, notification)
         }
     }
 }

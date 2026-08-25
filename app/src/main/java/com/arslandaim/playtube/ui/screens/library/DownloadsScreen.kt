@@ -115,7 +115,7 @@ fun DownloadsScreen(
         topBar = {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = GlobalGlassAlpha),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f),
                 tonalElevation = 0.dp
             ) {
                 Column {
@@ -133,10 +133,15 @@ fun DownloadsScreen(
                                         focusedIndicatorColor = Color.Transparent,
                                         unfocusedIndicatorColor = Color.Transparent
                                     ),
-                                    singleLine = true
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodyLarge
                                 )
                             } else {
-                                Text(stringResource(R.string.downloads), fontWeight = FontWeight.Bold)
+                                Text(
+                                    text = stringResource(R.string.downloads), 
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Black
+                                )
                             }
                         },
                         navigationIcon = {
@@ -148,61 +153,67 @@ fun DownloadsScreen(
                                     onBack()
                                 }
                             }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack, 
+                                    contentDescription = "Back",
+                                    modifier = Modifier.size(24.dp)
+                                )
                             }
                         },
                         actions = {
                             if (!isSearchActive) {
                                 IconButton(onClick = { isSearchActive = true }) {
-                                    Icon(Icons.Default.Search, contentDescription = "Search")
+                                    Icon(Icons.Default.Search, contentDescription = "Search", modifier = Modifier.size(22.dp))
                                 }
                                 IconButton(onClick = { showCleanupConfirm = true }) {
-                                    Icon(Icons.Default.CleaningServices, contentDescription = "Clean Watched")
+                                    Icon(Icons.Default.CleaningServices, contentDescription = "Clean Watched", modifier = Modifier.size(22.dp))
                                 }
                             } else if (searchQuery.isNotEmpty()) {
                                 IconButton(onClick = { viewModel.onOfflineSearchQueryChange("") }) {
-                                    Icon(Icons.Default.Clear, contentDescription = "Clear")
+                                    Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(20.dp))
                                 }
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                     )
                     
-                    // Storage Indicator
+                    // Compact Storage Indicator
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                            .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.CleaningServices,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(12.dp),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Using ${storageUsage.usedText}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.CleaningServices,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        
+                        Box(modifier = Modifier.weight(1f)) {
                             LinearProgressIndicator(
-                                progress = { 0.5f }, // Mock total device storage progress or just show a nice line
+                                progress = { 0.4f }, 
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(4.dp)
                                     .clip(CircleShape),
                                 color = MaterialTheme.colorScheme.primary,
-                                trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                             )
                         }
+                        
+                        Spacer(modifier = Modifier.width(12.dp))
+                        
+                        Text(
+                            text = storageUsage.usedText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
-                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f))
                 }
             }
         }

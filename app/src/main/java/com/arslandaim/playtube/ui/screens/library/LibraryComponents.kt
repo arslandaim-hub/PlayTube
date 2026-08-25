@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -782,6 +783,7 @@ fun VideoRow(
     onAddToPlaylistClick: (() -> Unit)? = null,
     onRemoveFromPlaylistClick: (() -> Unit)? = null,
     onChannelClick: (() -> Unit)? = null,
+    onRowClickEnabled: Boolean = true,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     deleteText: String = "Delete",
@@ -793,7 +795,10 @@ fun VideoRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(
+                enabled = onRowClickEnabled,
+                onClick = onClick
+            )
             .padding(vertical = 10.dp, horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1296,17 +1301,22 @@ fun DownloadItemRow(
     onAddToPlaylistClick: (() -> Unit)? = null,
     onRemoveFromPlaylistClick: (() -> Unit)? = null
 ) {
+    val isCompleted = download.status == com.arslandaim.playtube.data.local.DownloadStatus.COMPLETED
+
     VideoRow(
         videoId = download.videoId,
         title = download.title,
         uploader = download.uploaderName,
         thumbnailUrl = download.thumbnailUrl,
-        progress = if (download.status != com.arslandaim.playtube.data.local.DownloadStatus.COMPLETED) {
+        progress = if (!isCompleted) {
             if (download.totalSize > 0) download.downloadedSize.toFloat() / download.totalSize else 0f
         } else null,
         isSaved = isSaved,
         onClick = onClick,
-        modifier = modifier,
+        onRowClickEnabled = isCompleted,
+        modifier = modifier.graphicsLayer { 
+            alpha = if (isCompleted) 1f else 0.7f 
+        },
         onAddToPlaylistClick = onAddToPlaylistClick,
         onRemoveFromPlaylistClick = onRemoveFromPlaylistClick,
         onDeleteClick = onDeleteClick,

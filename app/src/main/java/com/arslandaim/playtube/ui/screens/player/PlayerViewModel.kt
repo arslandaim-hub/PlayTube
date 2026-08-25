@@ -37,6 +37,7 @@ class PlayerViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val getVideoStreamsUseCase: GetVideoStreamsUseCase,
     private val downloadVideoUseCase: DownloadVideoUseCase,
+    private val getPlaylistDetailsUseCase: GetPlaylistDetailsUseCase,
     private val downloadRepository: DownloadRepository,
     val libraryRepository: LibraryRepository,
     private val videoRepository: VideoRepository,
@@ -77,6 +78,12 @@ class PlayerViewModel @Inject constructor(
 
     private val _isSubscribed = MutableStateFlow(false)
     val isSubscribed: StateFlow<Boolean> = _isSubscribed.asStateFlow()
+
+    private val _currentPlaylist = MutableStateFlow<PlaylistDetails?>(null)
+    val currentPlaylist: StateFlow<PlaylistDetails?> = _currentPlaylist.asStateFlow()
+
+    private val _playlistIndex = MutableStateFlow(-1)
+    val playlistIndex: StateFlow<Int> = _playlistIndex.asStateFlow()
 
     private val _isCcEnabled = MutableStateFlow(false)
     val isCcEnabled: StateFlow<Boolean> = _isCcEnabled.asStateFlow()
@@ -335,7 +342,7 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun loadVideo(video: VideoItem) {
+    fun loadVideo(video: VideoItem, playlistId: String? = null, playlistTitle: String? = null) {
         val videoId = video.id
         if (videoId.isBlank()) return
         
@@ -346,7 +353,15 @@ class PlayerViewModel @Inject constructor(
             return
         }
 
-        resetPlaybackState(videoId, video)
+        // If we are navigating within the same playlist, don't clear the playlist state to avoid UI flicker
+        val keepPlaylist = playlistId != null && playlistId == _currentPlaylist.value?.id
+        resetPlaybackState(videoId, video, keepPlaylist)
+        
+        if (playlistId != null && !keepPlaylist) {
+            loadPlaylist(playlistId, playlistTitle)
+        } else if (keepPlaylist) {
+            updatePlaylistIndex()
+        }
 
         if (!isSameVideo) {
             miniPlayerManager.onNewVideoSelected(video)
@@ -437,7 +452,7 @@ class PlayerViewModel @Inject constructor(
         _currentQuality.value = "Local (${downloadedVideo.quality})"
     }
 
-    private fun resetPlaybackState(videoId: String, video: VideoItem) {
+    private fun resetPlaybackState(videoId: String, video: VideoItem, keepPlaylist: Boolean = false) {
         _isFavorite.value = false
         _isSaved.value = false
         _isSubscribed.value = false
@@ -445,6 +460,12 @@ class PlayerViewModel @Inject constructor(
         _isCcEnabled.value = false
         _comments.value = emptyList()
         nextCommentsPage = null
+        
+        if (!keepPlaylist) {
+            _currentPlaylist.value = null
+            _playlistIndex.value = -1
+        }
+
         playbackManager.setSponsorSegments(emptyList())
         lastPauseTimestamp = 0L
         if (!sessionHistory.contains(videoId)) {
@@ -748,14 +769,83 @@ class PlayerViewModel @Inject constructor(
         miniPlayerManager.minimize(VideoItem(id = currentVideoId ?: "", title = bundle.title, thumbnailUrl = bundle.thumbnailUrl ?: "", uploaderName = bundle.uploaderName, uploaderUrl = bundle.uploaderUrl, viewCount = bundle.viewCount ?: 0, uploadDate = bundle.uploadDate, rawUploadDate = null, duration = playbackManager.duration.value / 1000, watchProgress = if (playbackManager.duration.value > 0) playbackManager.currentPosition.value.toFloat() / playbackManager.duration.value else null))
     }
 
+    private fun loadPlaylist(playlistId: String, title: String? = null) {
+        val playlistUrl = if (playlistId.startsWith("http")) playlistId else "https://www.youtube.com/playlist?list=$playlistId"
+        
+        viewModelScope.launch {
+            if (playlistId.startsWith("local:")) {
+                val id = playlistId.substringAfter("local:").toIntOrNull()
+                if (id != null) {
+                    libraryRepository.getLocalPlaylists().firstOrNull()?.find { it.id == id }?.let { playlist ->
+                        libraryRepository.getVideosForLocalPlaylist(id).firstOrNull()?.let { videos ->
+                            val details = PlaylistDetails(
+                                id = "local:$id",
+                                title = playlist.name,
+                                uploaderName = "Local Playlist",
+                                uploaderUrl = null,
+                                thumbnailUrl = playlist.thumbnailUrl ?: videos.firstOrNull()?.thumbnailUrl ?: "",
+                                videos = videos.map { it.toVideoItem() }
+                            )
+                            _currentPlaylist.value = details
+                            updatePlaylistIndex()
+                        }
+                    }
+                }
+                return@launch
+            }
+
+            getPlaylistDetailsUseCase(playlistUrl)
+                .onSuccess { details ->
+                    _currentPlaylist.value = if (title != null) details.copy(title = title) else details
+                    updatePlaylistIndex()
+                }
+        }
+    }
+
+    private fun LocalPlaylistVideoEntity.toVideoItem() = VideoItem(
+        id = videoId,
+        title = title,
+        thumbnailUrl = thumbnailUrl,
+        uploaderName = uploaderName,
+        uploaderUrl = null,
+        uploaderThumbnailUrl = null,
+        viewCount = 0,
+        uploadDate = null,
+        rawUploadDate = null,
+        duration = duration
+    )
+
+    private fun updatePlaylistIndex() {
+        val currentId = currentVideoId ?: return
+        val playlist = _currentPlaylist.value ?: return
+        val index = playlist.videos.indexOfFirst { it.id == currentId }
+        _playlistIndex.value = index
+    }
+
     fun playNext() {
-        if (playbackManager.player.hasNextMediaItem()) playbackManager.player.seekToNextMediaItem()
-        else getNextAutoplayVideo()?.let { loadVideo(it) }
+        val playlist = _currentPlaylist.value
+        val index = _playlistIndex.value
+        
+        if (playlist != null && index != -1 && index < playlist.videos.size - 1) {
+            loadVideo(playlist.videos[index + 1], playlist.id, playlist.title)
+        } else if (playbackManager.player.hasNextMediaItem()) {
+            playbackManager.player.seekToNextMediaItem()
+        } else {
+            getNextAutoplayVideo()?.let { loadVideo(it) }
+        }
     }
 
     fun playPrevious() {
-        if (playbackManager.player.currentPosition > 5000) playbackManager.seekTo(0)
-        else _snackbarMessage.tryEmit("No previous video in session")
+        val playlist = _currentPlaylist.value
+        val index = _playlistIndex.value
+
+        if (playbackManager.player.currentPosition > 5000) {
+            playbackManager.seekTo(0)
+        } else if (playlist != null && index != -1 && index > 0) {
+            loadVideo(playlist.videos[index - 1], playlist.id, playlist.title)
+        } else {
+            _snackbarMessage.tryEmit("No previous video in session")
+        }
     }
 
     fun loadNextRelatedPage() {

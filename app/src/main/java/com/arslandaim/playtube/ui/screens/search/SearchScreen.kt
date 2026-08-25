@@ -58,6 +58,9 @@ import com.arslandaim.playtube.ui.screens.library.VideoRow
 import com.arslandaim.playtube.ui.screens.library.ModernChannelCard
 import com.arslandaim.playtube.ui.screens.library.ModernPlaylistRow
 import com.arslandaim.playtube.utils.rememberScrollVisibilityConnection
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.SharedFlow
 
@@ -182,6 +185,7 @@ private fun SearchContent(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
+    val lifecycleOwner = LocalLifecycleOwner.current
     
     // Reset scroll state when a new search query is initiated
     LaunchedEffect(searchQuery) {
@@ -190,9 +194,11 @@ private fun SearchContent(
         }
     }
 
-    LaunchedEffect(Unit) {
-        snackbarMessage.collect { message ->
-            snackbarHostState.showSnackbar(message)
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            snackbarMessage.collect { message ->
+                snackbarHostState.showSnackbar(message)
+            }
         }
     }
 
@@ -222,15 +228,21 @@ private fun SearchContent(
                     
                     // 1. Ambient Glow Layer (Dynamically bounded)
                     if (!firstItemThumbnail.isNullOrBlank() && !isSearchFocused) {
+                        val blurEffect = remember(firstItemThumbnail) {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                android.graphics.RenderEffect.createBlurEffect(
+                                    110f, 110f, android.graphics.Shader.TileMode.CLAMP
+                                ).asComposeRenderEffect()
+                            } else null
+                        }
+                        
                         Box(
                             modifier = Modifier
                                 .matchParentSize() // The critical fix replacing the hardcoded 180.dp
                                 .graphicsLayer {
                                     alpha = 0.35f
                                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                                        renderEffect = android.graphics.RenderEffect.createBlurEffect(
-                                            110f, 110f, android.graphics.Shader.TileMode.CLAMP
-                                        ).asComposeRenderEffect()
+                                        renderEffect = blurEffect
                                     }
                                 }
                                 .then(
@@ -745,7 +757,7 @@ fun ModernSearchBar(
         modifier = modifier
             .fillMaxWidth()
             .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
-            .height(48.dp)
+            .height(52.dp)
             .animateContentSize(),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = containerAlpha),
         shape = CircleShape,

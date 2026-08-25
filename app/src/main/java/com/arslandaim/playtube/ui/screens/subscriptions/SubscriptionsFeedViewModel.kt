@@ -77,7 +77,7 @@ class SubscriptionsFeedViewModel @Inject constructor(
             selectedChannelId = selectedId,
             subscriptions = subs,
             activeFeed = activeFeed.copy(
-                videos = activeFeed.videos.applyHistory(history)
+                videos = activeFeed.videos.distinctBy { it.id }.applyHistory(history)
             ),
             isThoroughSearching = isSearching,
             thoroughSearchProgress = progress
@@ -420,15 +420,22 @@ class SubscriptionsFeedViewModel @Inject constructor(
                     ?.url ?: compatibleStreams.maxByOrNull { it.quality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }?.url
             } else null
 
+            // Fallback to standalone progressive stream if adaptive audio pairing fails
+            val finalUrl = if (isAdaptive && audioUrl == null) {
+                bundle.videoStreams.find { !it.isAdaptive }?.url ?: url
+            } else url
+
+            val finalIsAdaptive = isAdaptive && audioUrl != null
+
             downloadVideoUseCase(
                 videoId = video.id,
-                url = url,
+                url = finalUrl,
                 title = video.title,
                 thumbnailUrl = video.thumbnailUrl,
                 uploaderName = video.uploaderName,
                 quality = quality,
                 format = format,
-                audioUrl = audioUrl
+                audioUrl = if (finalIsAdaptive) audioUrl else null
             )
             _snackbarMessage.emit("Downloading started")
             _downloadState.value = DownloadDialogState.Idle
