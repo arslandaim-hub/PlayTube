@@ -49,21 +49,21 @@
     <string name="history">Historia</string>
     <string name="subscriptions">Subskrybcje</string>
     <string name="downloads">Pobrane</string>
-    <string name="favorites">Ulubione</string>
+    <string name="favorites">Polubione filmy</string>
     <string name="see_all">Zobacz wszystkie</string>
     <string name="no_history">Nie ma jeszcze historii oglądania</string>
     <string name="no_history_desc">Filmy które oglądasz będą się tu pojawiać.</string>
     <string name="no_downloads">Nie ma jeszcze pobrań</string>
     <string name="no_downloads_desc">Pobierz filmy aby oglądać je kiedykolwiek.</string>
-    <string name="no_favorites">Nie ma jeszcze ulubionych</string>
-    <string name="no_favorites_desc">Oznacz filmy jako ulubione aby łatwo je potem odnaleźć.</string>
+    <string name="no_favorites">Nie ma jeszcze polubionych filmów</string>
+    <string name="no_favorites_desc">Filmy, które polubisz, pojawią się tutaj.</string>
     <string name="no_subscriptions">Nie ma jeszcze subskrybcji</string>
     <string name="no_subscriptions_desc">Subskrybuj swoje ulubione kanały aby zobaczyć je tutaj.</string>
     <string name="no_playlists">Nie ma jeszcze ulubionych playlist</string>
     <string name="no_playlists_desc">Twoje zapisane playlisty będą się pokazywać tutaj.</string>
     <string name="discover_videos">Odnajduj filmy</string>
-    <string name="remove_from_favorites">Usuń z ulubionych</string>
-    <string name="add_to_favorites">Dodaj do ulubionych</string>
+    <string name="remove_from_favorites">Usuń z polubionych filmów</string>
+    <string name="add_to_favorites">Dodaj do polubionych filmów</string>
     <string name="delete_download_title">Usunąć z pobranych?</string>
     <string name="delete_download_desc">Czy jesteś pewny/a że chcesz usunąć ten pobrany film?</string>
 
@@ -72,7 +72,7 @@
     <string name="discover_new">Odkryj coś nowego</string>
     <string name="recent_searches">Ostatnie wyszukiwania</string>
     <string name="clear_all">Wyczyść wszystko</string>
-    <string name="sort_relevance">Trafność</string>
+    <string name="sort_relevance">Wszystko</string>
     <string name="sort_newest">Najnowsze</string>
     <string name="sort_most_viewed">Najbardziej oglądane</string>
     <string name="sort_top_rated">Najwyżej oceniane</string>

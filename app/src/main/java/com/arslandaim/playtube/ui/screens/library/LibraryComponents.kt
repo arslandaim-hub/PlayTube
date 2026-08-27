@@ -30,7 +30,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
 import coil3.compose.AsyncImage
+import com.arslandaim.playtube.R
 import com.arslandaim.playtube.ui.components.ThumbnailImage
 import com.arslandaim.playtube.ui.components.GlassSurface
 import com.arslandaim.playtube.data.local.HistoryEntity
@@ -85,7 +87,7 @@ fun ProfileStatsHeader(
         ) {
             StatItem(label = "Downloads", count = downloadCount)
             StatItem(label = "Subscribed", count = subscriptionCount)
-            StatItem(label = "Favorites", count = favoriteCount)
+            StatItem(label = stringResource(R.string.favorites), count = favoriteCount)
         }
     }
 }
@@ -1044,12 +1046,12 @@ private fun VideoRowMenuContent(
     }
     if (onFavoriteClick != null) {
         DropdownMenuItem(
-            text = { Text(if (isFavorite) "Remove from Favorites" else "Add to Favorites") },
+            text = { Text(if (isFavorite) stringResource(R.string.remove_from_favorites) else stringResource(R.string.add_to_favorites)) },
             leadingIcon = { 
                 Icon(
-                    imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, 
+                    imageVector = if (isFavorite) Icons.Default.ThumbUp else Icons.Default.ThumbUpOffAlt, 
                     contentDescription = null,
-                    tint = if (isFavorite) Color.Red else LocalContentColor.current
+                    tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
                 ) 
             },
             onClick = {

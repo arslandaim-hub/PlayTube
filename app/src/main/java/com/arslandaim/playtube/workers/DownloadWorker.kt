@@ -127,12 +127,13 @@ class DownloadWorker @AssistedInject constructor(
                         filePath = newFilePath
                     ))
                 }
-                currentVideoUrl to currentAudioUrl
+                Triple(currentVideoUrl, currentAudioUrl, retryFormat)
             } ?: return@withContext Result.failure()
 
             try {
-                doDownload(videoId, retryData.first, retryData.second, title, currentFormat)
+                doDownload(videoId, retryData.first, retryData.second, title, retryData.third)
             } catch (ex: Exception) {
+                if (ex is CancellationException) throw ex
                 PTLog.e("DownloadWorker", "Retry failed for $videoId", ex)
                 downloadDao.updateProgress(videoId, DownloadStatus.FAILED, 0, 0)
                 Result.failure()
@@ -214,6 +215,12 @@ class DownloadWorker @AssistedInject constructor(
         val videoFile = File(applicationContext.cacheDir, "${videoId}_video.tmp")
         val audioFile = if (audioUrl != null) File(applicationContext.cacheDir, "${videoId}_audio.tmp") else null
 
+        if (finalFile.exists() && finalFile.length() > 0) {
+            PTLog.d("DownloadWorker", "File already exists, marking completed.")
+            downloadDao.updateProgress(videoId, DownloadStatus.COMPLETED, finalFile.length(), finalFile.length())
+            return Result.success()
+        }
+
         return try {
             PTLog.d("DownloadWorker", "Starting work for $videoId: $title")
             // Pre-calculate total size to avoid jumps in UI
@@ -281,10 +288,11 @@ class DownloadWorker @AssistedInject constructor(
             }
 
             PTLog.d("DownloadWorker", "Download task completed successfully for $videoId")
-            val totalFinalSize = videoSize + audioSize
-            downloadDao.updateProgress(videoId, DownloadStatus.COMPLETED, totalFinalSize, totalFinalSize)
+            val actualFinalSize = finalFile.length()
+            downloadDao.updateProgress(videoId, DownloadStatus.COMPLETED, actualFinalSize, actualFinalSize)
             Result.success()
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             PTLog.e("DownloadWorker", "Work failed for $videoId: ${e.message}", e)
 
             if (e is ExpiredUrlException) throw e
@@ -412,6 +420,7 @@ class DownloadWorker @AssistedInject constructor(
 
             downloadedBytes.get()
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             tickerJob.cancel()
             PTLog.e("DownloadWorker", "Parallel download failed: ${e.message}")
             if (e is ExpiredUrlException) throw e
@@ -497,6 +506,7 @@ class DownloadWorker @AssistedInject constructor(
             } ?: throw IOException("Network read timeout for $videoId")
             result
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             PTLog.e("DownloadWorker", "Single stream download failed", e)
             -1
         } finally {
@@ -570,10 +580,14 @@ class DownloadWorker @AssistedInject constructor(
 
 
     private fun getRemoteFileSize(url: String): Long {
+        val clen = url.substringAfter("&clen=", "").substringBefore("&").toLongOrNull()
+        if (clen != null && clen > 0L) return clen
+
         return try {
             val headRequest = Request.Builder()
                 .url(url)
                 .header("User-Agent", userAgent)
+                .header("Accept-Encoding", "identity")
                 .head()
                 .build()
             
@@ -590,6 +604,7 @@ class DownloadWorker @AssistedInject constructor(
             val probeRequest = Request.Builder()
                 .url(url)
                 .header("User-Agent", userAgent)
+                .header("Accept-Encoding", "identity")
                 .header("Range", "bytes=0-0")
                 .build()
             
@@ -601,7 +616,7 @@ class DownloadWorker @AssistedInject constructor(
                     val total = contentRange.substringAfterLast("/").toLongOrNull()
                     if (total != null) return total
                 }
-                response.body.contentLength().coerceAtLeast(0L)
+                0L
             }
         } catch (e: Exception) {
             if (e is ExpiredUrlException) throw e
@@ -724,6 +739,8 @@ class DownloadWorker @AssistedInject constructor(
             }
             
             PTLog.d("DownloadWorker", "Direct muxing successful: ${outputFile.length()} bytes")
+            if (videoFile.exists()) videoFile.delete()
+            if (audioFile.exists()) audioFile.delete()
         } catch (e: Exception) {
             PTLog.e("DownloadWorker", "Muxing failed: ${e.message}", e)
             if (tmpOutputFile.exists()) tmpOutputFile.delete()
@@ -734,10 +751,6 @@ class DownloadWorker @AssistedInject constructor(
             try { audioExtractor.release() } catch (ex: Exception) {}
             try { videoFis?.close() } catch (ex: Exception) {}
             try { audioFis?.close() } catch (ex: Exception) {}
-            
-            // Clean up temporary source streams immediately inside finally
-            if (videoFile.exists()) videoFile.delete()
-            if (audioFile.exists()) audioFile.delete()
         }
     }
 

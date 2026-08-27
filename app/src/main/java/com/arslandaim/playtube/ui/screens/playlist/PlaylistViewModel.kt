@@ -141,18 +141,20 @@ class PlaylistViewModel @Inject constructor(
         viewModelScope.launch {
             _snackbarMessage.emit("Playlist download started (${quality})")
             details.videos.forEach { video ->
-                downloadVideoUseCase(
-                    videoId = video.id,
-                    url = null, // Will be fetched by the worker
-                    title = video.title,
-                    thumbnailUrl = video.thumbnailUrl,
-                    uploaderName = video.uploaderName,
-                    quality = quality,
-                    format = null, // Will be fetched by the worker
-                    audioUrl = null,
-                    playlistId = details.id,
-                    playlistTitle = details.title
-                )
+                if (!downloadedVideoIds.value.contains(video.id)) {
+                    downloadVideoUseCase(
+                        videoId = video.id,
+                        url = null, // Will be fetched by the worker
+                        title = video.title,
+                        thumbnailUrl = video.thumbnailUrl,
+                        uploaderName = video.uploaderName,
+                        quality = quality,
+                        format = null, // Will be fetched by the worker
+                        audioUrl = null,
+                        playlistId = details.id,
+                        playlistTitle = details.title
+                    )
+                }
             }
             _showPlaylistDownloadDialog.value = false
         }
@@ -195,7 +197,7 @@ class PlaylistViewModel @Inject constructor(
                 )
             )
             val isFav = libraryRepository.isFavorite(video.id).first()
-            _snackbarMessage.emit(if (isFav) "Added to Favorites" else "Removed from Favorites")
+            _snackbarMessage.emit(if (isFav) "Added to Liked Videos" else "Removed from Liked Videos")
         }
     }
 

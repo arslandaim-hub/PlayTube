@@ -25,17 +25,19 @@ fun GlassSurface(
     shadowElevation: Dp = 0.dp,
     border: BorderStroke? = null,
     containerColor: Color = MaterialTheme.colorScheme.surface.copy(alpha = GlassAlpha),
+    contentColor: Color = MaterialTheme.colorScheme.onSurface,
     content: @Composable () -> Unit
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = shape,
         color = containerColor,
+        contentColor = contentColor,
         tonalElevation = tonalElevation,
         shadowElevation = shadowElevation,
         border = border ?: BorderStroke(
             width = 0.5.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
         ),
         content = content
     )

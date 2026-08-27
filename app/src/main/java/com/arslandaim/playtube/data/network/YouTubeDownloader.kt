@@ -29,13 +29,21 @@ class YouTubeDownloader(private val client: OkHttpClient) : Downloader() {
             .addHeader("Accept-Language", "en-US,en;q=0.9")
             .addHeader("User-Agent", Constants.DEFAULT_USER_AGENT)
 
+        val mergedHeaders = headers.toMutableMap()
+
         // Bypass YouTube Consent/GDPR redirection in Europe
-        // Only apply to YouTube domains to minimize header interference
+        // Merge with existing cookies if present
         if (url.contains("youtube.com") || url.contains("googlevideo.com")) {
-            okHttpRequestBuilder.addHeader("Cookie", Constants.YouTube.CONSENT_COOKIE)
+            val existingCookies = mergedHeaders["Cookie"] ?: emptyList()
+            if (existingCookies.none { it.contains("CONSENT=YES") }) {
+                val newCookies = existingCookies.toMutableList().apply { 
+                    add(Constants.YouTube.CONSENT_COOKIE) 
+                }
+                mergedHeaders["Cookie"] = newCookies
+            }
         }
 
-        headers.forEach { (key, values) ->
+        mergedHeaders.forEach { (key, values) ->
             values.forEach { value ->
                 okHttpRequestBuilder.addHeader(key, value)
             }

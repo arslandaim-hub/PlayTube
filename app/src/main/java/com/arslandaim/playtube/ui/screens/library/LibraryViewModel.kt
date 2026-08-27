@@ -26,11 +26,11 @@ import com.arslandaim.playtube.domain.usecase.SaveToPublicStorageUseCase
 import com.arslandaim.playtube.domain.usecase.SyncSubscriptionMetadataUseCase
 import com.arslandaim.playtube.domain.usecase.ToggleFavoriteUseCase
 import com.arslandaim.playtube.domain.usecase.ToggleSubscriptionUseCase
+import com.arslandaim.playtube.utils.VideoUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.util.Locale
 import javax.inject.Inject
 
 @HiltViewModel
@@ -104,7 +104,7 @@ class LibraryViewModel @Inject constructor(
             val totalBytes = list.sumOf { it.downloadedSize }
             StorageInfo(
                 usedBytes = totalBytes,
-                usedText = formatSize(totalBytes)
+                usedText = VideoUtils.formatSize(totalBytes)
             )
         }.flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), StorageInfo())
@@ -149,13 +149,6 @@ class LibraryViewModel @Inject constructor(
                 }
             }
         }
-    }
-
-    private fun formatSize(bytes: Long): String {
-        if (bytes <= 0) return "0 B"
-        val units = arrayOf("B", "KB", "MB", "GB", "TB")
-        val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt()
-        return String.format(Locale.US, "%.1f %s", bytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
     }
 
     fun deleteDownload(videoId: String) {

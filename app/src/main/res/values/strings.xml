@@ -50,21 +50,21 @@
     <string name="history">History</string>
     <string name="subscriptions">Subscriptions</string>
     <string name="downloads">Downloads</string>
-    <string name="favorites">Favorites</string>
+    <string name="favorites">Liked Videos</string>
     <string name="see_all">See all</string>
     <string name="no_history">No watch history yet</string>
     <string name="no_history_desc">Videos you watch will appear here.</string>
     <string name="no_downloads">No downloads yet</string>
     <string name="no_downloads_desc">Download videos to watch them offline anytime.</string>
-    <string name="no_favorites">No favorites yet</string>
-    <string name="no_favorites_desc">Mark videos as favorites to find them easily later.</string>
+    <string name="no_favorites">No liked videos yet</string>
+    <string name="no_favorites_desc">Videos you like will appear here.</string>
     <string name="no_subscriptions">No subscriptions yet</string>
     <string name="no_subscriptions_desc">Subscribe to your favorite channels to see them here.</string>
     <string name="no_playlists">No favorited playlists yet</string>
     <string name="no_playlists_desc">Your saved playlists will be shown here.</string>
     <string name="discover_videos">Discover Videos</string>
-    <string name="remove_from_favorites">Remove from Favorites</string>
-    <string name="add_to_favorites">Add to Favorites</string>
+    <string name="remove_from_favorites">Remove from Liked Videos</string>
+    <string name="add_to_favorites">Add to Liked Videos</string>
     <string name="delete_download_title">Delete Download?</string>
     <string name="delete_download_desc">Are you sure you want to delete this downloaded video?</string>
 
@@ -73,7 +73,7 @@
     <string name="discover_new">Discover something new</string>
     <string name="recent_searches">Recent searches</string>
     <string name="clear_all">Clear all</string>
-    <string name="sort_relevance">Relevance</string>
+    <string name="sort_relevance">All</string>
     <string name="sort_newest">Newest</string>
     <string name="sort_most_viewed">Most Viewed</string>
     <string name="sort_top_rated">Top Rated</string>

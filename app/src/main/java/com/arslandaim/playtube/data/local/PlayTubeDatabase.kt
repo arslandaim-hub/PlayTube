@@ -21,13 +21,16 @@ import androidx.room.TypeConverters
         BlacklistEntity::class,
         LocalPlaylistEntity::class,
         LocalPlaylistVideoEntity::class,
-        FeedCacheEntity::class
+        FeedCacheEntity::class,
+        DownloadMissionEntity::class,
+        DownloadChunkEntity::class
     ],
-    version = 14
+    version = 15
 )
 @TypeConverters(Converters::class)
 abstract class PlayTubeDatabase : RoomDatabase() {
     abstract fun downloadDao(): DownloadDao
+    abstract fun missionDao(): MissionDao
     abstract fun historyDao(): HistoryDao
     abstract fun favoriteDao(): FavoriteDao
     abstract fun playlistFavoriteDao(): PlaylistFavoriteDao

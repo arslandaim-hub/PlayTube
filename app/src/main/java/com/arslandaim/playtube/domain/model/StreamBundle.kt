@@ -6,7 +6,9 @@
 package com.arslandaim.playtube.domain.model
 
 import org.schabi.newpipe.extractor.Page
+import androidx.annotation.Keep
 
+@Keep
 data class StreamBundle(
     val videoStreams: List<StreamItem>,
     val audioStreams: List<StreamItem>,

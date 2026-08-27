@@ -29,4 +29,16 @@ class Converters {
             emptyList()
         }
     }
+
+    @TypeConverter
+    fun fromMissionStatus(status: MissionStatus): String = status.name
+
+    @TypeConverter
+    fun toMissionStatus(name: String): MissionStatus = MissionStatus.valueOf(name)
+
+    @TypeConverter
+    fun fromChunkType(type: ChunkType): String = type.name
+
+    @TypeConverter
+    fun toChunkType(name: String): ChunkType = ChunkType.valueOf(name)
 }

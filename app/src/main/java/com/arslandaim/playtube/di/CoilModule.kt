@@ -10,6 +10,7 @@ import coil3.ImageLoader
 import coil3.disk.DiskCache
 import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import coil3.request.allowHardware
 import coil3.request.crossfade
 import dagger.Module
 import dagger.Provides
@@ -46,6 +47,7 @@ object CoilModule {
             .components {
                 add(OkHttpNetworkFetcherFactory(okHttpClient))
             }
+            .allowHardware(true)
             .crossfade(true)
             .build()
     }

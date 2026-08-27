@@ -99,4 +99,9 @@ object DatabaseModule {
     fun provideFeedCacheDao(database: PlayTubeDatabase): com.arslandaim.playtube.data.local.FeedCacheDao {
         return database.feedCacheDao()
     }
+
+    @Provides
+    fun provideMissionDao(database: PlayTubeDatabase): com.arslandaim.playtube.data.local.MissionDao {
+        return database.missionDao()
+    }
 }

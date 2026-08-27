@@ -16,6 +16,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.arslandaim.playtube.data.local.*
+import com.arslandaim.playtube.di.ApplicationScope
 import com.arslandaim.playtube.domain.model.*
 import com.arslandaim.playtube.domain.repository.*
 import com.arslandaim.playtube.domain.usecase.*
@@ -53,6 +54,7 @@ class PlayerViewModel @Inject constructor(
     private val preferencesManager: PreferencesManager,
     private val connectivityObserver: ConnectivityObserver,
     private val playbackManager: PlaybackManager,
+    @ApplicationScope private val externalScope: CoroutineScope,
     val miniPlayerManager: MiniPlayerManager,
     val sleepTimerManager: SleepTimerManager,
     val queueManager: QueueManager
@@ -320,6 +322,22 @@ class PlayerViewModel @Inject constructor(
         preloadingJob?.cancel()
 
         loadingJob = viewModelScope.launch {
+            val download = withContext(Dispatchers.IO) { downloadRepository.getDownloadByVideoIdResilient(videoId) }
+            if (download != null && download.status == DownloadStatus.COMPLETED) {
+                val localFile = File(download.filePath)
+                if (withContext(Dispatchers.IO) { localFile.exists() }) {
+                    val localBundle = StreamBundle(videoStreams = emptyList(), audioStreams = emptyList(), title = download.title, uploaderName = download.uploaderName, uploaderUrl = null, uploaderThumbnailUrl = null, description = "Playing from local storage", viewCount = 0, uploadDate = null, thumbnailUrl = download.thumbnailUrl)
+                    currentBundle = localBundle
+                    currentVideoItem = VideoItem(id = videoId, title = download.title, thumbnailUrl = download.thumbnailUrl, uploaderName = download.uploaderName, uploaderUrl = null, uploaderThumbnailUrl = null, viewCount = 0, uploadDate = null, rawUploadDate = null, duration = playbackManager.duration.value / 1000)
+                    _uiState.value = PlayerUiState.Success(download.title, download.uploaderName, localBundle)
+                    miniPlayerManager.updateMetadata(currentVideoItem)
+                    _currentQuality.value = "Local (${download.quality})"
+                    updatePlaylistIndex()
+                    launch { isSavedUseCase(videoId).collectLatest { _isSaved.value = it } }
+                    return@launch
+                }
+            }
+
             getVideoStreamsUseCase(videoId)
                 .onSuccess { bundle ->
                     if (bundle.isUpcoming) {
@@ -333,6 +351,7 @@ class PlayerViewModel @Inject constructor(
                     _uiState.value = PlayerUiState.Success(bundle.title, bundle.uploaderName, bundle)
                     miniPlayerManager.updateMetadata(currentVideoItem)
                     syncSubtitles(bundle)
+                    updatePlaylistIndex()
                     
                     val uploaderId = VideoUtils.extractChannelId(bundle.uploaderUrl) ?: bundle.uploaderUrl
                     uploaderId?.let { id -> launch { isSubscribedUseCase(id).collectLatest { _isSubscribed.value = it } } }
@@ -404,7 +423,7 @@ class PlayerViewModel @Inject constructor(
                 }
             }
 
-            val downloadedVideo = withContext(Dispatchers.IO) { downloadRepository.getDownloadByVideoId(videoId) }
+            val downloadedVideo = withContext(Dispatchers.IO) { downloadRepository.getDownloadByVideoIdResilient(videoId) }
             if (downloadedVideo != null && downloadedVideo.status == DownloadStatus.COMPLETED) {
                 val localFile = File(downloadedVideo.filePath)
                 if (withContext(Dispatchers.IO) { localFile.exists() }) {
@@ -505,7 +524,7 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             val isFav = libraryRepository.isFavorite(target.id).first()
             toggleFavoriteUseCase(FavoriteEntity(videoId = target.id, title = target.title, thumbnailUrl = target.thumbnailUrl, uploaderName = target.uploaderName))
-            _snackbarMessage.emit(if (isFav) "Removed from Favorites" else "Added to Favorites")
+            _snackbarMessage.emit(if (isFav) "Removed from Liked Videos" else "Added to Liked Videos")
         }
     }
 
@@ -565,7 +584,7 @@ class PlayerViewModel @Inject constructor(
     private fun checkAndSwitchToLocalIfAvailable() {
         val videoId = currentVideoId ?: return
         viewModelScope.launch {
-            val download = withContext(Dispatchers.IO) { downloadRepository.getDownloadByVideoId(videoId) }
+            val download = withContext(Dispatchers.IO) { downloadRepository.getDownloadByVideoIdResilient(videoId) }
             if (download != null && download.status == DownloadStatus.COMPLETED) {
                 val localFile = File(download.filePath)
                 if (withContext(Dispatchers.IO) { localFile.exists() }) {
@@ -582,7 +601,7 @@ class PlayerViewModel @Inject constructor(
         _isRecovering.value = true
         viewModelScope.launch {
             // Check if it finished downloading while paused
-            val download = withContext(Dispatchers.IO) { downloadRepository.getDownloadByVideoId(videoId) }
+            val download = withContext(Dispatchers.IO) { downloadRepository.getDownloadByVideoIdResilient(videoId) }
             if (download != null && download.status == DownloadStatus.COMPLETED) {
                 val localFile = File(download.filePath)
                 if (withContext(Dispatchers.IO) { localFile.exists() }) {
@@ -623,12 +642,29 @@ class PlayerViewModel @Inject constructor(
         val next = getNextAutoplayVideo() ?: return
         isPreloaded = true
         preloadingJob = viewModelScope.launch(Dispatchers.IO) {
+            val download = downloadRepository.getDownloadByVideoId(next.id)
+            if (download != null && download.status == DownloadStatus.COMPLETED) {
+                val localFile = File(download.filePath)
+                if (localFile.exists()) {
+                    withContext(Dispatchers.Main) {
+                        if (_isAutoplayEnabled.value) playbackManager.prepareNextLocalSource(next, localFile)
+                    }
+                    return@launch
+                }
+            }
+
             videoRepository.preloadStreamBundle(next.id)
             getVideoStreamsUseCase(next.id).onSuccess { bundle -> withContext(Dispatchers.Main) { if (_isAutoplayEnabled.value) playbackManager.prepareNextSource(next, bundle) } }
         }
     }
 
     private fun getNextAutoplayVideo(): VideoItem? {
+        val playlist = _currentPlaylist.value
+        val index = _playlistIndex.value
+        if (playlist != null && index != -1 && index < playlist.videos.size - 1) {
+            return playlist.videos[index + 1]
+        }
+
         val related = currentBundle?.relatedVideos ?: return null
         return related.find { it.id !in sessionHistory } ?: related.firstOrNull()
     }
@@ -641,7 +677,7 @@ class PlayerViewModel @Inject constructor(
         if (bundle?.isLive == true || dur <= 0 || dur == C.TIME_UNSET) return
         lastSavedPosition = pos
         val ratio = pos.toFloat() / dur
-        viewModelScope.launch(Dispatchers.IO) {
+        externalScope.launch {
             val isLocal = currentQuality.value?.contains("Local") == true
             preferencesManager.setLastPlayedSession(videoId, pos, isLocal)
             

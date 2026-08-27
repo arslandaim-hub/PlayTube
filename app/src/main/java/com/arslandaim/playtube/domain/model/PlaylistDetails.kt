@@ -5,6 +5,9 @@
 */
 package com.arslandaim.playtube.domain.model
 
+import androidx.annotation.Keep
+
+@Keep
 data class PlaylistDetails(
     val id: String,
     val title: String,

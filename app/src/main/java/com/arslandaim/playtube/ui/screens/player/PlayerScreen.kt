@@ -91,6 +91,7 @@ import com.arslandaim.playtube.ui.components.ThumbnailImage
 import com.arslandaim.playtube.ui.components.rememberSyncShimmerTransition
 import com.arslandaim.playtube.ui.components.EmptyState
 import com.arslandaim.playtube.ui.components.EmptyState
+import com.arslandaim.playtube.ui.components.player.VideoPlayerView
 import com.arslandaim.playtube.utils.PlayTubeError
 import com.arslandaim.playtube.utils.VideoUtils
 import androidx.compose.material.icons.filled.WifiOff
@@ -115,6 +116,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import kotlinx.coroutines.flow.SharedFlow
 
+@UnstableApi
 @Composable
 fun PlayerScreen(
     videoId: String,
@@ -296,6 +298,7 @@ fun PlayerScreen(
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+@UnstableApi
 @Composable
 private fun PlayerContent(
     videoId: String,
@@ -934,7 +937,6 @@ private fun PlayerContent(
                             ) {
                                 VideoPlayerView(
                                     player = player,
-                                    controlsVisible = controlsVisible,
                                     modifier = Modifier.fillMaxSize()
                                 )
 
@@ -956,7 +958,7 @@ private fun PlayerContent(
                                 }
                             }
 
-                            // Vertical HUDs (Left: Brightness, Right: Volume)
+                            // Vertical HUDs Left: Brightness, Right: Volume
                             VerticalGestureHUD(
                                 visible = brightnessOverlayVisible,
                                 progress = brightnessLevel,
@@ -998,7 +1000,7 @@ private fun PlayerContent(
                             }
 
                             // Persistent Progress Bar (Always visible at the very bottom border)
-                            // We move it after the controls to ensure it stays on top of the darkened overlay background
+                            // move it after the controls to ensure it stays on top of the darkened overlay background
                             PersistentProgressBar(
                                 progress = {
                                     val dur = duration()
@@ -1246,6 +1248,7 @@ private fun PlayerContent(
     }
 }
 
+@UnstableApi
 @Composable
 private fun StatsForNerdsOverlay(
     stats: com.arslandaim.playtube.ui.screens.player.PlaybackStats,
@@ -1326,61 +1329,7 @@ private fun ManualSubtitleView(
     }
 }
 
-@androidx.annotation.OptIn(UnstableApi::class)
-@Composable
-private fun VideoPlayerView(
-    player: Player,
-    controlsVisible: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    var playerView by remember { mutableStateOf<PlayerView?>(null) }
-
-    DisposableEffect(lifecycleOwner) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            when (event) {
-                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> playerView?.onResume()
-                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> playerView?.onPause()
-                else -> {}
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
-
-    AndroidView(
-        factory = { context ->
-            PlayerView(context).apply {
-                this.player = player
-                this.keepScreenOn = true
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                useController = false // We use our custom Compose controller
-                
-                // Disable native buffering indicator to prevent "Double Loader" bug
-                setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-
-                // Hide internal subtitle view to use our manual one
-                subtitleView?.visibility = android.view.View.GONE
-                playerView = this
-            }
-        },
-        update = { view ->
-            if (view.player != player) {
-                view.player = player
-            }
-            view.subtitleView?.visibility = android.view.View.GONE
-        },
-        onRelease = { view ->
-            view.player = null
-            playerView = null
-        },
-        modifier = modifier
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
+@UnstableApi
 @Composable
 private fun PlayerControlsOverlay(
     isPlaying: Boolean,
@@ -1522,7 +1471,7 @@ private fun PlayerControlsOverlay(
             }
         }
 
-        // Top Action Pill (Glassmorphic)
+        // Top Action Pill glassmorphic design
         Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)

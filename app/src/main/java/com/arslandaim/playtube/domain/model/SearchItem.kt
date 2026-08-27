@@ -7,16 +7,20 @@ package com.arslandaim.playtube.domain.model
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
+import androidx.annotation.Keep
 
+@Keep
 @Stable
 sealed interface SearchItem {
     val uniqueKey: String
 
+    @Keep
     @Immutable
     data class Video(val video: VideoItem) : SearchItem {
         override val uniqueKey: String get() = "video_${video.id}"
     }
 
+    @Keep
     @Immutable
     data class Channel(
         val id: String,
@@ -29,6 +33,7 @@ sealed interface SearchItem {
         override val uniqueKey: String get() = "channel_$id"
     }
 
+    @Keep
     @Immutable
     data class Playlist(val playlist: PlaylistItem) : SearchItem {
         override val uniqueKey: String get() = "playlist_${playlist.id}"

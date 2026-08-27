@@ -26,14 +26,14 @@ object NeuroTokenizer {
         val tokens = text.lowercase()
             .split(Regex("[^a-zA-Z0-9]+"))
             .filter { it.length > 2 && it !in STOP_WORDS }
-        
+
         if (tokens.isEmpty()) return emptyMap()
-        
+
         val counts = mutableMapOf<String, Int>()
         tokens.forEach { token ->
             counts[token] = (counts[token] ?: 0) + 1
         }
-        
+
         val maxCount = counts.values.maxOrNull()?.toFloat() ?: 1f
         return counts.mapValues { it.value / maxCount }
     }
@@ -45,15 +45,15 @@ object NeuroTokenizer {
         val tokens = text.lowercase()
             .split(Regex("[^a-zA-Z0-9]+"))
             .filter { it.isNotBlank() && it !in STOP_WORDS }
-        
+
         val features = mutableSetOf<String>()
         features.addAll(tokens.filter { it.length > 2 })
-        
+
         // Add bigrams
         for (i in 0 until tokens.size - 1) {
             features.add("${tokens[i]} ${tokens[i+1]}")
         }
-        
+
         return features
     }
 }

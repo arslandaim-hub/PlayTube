@@ -5,6 +5,11 @@
 */
 package com.arslandaim.playtube.domain.model
 
+import androidx.compose.runtime.Immutable
+import androidx.annotation.Keep
+
+@Keep
+@Immutable
 data class StreamItem(
     val url: String,
     val quality: String,
@@ -15,6 +20,8 @@ data class StreamItem(
     val trackType: String? = null
 )
 
+@Keep
+@Immutable
 data class SubtitleItem(
     val url: String,
     val languageTag: String,

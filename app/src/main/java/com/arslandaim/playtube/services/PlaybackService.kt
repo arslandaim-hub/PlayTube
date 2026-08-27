@@ -160,7 +160,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
-        playbackManager.cleanUp()
+        playbackManager.release()
         serviceJob.cancel()
         mediaSession?.run {
             release()

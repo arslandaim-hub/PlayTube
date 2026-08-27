@@ -377,7 +377,7 @@ class SubscriptionsFeedViewModel @Inject constructor(
                     uploaderName = video.uploaderName
                 )
             )
-            _snackbarMessage.emit(if (isFavorite) "Removed from Favorites" else "Added to Favorites")
+            _snackbarMessage.emit(if (isFavorite) "Removed from Liked Videos" else "Added to Liked Videos")
         }
     }
 

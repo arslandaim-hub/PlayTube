@@ -231,13 +231,34 @@ class VideoRepositoryImpl @Inject constructor(
         ensureInit()
         return withContext(Dispatchers.IO) {
             try {
+                // Use the Trending kiosk specifically for the YouTube service
                 val kiosk = KioskInfo.getInfo(ServiceList.YouTube, Constants.YouTube.TRENDING_URL)
-                PaginatedList(items = kiosk.relatedItems.filterIsInstance<StreamInfoItem>().map { mapToVideoItem(it) }, nextPage = kiosk.nextPage)
-            } catch (e: Exception) { PTLog.e("VideoRepository", "Error fetching trending", e); PaginatedList(emptyList(), null) }
+                PaginatedList(
+                    items = kiosk.relatedItems.filterIsInstance<StreamInfoItem>().map { mapToVideoItem(it) },
+                    nextPage = kiosk.nextPage
+                )
+            } catch (e: Exception) { 
+                PTLog.e("VideoRepository", "Error fetching trending videos", e)
+                PaginatedList(emptyList(), null) 
+            }
         }
     }
 
-    override suspend fun fetchNextTrendingPage(page: Page): PaginatedList<VideoItem> = PaginatedList(emptyList(), null)
+    override suspend fun fetchNextTrendingPage(page: Page): PaginatedList<VideoItem> {
+        ensureInit()
+        return withContext(Dispatchers.IO) {
+            try {
+                val nextKiosk = KioskInfo.getMoreItems(ServiceList.YouTube, Constants.YouTube.TRENDING_URL, page)
+                PaginatedList(
+                    items = nextKiosk.items.filterIsInstance<StreamInfoItem>().map { mapToVideoItem(it) },
+                    nextPage = if (nextKiosk.hasNextPage()) nextKiosk.nextPage else null
+                )
+            } catch (e: Exception) {
+                PTLog.e("VideoRepository", "Error fetching next trending page", e)
+                PaginatedList(emptyList(), null)
+            }
+        }
+    }
 
     private fun mapToVideoItem(item: StreamInfoItem, uploaderThumbnailUrl: String? = null): VideoItem {
         val vId = VideoUtils.extractVideoId(item.url)

@@ -169,7 +169,7 @@ class PlaybackManager @Inject constructor(
     }
 
     init {
-        player.addListener(playerListener)
+        ensureListenerRegistered()
         player.repeatMode = Player.REPEAT_MODE_OFF
         
         // Emit current media item if already exists (e.g. Service restoration)
@@ -177,6 +177,13 @@ class PlaybackManager @Inject constructor(
             managerScope.launch { _mediaItemTransition.emit(id) }
         }
     }
+
+    fun ensureListenerRegistered() {
+        // Safe-guard to prevent duplicate listeners if called multiple times
+        player.removeListener(playerListener)
+        player.addListener(playerListener)
+    }
+
 
     fun play(videoId: String, bundle: StreamBundle, stream: StreamItem, startPosition: Long = 0) {
         currentExtractedAt = bundle.extractedAt
@@ -465,6 +472,24 @@ class PlaybackManager @Inject constructor(
         player.addMediaSource(1, finalSource)
     }
 
+    fun prepareNextLocalSource(video: com.arslandaim.playtube.domain.model.VideoItem, file: java.io.File) {
+        if (player.mediaItemCount > 1) return
+
+        val metadata = MediaMetadata.Builder()
+            .setTitle(video.title)
+            .setArtist(video.uploaderName)
+            .setArtworkUri(video.thumbnailUrl.let { Uri.parse(it) })
+            .build()
+
+        val mediaItem = MediaItem.Builder()
+            .setUri(Uri.fromFile(file))
+            .setMediaId(video.id)
+            .setMediaMetadata(metadata)
+            .build()
+
+        player.addMediaItem(1, mediaItem)
+    }
+
     private fun dropQuality() {
         val bundle = currentBundle ?: return
         val currentVideoId = player.currentMediaItem?.mediaId ?: return
@@ -586,9 +611,17 @@ class PlaybackManager @Inject constructor(
     fun cleanUp() {
         stopProgressUpdate()
         stopHeartbeat()
-        player.removeListener(playerListener)
+        // We don't remove the listener here because this is a Singleton.
+        // If we remove it, subsequent uses of this instance (e.g. re-entering the app) 
+        // will not receive updates. The listener is managed by process lifecycle.
         managerScope.coroutineContext.cancelChildren()
-        // We don't cancel the scope itself because it's a singleton and might be reused
+    }
+
+    fun release() {
+        cleanUp()
+        // DO NOT call player.release() here. 
+        // Both PlaybackManager and ExoPlayer are Singletons. 
+        // Releasing the singleton player makes it unusable for the rest of the process lifetime.
     }
 }
 

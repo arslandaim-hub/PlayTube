@@ -239,8 +239,7 @@ private fun SettingsContent(
                     colors = TopAppBarDefaults.largeTopAppBarColors(
                         containerColor = Color.Transparent,
                         scrolledContainerColor = Color.Transparent
-                    ),
-                    windowInsets = WindowInsets(0, 0, 0, 0)
+                    )
                 )
             }
         }

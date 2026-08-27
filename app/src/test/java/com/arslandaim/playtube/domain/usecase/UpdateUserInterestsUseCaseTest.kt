@@ -35,9 +35,10 @@ class UpdateUserInterestsUseCaseTest {
 
         updateUserInterestsUseCase(title, baseWeight, watchRatio)
 
-        // Expected finalWeight = 1.0 * 0.1 = 0.1
+        // Expected alpha = 0.98, learningRate = 1 - 0.98 = 0.02
+        // finalWeight = 1.0 * 0.02 = 0.02
         val weight = fakeRepository.interests["cool"] ?: 0f
-        assertEquals(0.1f, weight, 0.001f)
+        assertEquals(0.02f, weight, 0.001f)
     }
 
     @Test
@@ -48,9 +49,10 @@ class UpdateUserInterestsUseCaseTest {
 
         updateUserInterestsUseCase(title, baseWeight, watchRatio)
 
-        // Expected finalWeight = 1.0 * 1.5 = 1.5
+        // Expected alpha = 0.80, learningRate = 1 - 0.80 = 0.20
+        // finalWeight = 1.0 * 0.20 = 0.20
         val weight = fakeRepository.interests["awesome"] ?: 0f
-        assertEquals(1.5f, weight, 0.001f)
+        assertEquals(0.20f, weight, 0.001f)
     }
 
     @Test
@@ -103,5 +105,18 @@ class UpdateUserInterestsUseCaseTest {
         override suspend fun addToBlacklist(id: String, type: BlacklistType) {}
         override suspend fun removeFromBlacklist(id: String) {}
         override suspend fun isBlacklisted(id: String): Boolean = false
+
+        override fun getLocalPlaylists(): Flow<List<LocalPlaylistEntity>> = flowOf(emptyList())
+        override suspend fun createLocalPlaylist(name: String, description: String?): Long = 0L
+        override suspend fun deleteLocalPlaylist(playlist: LocalPlaylistEntity) {}
+        override fun getVideosForLocalPlaylist(playlistId: Int): Flow<List<LocalPlaylistVideoEntity>> = flowOf(emptyList())
+        override suspend fun addVideoToLocalPlaylist(playlistId: Int, video: com.arslandaim.playtube.domain.model.VideoItem) {}
+        override suspend fun removeVideoFromLocalPlaylist(playlistId: Int, videoId: String) {}
+        override suspend fun isVideoInLocalPlaylist(playlistId: Int, videoId: String): Boolean = false
+        override fun isVideoInAnyLocalPlaylist(videoId: String): Flow<Boolean> = flowOf(false)
+        override fun getAllSavedVideoIds(): Flow<List<String>> = flowOf(emptyList())
+        override fun getPlaylistsContainingVideo(videoId: String): Flow<List<Int>> = flowOf(emptyList())
+        override fun getCachedFeed(key: String): Flow<FeedCacheEntity?> = flowOf(null)
+        override suspend fun updateCachedFeed(key: String, videos: List<com.arslandaim.playtube.domain.model.VideoItem>) {}
     }
 }

@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.Flow
 interface DownloadRepository {
     fun getAllDownloads(): Flow<List<DownloadEntity>>
     suspend fun getDownloadByVideoId(videoId: String): DownloadEntity?
+    suspend fun getDownloadByVideoIdResilient(videoId: String): DownloadEntity?
     suspend fun startDownload(
         videoId: String,
         url: String?,

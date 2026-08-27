@@ -6,7 +6,9 @@
 package com.arslandaim.playtube.domain.model
 
 import kotlinx.serialization.Serializable
+import androidx.annotation.Keep
 
+@Keep
 @Serializable
 data class SponsorSegment(
     val category: String,

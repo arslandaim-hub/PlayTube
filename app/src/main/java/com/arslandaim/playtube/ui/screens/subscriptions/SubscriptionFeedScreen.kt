@@ -196,6 +196,17 @@ private fun SubscriptionFeedContent(
                         } else Modifier
                     )
             ) {
+                val backgroundColor = MaterialTheme.colorScheme.background
+                val ambientGradient = remember(backgroundColor) {
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            backgroundColor.copy(alpha = 0.8f),
+                            backgroundColor
+                        )
+                    )
+                }
+
                 com.arslandaim.playtube.ui.components.ThumbnailImage(
                     videoId = "",
                     thumbnailUrl = ambientColorSource,
@@ -207,15 +218,7 @@ private fun SubscriptionFeedContent(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    MaterialTheme.colorScheme.background.copy(alpha = 0.8f),
-                                    MaterialTheme.colorScheme.background
-                                )
-                            )
-                        )
+                        .background(ambientGradient)
                 )
             }
         }
@@ -405,7 +408,8 @@ private fun SubscriptionFilterBar(
 
             items(
                 items = subscriptions,
-                key = { it.channelId }
+                key = { it.channelId },
+                contentType = { "channel_bubble" }
             ) { sub ->
                 val currentOnSelected = remember(sub.channelId, onChannelSelected) {
                     { onChannelSelected(sub.channelId) }

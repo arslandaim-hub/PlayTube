@@ -112,6 +112,172 @@ fun ChannelScreen(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChannelTopBar(
+    channelName: String,
+    scrollProgress: Float,
+    onBack: () -> Unit
+) {
+    GlassSurface(
+        containerColor = MaterialTheme.colorScheme.surface.copy(
+            alpha = (scrollProgress * 0.9f).coerceIn(0f, 0.9f)
+        ),
+        border = if (scrollProgress > 0.8f) null else androidx.compose.foundation.BorderStroke(0.dp, Color.Transparent)
+    ) {
+        TopAppBar(
+            title = {
+                Text(
+                    text = channelName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.graphicsLayer { alpha = (scrollProgress - 0.5f).coerceIn(0f, 1f) * 2f }
+                )
+            },
+            navigationIcon = {
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier.background(
+                        Color.Black.copy(alpha = (0.4f * (1f - scrollProgress)).coerceIn(0f, 0.4f)),
+                        CircleShape
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = if (scrollProgress > 0.5f) MaterialTheme.colorScheme.onSurface else Color.White
+                    )
+                }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent
+            )
+        )
+    }
+}
+
+@Composable
+private fun ChannelHeader(
+    details: com.arslandaim.playtube.domain.model.ChannelDetails,
+    isSubscribed: Boolean?,
+    onToggleSubscription: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        MaterialTheme.colorScheme.background.copy(alpha = 0.95f),
+                        MaterialTheme.colorScheme.background
+                    ),
+                    startY = -100f
+                )
+            )
+            .padding(horizontal = 20.dp, vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Avatar and Name Section
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Start
+        ) {
+            Surface(
+                modifier = Modifier.size(90.dp),
+                shape = CircleShape,
+                border = androidx.compose.foundation.BorderStroke(
+                    3.dp,
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                ),
+                color = MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                AsyncImage(
+                    model = details.avatarUrl,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            Spacer(modifier = Modifier.width(20.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = details.name,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = (-0.5).sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Stats Row
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    details.subscriberCount?.let { count ->
+                        Text(
+                            text = if (count < 0) stringResource(R.string.subscribers_hidden) 
+                                   else stringResource(R.string.subscribers_count, VideoUtils.formatNumber(count)),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Subscribe Button
+        if (isSubscribed != null) {
+            Button(
+                onClick = onToggleSubscription,
+                colors = if (isSubscribed == true) {
+                    ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.onSurface,
+                        contentColor = MaterialTheme.colorScheme.surface
+                    )
+                },
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            ) {
+                Text(
+                    text = if (isSubscribed == true) stringResource(R.string.subscribed) else stringResource(R.string.subscribe),
+                    fontWeight = FontWeight.Black,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+        }
+
+        details.description?.let { desc ->
+            Text(
+                text = desc,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 18.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Start,
+                lineHeight = 20.sp
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun ChannelContent(
@@ -151,17 +317,17 @@ private fun ChannelContent(
         }
     }
 
-    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
     val scrollVisibilityConnection = rememberScrollVisibilityConnection(onBarsVisibilityChange)
 
-    // Parallax Calculation
+    // Parallax & Fade Calculation
     val bannerHeight = 200.dp
     val bannerHeightPx = with(androidx.compose.ui.platform.LocalDensity.current) { bannerHeight.toPx() }
     
     val scrollOffset by remember {
         derivedStateOf {
-            if (listState.firstVisibleItemIndex == 0) {
-                listState.firstVisibleItemScrollOffset.toFloat()
+            if (gridState.firstVisibleItemIndex == 0) {
+                gridState.firstVisibleItemScrollOffset.toFloat()
             } else {
                 bannerHeightPx
             }
@@ -176,7 +342,16 @@ private fun ChannelContent(
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollVisibilityConnection),
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        topBar = {
+            if (uiState is ChannelUiState.Success) {
+                ChannelTopBar(
+                    channelName = uiState.details.name,
+                    scrollProgress = (scrollOffset / bannerHeightPx).coerceIn(0f, 1f),
+                    onBack = onBack
+                )
+            }
+        }
     ) { padding ->
         Box(
             modifier = Modifier
@@ -191,31 +366,30 @@ private fun ChannelContent(
                 is ChannelUiState.Success -> {
                     val details = uiState.details
                     
-                    val gridState = rememberLazyGridState()
                     InfiniteScrollGridEffect(
                         gridState = gridState,
                         enabled = details.nextVideosPage != null && !uiState.isFetchingNextPage,
                         onLoadMore = onLoadMore
                     )
                     
-                    // Immersive Ambient Mode (Modern Banner Glow)
+                    // Immersive Ambient Mode
                     if (!details.bannerUrl.isNullOrBlank()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(320.dp)
+                                .height(360.dp)
                                 .graphicsLayer {
                                     translationY = -scrollOffset * 0.4f
-                                    alpha = bannerProgress * 0.6f
+                                    alpha = ((1f - (scrollOffset / (bannerHeightPx * 1.5f))) * bannerProgress).coerceIn(0f, 0.6f)
                                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                                         renderEffect = android.graphics.RenderEffect.createBlurEffect(
-                                            100f, 100f, android.graphics.Shader.TileMode.CLAMP
+                                            80f, 80f, android.graphics.Shader.TileMode.CLAMP
                                         ).asComposeRenderEffect()
                                     }
                                 }
                                 .then(
                                     if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
-                                        Modifier.blur(80.dp)
+                                        Modifier.blur(60.dp)
                                     } else Modifier
                                 )
                         ) {
@@ -227,7 +401,6 @@ private fun ChannelContent(
                                 filterQuality = FilterQuality.Low
                             )
                             
-                            // Smooth gradient transition to background
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -235,18 +408,16 @@ private fun ChannelContent(
                                         androidx.compose.ui.graphics.Brush.verticalGradient(
                                             colors = listOf(
                                                 Color.Transparent,
-                                                MaterialTheme.colorScheme.background.copy(alpha = 0.85f),
+                                                MaterialTheme.colorScheme.background.copy(alpha = 0.9f),
                                                 MaterialTheme.colorScheme.background
-                                            ),
-                                            startY = 0f,
-                                            endY = Float.POSITIVE_INFINITY
+                                            )
                                         )
                                     )
                             )
                         }
                     }
 
-                    // Actual Banner
+                    // Banner
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -273,141 +444,17 @@ private fun ChannelContent(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         item(span = { GridItemSpan(columns) }) {
-                            // Increased spacer to push metadata lower and avoid banner overlap
-                            Spacer(modifier = Modifier.height(bannerHeight - 20.dp))
+                            Spacer(modifier = Modifier.height(bannerHeight - 30.dp))
                         }
                             
                         item(span = { GridItemSpan(columns) }) {
-                            // Professional Channel Header (Redesigned with protection layer)
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(
-                                        androidx.compose.ui.graphics.Brush.verticalGradient(
-                                            colors = listOf(
-                                                Color.Transparent,
-                                                MaterialTheme.colorScheme.background.copy(alpha = 0.95f),
-                                                MaterialTheme.colorScheme.background
-                                            ),
-                                            startY = -100f
-                                        )
-                                    )
-                                    .padding(horizontal = 20.dp, vertical = 24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                // Avatar and Name Section
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    Surface(
-                                        modifier = Modifier.size(80.dp),
-                                        shape = CircleShape,
-                                        border = androidx.compose.foundation.BorderStroke(
-                                            2.dp, 
-                                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
-                                        ),
-                                        color = MaterialTheme.colorScheme.surfaceVariant
-                                    ) {
-                                        AsyncImage(
-                                            model = details.avatarUrl,
-                                            contentDescription = null,
-                                            modifier = Modifier.fillMaxSize().clip(CircleShape),
-                                            contentScale = ContentScale.Crop
-                                        )
-                                    }
-                                    
-                                    Spacer(modifier = Modifier.width(20.dp))
-
-                                    Column(horizontalAlignment = Alignment.Start) {
-                                        Text(
-                                            text = details.name,
-                                            style = MaterialTheme.typography.headlineSmall,
-                                            fontWeight = FontWeight.Black,
-                                            letterSpacing = (-0.5).sp,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        
-                                        Spacer(modifier = Modifier.height(4.dp))
-
-                                        // Stats Row (Compact)
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            details.subscriberCount?.let { count ->
-                                                Text(
-                                                    text = if (count < 0) "Hidden" else VideoUtils.formatNumber(count),
-                                                    style = MaterialTheme.typography.labelLarge,
-                                                    color = MaterialTheme.colorScheme.onSurface,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                                Text(
-                                                    text = " subscribers",
-                                                    style = MaterialTheme.typography.labelMedium,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                                )
-                                                Text(
-                                                    text = " • ",
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                                                )
-                                            }
-                                            Text(
-                                                text = "${details.videos.size}+ videos",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(24.dp))
-
-                                // Subscribe Button (Sleek Pill)
-                                if (isSubscribed != null) {
-                                    Button(
-                                        onClick = onToggleSubscription,
-                                        colors = if (isSubscribed == true) {
-                                            ButtonDefaults.buttonColors(
-                                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        } else {
-                                            ButtonDefaults.buttonColors(
-                                                containerColor = MaterialTheme.colorScheme.onSurface,
-                                                contentColor = MaterialTheme.colorScheme.surface
-                                            )
-                                        },
-                                        shape = CircleShape,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(44.dp)
-                                    ) {
-                                        Text(
-                                            text = if (isSubscribed == true) stringResource(R.string.subscribed) else stringResource(R.string.subscribe),
-                                            fontWeight = FontWeight.Black,
-                                            letterSpacing = 0.5.sp,
-                                            style = MaterialTheme.typography.labelLarge
-                                        )
-                                    }
-                                }
-
-                                details.description?.let { desc ->
-                                    Text(
-                                        text = desc,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(top = 18.dp),
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                        lineHeight = 16.sp
-                                    )
-                                }
-                            }
+                            ChannelHeader(
+                                details = details,
+                                isSubscribed = isSubscribed,
+                                onToggleSubscription = onToggleSubscription
+                            )
                         }
                         
-                        // Modern Tabs (Integrated)
                         item(span = { GridItemSpan(columns) }) {
                             Column {
                                 PrimaryTabRow(
@@ -418,9 +465,9 @@ private fun ChannelContent(
                                     indicator = {
                                         TabRowDefaults.PrimaryIndicator(
                                             modifier = Modifier.tabIndicatorOffset(selectedTabIndex),
-                                            width = 40.dp,
+                                            width = 32.dp,
                                             color = MaterialTheme.colorScheme.primary,
-                                            shape = RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)
+                                            shape = CircleShape
                                         )
                                     }
                                 ) {
@@ -433,23 +480,19 @@ private fun ChannelContent(
                                                     text = title,
                                                     fontWeight = if (selectedTabIndex == index) FontWeight.Black else FontWeight.Bold,
                                                     style = MaterialTheme.typography.labelLarge,
-                                                    color = if (selectedTabIndex == index) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                                    color = if (selectedTabIndex == index) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             }
                                         )
                                     }
                                 }
-                                HorizontalDivider(
-                                    thickness = 0.5.dp,
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
-                                )
                                 Spacer(modifier = Modifier.height(12.dp))
                             }
                         }
 
                         if (selectedTabIndex == 0) {
                             items(details.videos, key = { it.id }) { video ->
-                                Box(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                                Box(modifier = Modifier.padding(bottom = 4.dp)) {
                                     VideoItemRow(
                                         video = video,
                                         isDownloaded = downloadedIds.contains(video.id),
@@ -463,20 +506,19 @@ private fun ChannelContent(
                                 }
                             }
                             
-                            // Load More Indicator
                             if (details.nextVideosPage != null) {
                                 item(span = { GridItemSpan(columns) }) {
                                     Box(
-                                        modifier = Modifier.fillMaxWidth().padding(24.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(32.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                                        CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
                                     }
                                 }
                             }
                         } else {
                             items(details.playlists, key = { it.id }) { playlist ->
-                                Box(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                                     ModernPlaylistItem(playlist = playlist, onClick = { onPlaylistClick(playlist.id) })
                                 }
                             }
@@ -496,21 +538,6 @@ private fun ChannelContent(
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
-            }
-
-            // Floating Back Button
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .padding(16.dp)
-                    .align(Alignment.TopStart)
-                    .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = Color.White
-                )
             }
 
             // Download Dialogs

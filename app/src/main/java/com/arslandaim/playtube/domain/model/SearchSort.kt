@@ -6,7 +6,7 @@
 package com.arslandaim.playtube.domain.model
 
 enum class SearchSort(val label: String, val value: String) {
-    RELEVANCE("Relevance", "relevance"),
+    RELEVANCE("All", "relevance"),
     UPLOAD_DATE("Upload Date", "upload_date"),
     VIEW_COUNT("View Count", "view_count"),
     RATING("Rating", "rating")

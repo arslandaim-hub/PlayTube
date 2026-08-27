@@ -6,7 +6,9 @@
 package com.arslandaim.playtube.domain.model
 
 import androidx.compose.runtime.Stable
+import androidx.annotation.Keep
 
+@Keep
 @Stable
 data class VideoItem(
     val id: String,

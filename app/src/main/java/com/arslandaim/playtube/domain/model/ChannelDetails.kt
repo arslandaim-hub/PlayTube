@@ -6,7 +6,9 @@
 package com.arslandaim.playtube.domain.model
 
 import org.schabi.newpipe.extractor.Page
+import androidx.annotation.Keep
 
+@Keep
 data class ChannelDetails(
     val id: String,
     val name: String,
@@ -19,6 +21,7 @@ data class ChannelDetails(
     val playlists: List<PlaylistItem> = emptyList()
 )
 
+@Keep
 data class ChannelInfoBasic(
     val id: String,
     val name: String,

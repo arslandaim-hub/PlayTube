@@ -44,20 +44,20 @@ fun CommentItemRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 10.dp, horizontal = 16.dp),
+            .padding(vertical = 6.dp, horizontal = 12.dp),
         verticalAlignment = Alignment.Top
     ) {
         AsyncImage(
             model = comment.authorThumbnailUrl,
             contentDescription = null,
             modifier = Modifier
-                .size(32.dp)
+                .size(26.dp)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentScale = ContentScale.Crop
         )
         
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(10.dp))
         
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -82,13 +82,13 @@ fun CommentItemRow(
             Text(
                 text = comment.commentText,
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    lineHeight = 20.sp,
+                    lineHeight = 18.sp,
                     letterSpacing = 0.2.sp
                 ),
                 color = MaterialTheme.colorScheme.onSurface
             )
             
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
@@ -147,7 +147,7 @@ fun CommentsPreviewCard(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
         shape = RoundedCornerShape(12.dp)
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
+        Column(modifier = Modifier.padding(8.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
@@ -176,23 +176,23 @@ fun CommentsPreviewCard(
             
             if (comments.isNotEmpty()) {
                 val topComment = comments.first()
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.Top) {
                     AsyncImage(
                         model = topComment.authorThumbnailUrl,
                         contentDescription = null,
                         modifier = Modifier
-                            .size(22.dp)
+                            .size(18.dp)
                             .clip(CircleShape)
                     )
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = topComment.commentText,
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
-                        lineHeight = 16.sp
+                        lineHeight = 15.sp
                     )
                 }
             } else {
@@ -235,13 +235,13 @@ fun CommentsSheet(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (isViewingReplies) {
                     IconButton(
                         onClick = onCloseReplies,
-                        modifier = Modifier.padding(end = 12.dp)
+                        modifier = Modifier.padding(end = 8.dp)
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
@@ -249,7 +249,7 @@ fun CommentsSheet(
                 
                 Text(
                     text = if (isViewingReplies) "Replies" else "Comments",
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Black,
                     letterSpacing = (-0.5).sp,
                     modifier = Modifier.weight(1f)

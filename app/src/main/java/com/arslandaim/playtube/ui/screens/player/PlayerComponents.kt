@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import androidx.media3.common.util.UnstableApi
 import com.arslandaim.playtube.R
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.domain.model.StreamBundle
@@ -60,6 +61,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import com.arslandaim.playtube.domain.model.PlaylistDetails
 
+@UnstableApi
 @Composable
 fun UnifiedMetadataHub(
     title: String,
@@ -97,7 +99,7 @@ fun UnifiedMetadataHub(
             description = description
         )
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         // 2. Channel Section
         ChannelInfoSection(
@@ -110,7 +112,7 @@ fun UnifiedMetadataHub(
             onChannelClick = onChannelClick
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         // 3. Action Row
         PlayerActionRow(
@@ -123,7 +125,7 @@ fun UnifiedMetadataHub(
             onShareClick = onShareClick
         )
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         // 4. Comments Preview
         CommentsPreviewCard(
@@ -140,6 +142,7 @@ fun UnifiedMetadataHub(
     }
 }
 
+@UnstableApi
 @Composable
 fun VerticalGestureHUD(
     visible: Boolean,
@@ -203,6 +206,7 @@ fun VerticalGestureHUD(
     }
 }
 
+@UnstableApi
 @Composable
 fun VideoHeaderSection(
     title: String,
@@ -220,16 +224,16 @@ fun VideoHeaderSection(
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Black,
             maxLines = if (isExpanded) 15 else 2,
             overflow = TextOverflow.Ellipsis,
-            lineHeight = 28.sp,
+            lineHeight = 24.sp,
             letterSpacing = (-0.5).sp,
             color = MaterialTheme.colorScheme.onSurface
         )
         
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(4.dp))
         
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -285,6 +289,7 @@ fun VideoHeaderSection(
     }
 }
 
+@UnstableApi
 @Composable
 fun ChannelInfoSection(
     uploaderName: String,
@@ -367,6 +372,7 @@ fun ChannelInfoSection(
     }
 }
 
+@UnstableApi
 @Composable
 fun PlayerActionRow(
     isFavorite: Boolean,
@@ -414,6 +420,7 @@ fun PlayerActionRow(
     }
 }
 
+@UnstableApi
 @Composable
 fun PlayerActionPill(
     icon: ImageVector,
@@ -468,6 +475,7 @@ fun PlayerActionPill(
     }
 }
 
+@UnstableApi
 fun LazyListScope.relatedVideosSection(
     relatedVideos: List<VideoItem>,
     downloadedIds: Set<String>,
@@ -534,6 +542,7 @@ fun LazyListScope.relatedVideosSection(
     }
 }
 
+@UnstableApi
 @Composable
 fun PlaylistStack(
     playlist: PlaylistDetails,
@@ -663,6 +672,7 @@ fun PlaylistStack(
     }
 }
 
+@UnstableApi
 @Composable
 fun PlaylistVideoRow(
     video: VideoItem,

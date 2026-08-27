@@ -34,7 +34,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
@@ -46,6 +49,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -91,7 +95,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val mainViewModel: MainViewModel by viewModels()
-    @OptIn(androidx.media3.common.util.UnstableApi::class)
+    @OptIn(UnstableApi::class)
     private val playerViewModel: com.arslandaim.playtube.ui.screens.player.PlayerViewModel by viewModels()
     private val updateViewModel: UpdateViewModel by viewModels()
 
@@ -213,6 +217,11 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val currentVideo by miniPlayerManager.currentVideo.collectAsStateWithLifecycle()
+                
+                androidx.activity.compose.BackHandler(enabled = isExpanded) {
+                    currentVideo?.let { miniPlayerManager.minimize(it) } ?: miniPlayerManager.close()
+                }
+
                 val isIncognitoMode by mainViewModel.isIncognitoMode.collectAsStateWithLifecycle()
                 val isOffline by mainViewModel.isOffline.collectAsStateWithLifecycle()
 
@@ -258,10 +267,10 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                DisposableEffect(playerViewModel.player) {
+                DisposableEffect(playerViewModel.player, isExpanded) {
                     val listener = object : androidx.media3.common.Player.Listener {
                         override fun onIsPlayingChanged(isPlaying: Boolean) {
-                            if (isPlaying) {
+                            if (isPlaying && isExpanded) {
                                 window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                             } else {
                                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -269,7 +278,12 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                     playerViewModel.player.addListener(listener)
-                    if (playerViewModel.player.isPlaying) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    if (playerViewModel.player.isPlaying && isExpanded) {
+                        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    } else {
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
+                    
                     onDispose {
                         playerViewModel.player.removeListener(listener)
                         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -277,61 +291,75 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 Scaffold(
+                    contentWindowInsets = WindowInsets(0, 0, 0, 0),
                     topBar = {
                         if (showTopBarActual) {
-                            GlassSurface(
-                                tonalElevation = 3.dp,
-                                border = null,
-                                containerColor = MaterialTheme.colorScheme.surface
-                            ) {
-                                Column(modifier = Modifier.fillMaxWidth().statusBarsPadding()) {
-                                    RestorationBanner(isOffline)
-                                    val isTopBarVisible = uiState.isBarsVisible
-                                    val barsProgress = barsVisibilityProgress
-                                    if (isTopBarVisible || barsProgress > 0f) {
-                                        Box(modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(BOTTOM_BAR_HEIGHT * barsProgress)
-                                            .clipToBounds()
-                                        ) {
-                                            PlayTubeTopAppBar(
-                                                isIncognitoMode = isIncognitoMode,
-                                                currentRoute = currentRoute,
-                                                navController = navController,
-                                                mainViewModel = mainViewModel,
-                                                updateViewModel = updateViewModel,
-                                                modifier = Modifier.graphicsLayer {
-                                                    translationY = -BOTTOM_BAR_HEIGHT.toPx() * (1f - barsProgress)
-                                                    alpha = if (isTopBarVisible) barsProgress else 0f
-                                                }
-                                            )
-                                        }
+                            val barsProgress = barsVisibilityProgress
+                            var heightPx by remember { mutableFloatStateOf(0f) }
+                            
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .onSizeChanged { heightPx = it.height.toFloat() }
+                                    .graphicsLayer {
+                                        translationY = -heightPx * (1f - barsProgress)
+                                        alpha = barsProgress
                                     }
-                                    if (isTopBarVisible) HorizontalDivider(thickness = 0.5.dp)
+                            ) {
+                                GlassSurface(
+                                    tonalElevation = 3.dp,
+                                    border = null,
+                                    containerColor = MaterialTheme.colorScheme.surface
+                                ) {
+                                    Column(modifier = Modifier.fillMaxWidth().statusBarsPadding()) {
+                                        RestorationBanner(isOffline)
+                                        if (uiState.isBarsVisible || barsProgress > 0f) {
+                                            Box(modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(BOTTOM_BAR_HEIGHT)
+                                            ) {
+                                                PlayTubeTopAppBar(
+                                                    isIncognitoMode = isIncognitoMode,
+                                                    currentRoute = currentRoute,
+                                                    navController = navController,
+                                                    mainViewModel = mainViewModel,
+                                                    updateViewModel = updateViewModel
+                                                )
+                                            }
+                                        }
+                                        HorizontalDivider(thickness = 0.5.dp)
+                                    }
                                 }
                             }
                         }
                     }
                 ) { innerPadding ->
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        Surface(
-                            modifier = Modifier.fillMaxSize(),
-                            color = MaterialTheme.colorScheme.background
-                        ) {
-                            Box(modifier = Modifier.padding(top = innerPadding.calculateTopPadding())) {
-                                NavGraph(
-                                    navController = navController,
-                                    startDestination = startDestination,
-                                    onBarsVisibilityChange = { mainViewModel.setBarsVisibility(it) }
-                                )
+                    val barsProgress = barsVisibilityProgress
+                    val topPadding = innerPadding.calculateTopPadding()
+                    val density = LocalDensity.current
+                    val statusBarHeightPx = WindowInsets.statusBars.getTop(density).toFloat()
+
+                    Box(modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = topPadding, bottom = innerPadding.calculateBottomPadding())
+                        .graphicsLayer {
+                            val topPaddingPx = topPadding.toPx()
+                            if (topPaddingPx > 0) {
+                                translationY = -(topPaddingPx - statusBarHeightPx) * (1f - barsProgress)
                             }
                         }
+                    ) {
+                        NavGraph(
+                            navController = navController,
+                            startDestination = startDestination,
+                            onBarsVisibilityChange = { mainViewModel.setBarsVisibility(it) }
+                        )
 
                         if (showBars || barsVisibilityProgress > 0f) {
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
-                                    .padding(horizontal = 16.dp, vertical = 16.dp)
+                                    .padding(horizontal = 24.dp, vertical = 20.dp)
                                     .navigationBarsPadding()
                                     .graphicsLayer {
                                         translationY = 100.dp.toPx() * (1f - barsVisibilityProgress)
@@ -339,10 +367,13 @@ class MainActivity : AppCompatActivity() {
                                     }
                             ) {
                                 GlassSurface(
-                                    modifier = Modifier.fillMaxWidth().height(BOTTOM_BAR_HEIGHT),
-                                    shape = RoundedCornerShape(20.dp),
-                                    tonalElevation = 8.dp,
-                                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
+                                    modifier = Modifier
+                                        .widthIn(max = 500.dp)
+                                        .fillMaxWidth()
+                                        .height(MainActivity.BOTTOM_BAR_HEIGHT),
+                                    shape = RoundedCornerShape(32.dp),
+                                    shadowElevation = 16.dp,
+                                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
                                 ) {
                                     PlayTubeBottomBar(navController = navController)
                                 }
@@ -541,29 +572,47 @@ fun PlayTubeBottomBar(navController: androidx.navigation.NavHostController) {
     val items = listOf(
         Triple(Destination.Home, Icons.Default.Home, stringResource(R.string.tab_for_you)),
         Triple(Destination.Subscriptions, Icons.Default.Subscriptions, stringResource(R.string.subscriptions)),
-        // Provide an empty string as the default argument for the Search route base
         Triple(Destination.Search(""), Icons.Default.Search, stringResource(R.string.search)),
         Triple(Destination.Library, Icons.Default.LibraryMusic, stringResource(R.string.library))
     )
     
     NavigationBar(
-        modifier = Modifier.height(MainActivity.BOTTOM_BAR_HEIGHT),
+        modifier = Modifier.fillMaxSize(),
         containerColor = Color.Transparent,
-        tonalElevation = 0.dp
+        tonalElevation = 0.dp,
+        windowInsets = WindowInsets(0, 0, 0, 0)
     ) {
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentDestination = navBackStackEntry?.destination
         
         items.forEach { (destination, icon, label) ->
-            // Use hierarchy to highlight active tab accurately, even with parameterized routes
             val isSelected = currentDestination?.hierarchy?.any { 
                 it.route?.contains(destination.routeRoot, ignoreCase = true) == true 
             } == true
             
             NavigationBarItem(
-                icon = { Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp).offset(y = 2.dp)) },
-                label = { Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.offset(y = (-2).dp)) },
+                icon = { 
+                    Icon(
+                        imageVector = icon, 
+                        contentDescription = null, 
+                        modifier = Modifier.size(22.dp)
+                    ) 
+                },
+                label = { 
+                    Text(
+                        text = label, 
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                    ) 
+                },
                 selected = isSelected,
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    indicatorColor = Color.Transparent // Modern transparent indicator
+                ),
                 onClick = {
                     if (!isSelected) {
                         navController.navigate(destination) {

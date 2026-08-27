@@ -49,6 +49,7 @@ import com.arslandaim.playtube.domain.model.SearchItem
 import com.arslandaim.playtube.domain.model.PlaylistItem
 import androidx.compose.ui.platform.LocalContext
 import coil3.request.ImageRequest
+import coil3.request.allowHardware
 import coil3.request.crossfade
 import com.arslandaim.playtube.utils.VideoUtils
 import com.arslandaim.playtube.utils.Constants
@@ -126,9 +127,10 @@ fun ThumbnailImage(
         AsyncImage(
             model = ImageRequest.Builder(context)
                 .data(sourceUrls.getOrNull(currentUrlIndex))
-                .crossfade(true)
+                .crossfade(200)
                 .size(width, height)
                 .precision(coil3.size.Precision.INEXACT)
+                .allowHardware(true)
                 .build(),
             onSuccess = {
                 isLoaded = true
@@ -767,13 +769,13 @@ fun VideoItemRow(
                                 if (onFavoriteClick != null) {
                                     DropdownMenuItem(
                                         text = { Text(if (isFavorite) stringResource(R.string.remove_from_favorites) else stringResource(R.string.add_to_favorites)) },
-                                        leadingIcon = { 
-                                            Icon(
-                                                imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, 
-                                                contentDescription = null,
-                                                tint = if (isFavorite) Color.Red else LocalContentColor.current
-                                            ) 
-                                        },
+                            leadingIcon = { 
+                                Icon(
+                                    imageVector = if (isFavorite) Icons.Default.ThumbUp else Icons.Default.ThumbUpOffAlt, 
+                                    contentDescription = null,
+                                    tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                                ) 
+                            },
                                         onClick = {
                                             showMenu = false
                                             onFavoriteClick()

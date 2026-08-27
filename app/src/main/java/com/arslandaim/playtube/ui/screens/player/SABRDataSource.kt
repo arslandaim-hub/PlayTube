@@ -52,11 +52,18 @@ class SABRDataSource(
     private fun openNextChunk() {
         val dataSpec = currentDataSpec ?: return
         
+        // Resilience: Do not attempt to open a chunk if no bytes are remaining
+        if (bytesRemaining != C.LENGTH_UNSET.toLong() && bytesRemaining <= 0) {
+            return
+        }
+
         val chunkLength = if (bytesRemaining == C.LENGTH_UNSET.toLong()) {
             CHUNK_SIZE
         } else {
             CHUNK_SIZE.coerceAtMost(bytesRemaining)
         }
+
+        if (chunkLength <= 0 && bytesRemaining != C.LENGTH_UNSET.toLong()) return
 
         val chunkSpec = dataSpec.buildUpon()
             .setPosition(currentPosition)

@@ -76,9 +76,9 @@ object VideoUtils {
 
     fun formatNumber(number: Long): String {
         return when {
-            number >= 1_000_000_000 -> String.format("%.1fB", number / 1_000_000_000.0)
-            number >= 1_000_000 -> String.format("%.1fM", number / 1_000_000.0)
-            number >= 1_000 -> String.format("%.1fK", number / 1_000.0)
+            number >= 1_000_000_000 -> String.format(java.util.Locale.US, "%.1fB", number / 1_000_000_000.0)
+            number >= 1_000_000 -> String.format(java.util.Locale.US, "%.1fM", number / 1_000_000.0)
+            number >= 1_000 -> String.format(java.util.Locale.US, "%.1fK", number / 1_000.0)
             else -> "$number"
         }.replace(".0", "")
     }
@@ -89,10 +89,17 @@ object VideoUtils {
     }
 
     fun formatSize(bytes: Long): String {
-        if (bytes < 1024) return "$bytes B"
-        val exp = (Math.log(bytes.toDouble()) / Math.log(1024.0)).toInt()
-        val pre = "KMGTPE"[exp - 1]
-        return String.format("%.1f %sB", bytes / Math.pow(1024.0, exp.toDouble()), pre)
+        if (bytes <= 0) return "0 B"
+        val units = arrayOf("B", "KB", "MB", "GB", "TB")
+        var size = bytes.toDouble()
+        var unitIndex = 0
+        
+        while (size >= 1024.0 && unitIndex < units.size - 1) {
+            size /= 1024.0
+            unitIndex++
+        }
+        
+        return String.format(java.util.Locale.US, "%.1f %s", size, units[unitIndex]).replace(".0 ", " ")
     }
 
     fun formatUploadDate(date: String?): String {

@@ -207,7 +207,7 @@ fun PlayerMetadataSkeleton(transition: InfiniteTransition? = null) {
                 .shimmerEffect(actualTransition)
         )
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         // Micro-stats row
         Row {
@@ -228,7 +228,7 @@ fun PlayerMetadataSkeleton(transition: InfiniteTransition? = null) {
             )
         }
         
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         
         // Channel Section
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -304,37 +304,37 @@ fun ChannelMetadataSkeleton(transition: InfiniteTransition? = null) {
                 .padding(horizontal = 20.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Header Row (Avatar + Info)
+            // Header Section
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
+                horizontalArrangement = Arrangement.Start
             ) {
                 // Avatar
                 Box(
                     modifier = Modifier
-                        .size(80.dp)
+                        .size(90.dp)
                         .clip(CircleShape)
                         .shimmerEffect(actualTransition)
                 )
                 
                 Spacer(modifier = Modifier.width(20.dp))
                 
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     // Name
                     Box(
                         modifier = Modifier
-                            .width(150.dp)
-                            .height(24.dp)
+                            .width(180.dp)
+                            .height(26.dp)
                             .clip(RoundedCornerShape(6.dp))
                             .shimmerEffect(actualTransition)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                     // Stats
                     Box(
                         modifier = Modifier
-                            .width(100.dp)
-                            .height(14.dp)
+                            .width(120.dp)
+                            .height(16.dp)
                             .clip(RoundedCornerShape(4.dp))
                             .shimmerEffect(actualTransition)
                     )
@@ -347,38 +347,118 @@ fun ChannelMetadataSkeleton(transition: InfiniteTransition? = null) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(44.dp)
-                    .clip(CircleShape)
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .shimmerEffect(actualTransition)
             )
             
             Spacer(modifier = Modifier.height(20.dp))
             
             // Description Placeholder
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.8f)
-                    .height(12.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .shimmerEffect(actualTransition)
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(14.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .shimmerEffect(actualTransition)
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.6f)
+                        .height(14.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .shimmerEffect(actualTransition)
+                )
+            }
         }
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         
         // Tabs Placeholder
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(24.dp)
+            horizontalArrangement = Arrangement.spacedBy(32.dp)
         ) {
-            Box(modifier = Modifier.width(60.dp).height(20.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect(actualTransition))
-            Box(modifier = Modifier.width(80.dp).height(20.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect(actualTransition))
+            Box(modifier = Modifier.width(70.dp).height(24.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect(actualTransition))
+            Box(modifier = Modifier.width(90.dp).height(24.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect(actualTransition))
         }
         
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         // Content Placeholders (Videos)
         repeat(2) {
+            VideoCardSkeleton(actualTransition)
+        }
+    }
+}
+
+@Composable
+fun PlaylistMetadataSkeleton(transition: InfiniteTransition? = null) {
+    val actualTransition = transition ?: rememberSyncShimmerTransition()
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // Banner Placeholder
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp)
+                .shimmerEffect(actualTransition)
+        )
+        
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Title Placeholder
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.8f)
+                    .height(28.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .shimmerEffect(actualTransition)
+            )
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Uploader Placeholder
+            Box(
+                modifier = Modifier
+                    .width(150.dp)
+                    .height(18.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .shimmerEffect(actualTransition)
+            )
+            
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            // Action Buttons Row Placeholder
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .shimmerEffect(actualTransition)
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .shimmerEffect(actualTransition)
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Content Placeholders (Videos)
+        repeat(3) {
             VideoCardSkeleton(actualTransition)
         }
     }

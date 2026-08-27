@@ -236,9 +236,20 @@ private fun SearchContent(
                             } else null
                         }
                         
+                        val backgroundColor = MaterialTheme.colorScheme.background
+                        val ambientGradient = remember(backgroundColor) {
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    backgroundColor.copy(alpha = 0.5f),
+                                    backgroundColor.copy(alpha = 0.9f)
+                                )
+                            )
+                        }
+
                         Box(
                             modifier = Modifier
-                                .matchParentSize() // The critical fix replacing the hardcoded 180.dp
+                                .matchParentSize() // critical fix replacing the hardcoded 180.dp
                                 .graphicsLayer {
                                     alpha = 0.35f
                                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
@@ -260,21 +271,13 @@ private fun SearchContent(
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(
-                                        Brush.verticalGradient(
-                                            colors = listOf(
-                                                Color.Transparent,
-                                                MaterialTheme.colorScheme.background.copy(alpha = 0.5f),
-                                                MaterialTheme.colorScheme.background.copy(alpha = 0.9f)
-                                            )
-                                        )
-                                    )
+                                    .background(ambientGradient)
                             )
                         }
                     }
 
                     // 2. Foreground Content Layer (Sets the height for the Box)
-                    Column(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth().statusBarsPadding()) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
@@ -300,7 +303,9 @@ private fun SearchContent(
                                         onBack()
                                     }
                                 },
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(bottom = 0.dp) // Removed bottom padding
                             )
                             
                             if (!isSearchFocused) {
@@ -345,22 +350,22 @@ private fun SearchContent(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .horizontalScroll(rememberScrollState())
-                                    .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp), // Reduced top padding
+                                horizontalArrangement = Arrangement.spacedBy(8.dp), // Tighter spacing
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // Premium Layout Toggle
+                                // Better Layout Toggle
                                 Surface(
                                     onClick = onToggleGrid,
                                     shape = RoundedCornerShape(10.dp),
                                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    modifier = Modifier.size(36.dp)
+                                    modifier = Modifier.size(32.dp) // Smaller size
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(
                                             imageVector = if (isGridView) Icons.Default.ViewStream else Icons.Default.GridView,
                                             contentDescription = "Toggle Layout",
-                                            modifier = Modifier.size(20.dp),
+                                            modifier = Modifier.size(18.dp), // Smaller icon
                                             tint = MaterialTheme.colorScheme.primary
                                         )
                                     }
@@ -379,7 +384,7 @@ private fun SearchContent(
                                                     SearchSort.VIEW_COUNT -> stringResource(R.string.sort_most_viewed)
                                                     SearchSort.RATING -> stringResource(R.string.sort_top_rated)
                                                 },
-                                                style = MaterialTheme.typography.labelLarge,
+                                                style = MaterialTheme.typography.labelMedium, // Smaller font
                                                 fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold
                                             ) 
                                         },
@@ -390,7 +395,8 @@ private fun SearchContent(
                                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                                             labelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                                         ),
-                                        border = null
+                                        border = null,
+                                        modifier = Modifier.height(32.dp) // Smaller height
                                     )
                                 }
                             }
@@ -493,6 +499,13 @@ private fun SearchContent(
                                                 span = { item ->
                                                     if (item is SearchItem.Video) GridItemSpan(1)
                                                     else GridItemSpan(finalColumns)
+                                                },
+                                                contentType = { item ->
+                                                    when (item) {
+                                                        is SearchItem.Video -> "type_video"
+                                                        is SearchItem.Channel -> "type_channel"
+                                                        is SearchItem.Playlist -> "type_playlist"
+                                                    }
                                                 }
                                             ) { item ->
                                                 SearchItemRenderer(
@@ -537,7 +550,14 @@ private fun SearchContent(
                                         ) {
                                             items(
                                                 items = state.items,
-                                                key = { it.uniqueKey }
+                                                key = { it.uniqueKey },
+                                                contentType = { item ->
+                                                    when (item) {
+                                                        is SearchItem.Video -> "type_video"
+                                                        is SearchItem.Channel -> "type_channel"
+                                                        is SearchItem.Playlist -> "type_playlist"
+                                                    }
+                                                }
                                             ) { item ->
                                                 SearchItemRenderer(
                                                     item = item,
@@ -756,7 +776,7 @@ fun ModernSearchBar(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
+            .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 0.dp)
             .height(52.dp)
             .animateContentSize(),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = containerAlpha),

@@ -343,11 +343,11 @@ private fun LibraryDashboard(
                 }
             }
 
-            // 7. Favorites Section
+            // 7. Liked Videos Section
             item {
                 ModernSectionHeader(
                     title = stringResource(R.string.favorites),
-                    icon = Icons.Default.Favorite,
+                    icon = Icons.Default.ThumbUp,
                     showSeeAll = false
                 )
             }

@@ -24,6 +24,9 @@ object NeuroDiscovery {
      * Selects adjacent topics to explore based on current high-affinity nodes.
      */
     fun getDiscoverySeeds(topTopics: List<String>): List<String> {
+        if (topTopics.isEmpty()) {
+            return NeuroTopicCatalog.TOPICS.shuffled().take(3).map { it.name }
+        }
         val explorationSeeds = mutableListOf<String>()
         topTopics.forEach { topic ->
             explorationSeeds.addAll(NeuroTopicCatalog.getAdjacentTopics(topic))

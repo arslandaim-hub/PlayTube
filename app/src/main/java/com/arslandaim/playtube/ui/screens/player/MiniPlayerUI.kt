@@ -6,8 +6,10 @@
 package com.arslandaim.playtube.ui.screens.player
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -17,20 +19,21 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.FilterQuality
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import androidx.media3.common.Player
-import com.arslandaim.playtube.ui.components.ThumbnailImage
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.AspectRatioFrameLayout
 import com.arslandaim.playtube.domain.model.VideoItem
+import com.arslandaim.playtube.ui.components.player.VideoPlayerView
 
+@UnstableApi
 @Composable
 fun MiniPlayerUI(
-    video: VideoItem,
     player: Player,
     isPlaying: Boolean,
     isIncognito: Boolean = false,
@@ -39,132 +42,122 @@ fun MiniPlayerUI(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val incognitoTint = Color(0xFF673AB7).copy(alpha = 0.12f)
     val baseSurfaceColor = MaterialTheme.colorScheme.surface
-    val containerColor = if (isIncognito) {
-        baseSurfaceColor.copy(alpha = 0.85f).run {
-            Color(
-                red = (red + incognitoTint.red * incognitoTint.alpha) / (1 + incognitoTint.alpha),
-                green = (green + incognitoTint.green * incognitoTint.alpha) / (1 + incognitoTint.alpha),
-                blue = (blue + incognitoTint.blue * incognitoTint.alpha) / (1 + incognitoTint.alpha),
-                alpha = alpha
-            )
-        }
-    } else {
-        baseSurfaceColor.copy(alpha = com.arslandaim.playtube.ui.theme.GlassAlpha)
+    val containerColor = remember(isIncognito, baseSurfaceColor) {
+        if (isIncognito) com.arslandaim.playtube.ui.theme.IncognitoPurple.copy(alpha = 0.9f) else baseSurfaceColor
     }
 
     Surface(
         modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 8.dp)
-            .height(68.dp)
+            .width(200.dp)
+            .height(112.5.dp)
+            .padding(8.dp)
             .clickable(
                 onClick = onMaximize,
                 indication = null,
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
             ),
         color = containerColor,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        shape = RoundedCornerShape(20.dp), // Increased for v2 consistency
-        tonalElevation = 0.dp,
-        shadowElevation = 12.dp,
+        shape = RoundedCornerShape(12.dp), // Slightly sharper for rectangular look
+        shadowElevation = 8.dp,
         border = androidx.compose.foundation.BorderStroke(
-            width = 0.5.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
         )
     ) {
-        Column {
-            Row(
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Live Video Stream
+            VideoPlayerView(
+                player = player,
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Minimal Controls Overlay
+            Box(
                 modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.3f))
             ) {
-                ThumbnailImage(
-                    videoId = video.id,
-                    thumbnailUrl = video.thumbnailUrl,
-                    quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.Low,
+                // Close button (Top Right)
+                IconButton(
+                    onClick = onClose,
                     modifier = Modifier
-                        .height(48.dp) // Slightly larger
-                        .aspectRatio(16f / 9f)
-                        .clip(RoundedCornerShape(10.dp)),
-                    contentScale = ContentScale.Crop,
-                    filterQuality = FilterQuality.High
-                )
-                
-                Spacer(modifier = Modifier.width(14.dp))
-                
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = video.title,
-                        style = MaterialTheme.typography.labelLarge, // Refined font
-                        fontWeight = FontWeight.ExtraBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = video.uploaderName,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .size(24.dp)
+                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close",
+                        modifier = Modifier.size(14.dp),
+                        tint = Color.White
                     )
                 }
-                
+
+                // Play/Pause button (Center)
                 IconButton(
                     onClick = onPlayPause,
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(40.dp)
+                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                        .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = null,
                         modifier = Modifier.size(28.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-                
-                IconButton(
-                    onClick = onClose,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = Color.White
                     )
                 }
             }
-            
-            // Progress bar at the bottom of mini player
-            MiniPlayerProgress(player)
+
+            // Subtle Progress Bar at the absolute bottom
+            MiniPlayerProgress(
+                player = player,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+            )
         }
     }
 }
 
 @Composable
-private fun MiniPlayerProgress(player: Player) {
+private fun MiniPlayerProgress(
+    player: Player,
+    modifier: Modifier = Modifier
+) {
     var progress by remember { mutableFloatStateOf(0f) }
     
-    LaunchedEffect(player) {
-        while (true) {
-            if (player.isPlaying) {
+    LaunchedEffect(player.isPlaying) {
+        if (player.isPlaying) {
+            while (isActive) {
                 val duration = player.duration
                 if (duration > 0) {
                     progress = player.currentPosition.toFloat() / duration
                 }
+                delay(500)
             }
-            kotlinx.coroutines.delay(500)
         }
     }
     
-    LinearProgressIndicator(
-        progress = { progress },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(1.5.dp), // Thinner for v2
-        color = MaterialTheme.colorScheme.primary,
-        trackColor = Color.Transparent,
-    )
+    Box(
+        modifier = modifier
+            .height(2.dp)
+            .background(Color.White.copy(alpha = 0.2f))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .graphicsLayer {
+                    scaleX = progress
+                    transformOrigin = TransformOrigin(0f, 0.5f)
+                }
+                .background(MaterialTheme.colorScheme.primary)
+        )
+    }
 }
