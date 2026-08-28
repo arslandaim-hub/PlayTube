@@ -1,0 +1,5 @@
+ENHANCEMENTS:
+- Shrinked APK size from 25MB to ~8MB using R8 minification and resouce stripping.
+- PlayTube is now significantly more lightweight.
+- Mini Player now has a better and smaller rectangular shape.
+- Minor UI improvements and bug fixes across the app.
