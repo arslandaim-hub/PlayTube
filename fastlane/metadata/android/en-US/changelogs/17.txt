@@ -1,0 +1,4 @@
+Fixed Native Backup import and History screen UI bleeding issues.
+Added Spanish language support.
+Added an option to disable video player gestures.
+Added a pinch-to-zoom button for adjusting video screen size.
