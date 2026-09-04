@@ -97,11 +97,14 @@ class ParallelDownloader(
                 downloadChunk(url, outputFile, chunk, downloadedBytes, onProgress)
                 return
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                if (e.message?.contains("403") == true || e.message?.contains("Forbidden") == true) throw e
+                
                 attempt++
                 if (attempt >= maxRetries) throw e
-                val delayTime = (1000L * attempt * attempt).coerceAtMost(30000L)
+                val delayTime = (1000L * attempt * attempt).coerceAtMost(15000L)
+                PTLog.w("ParallelDownloader", "Retrying chunk ${chunk.chunkIndex} (attempt $attempt/$maxRetries): ${e.message}")
                 delay(delayTime)
-                PTLog.w("ParallelDownloader", "Retrying chunk ${chunk.chunkIndex} (attempt $attempt)")
             }
         }
     }
@@ -161,35 +164,48 @@ class ParallelDownloader(
     }
 
     suspend fun getFileSize(url: String): Long = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", Constants.DEFAULT_USER_AGENT)
-            .header("Accept-Encoding", "identity")
-            .head()
-            .build()
-        try {
-            client.newCall(request).execute().use { response ->
-                if (response.code == 403) return@withContext -403L
-                if (response.isSuccessful) {
-                    return@withContext response.header("Content-Length")?.toLongOrNull() ?: response.body?.contentLength() ?: 0L
-                } else {
-                    // Try GET with Range 0-0 if HEAD fails
+        var attempt = 0
+        val maxRetries = 5
+        while (attempt < maxRetries) {
+            try {
+                val request = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", Constants.DEFAULT_USER_AGENT)
+                    .header("Accept-Encoding", "identity")
+                    .head()
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (response.code == 403) return@withContext -403L
+                    if (response.isSuccessful) {
+                        val len = response.header("Content-Length")?.toLongOrNull() ?: response.body?.contentLength() ?: 0L
+                        if (len > 0L) return@withContext len
+                    }
+                    
+                    // Fallback: Try GET with Range 0-0 if HEAD fails or returned 0
                     val getRequest = Request.Builder()
                         .url(url)
                         .header("User-Agent", Constants.DEFAULT_USER_AGENT)
                         .header("Accept-Encoding", "identity")
                         .header("Range", "bytes=0-0")
                         .build()
+
                     client.newCall(getRequest).execute().use { getResponse ->
                         if (getResponse.code == 403) return@withContext -403L
                         val contentRange = getResponse.header("Content-Range")
-                        return@withContext contentRange?.substringAfterLast("/")?.toLongOrNull() ?: 0L
+                        val total = contentRange?.substringAfterLast("/")?.toLongOrNull() ?: 0L
+                        if (total > 0L) return@withContext total
                     }
                 }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                PTLog.w("ParallelDownloader", "Failed to probe file size (attempt ${attempt + 1}/$maxRetries): ${e.message}")
             }
-        } catch (e: Exception) {
-            PTLog.e("ParallelDownloader", "Failed to get file size for $url", e)
-            0L
+            attempt++
+            if (attempt < maxRetries) {
+                delay(1000L * attempt)
+            }
         }
+        0L
     }
 }

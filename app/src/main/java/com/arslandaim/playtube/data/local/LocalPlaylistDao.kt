@@ -49,4 +49,23 @@ interface LocalPlaylistDao {
 
     @Query("SELECT thumbnailUrl FROM local_playlist_videos WHERE playlistId = :playlistId ORDER BY addedAt DESC LIMIT 1")
     suspend fun getLastVideoThumbnail(playlistId: Int): String?
+
+    // Static queries for backup and restore
+    @Query("SELECT * FROM local_playlists")
+    suspend fun getAllLocalPlaylistsStatic(): List<LocalPlaylistEntity>
+
+    @Query("SELECT * FROM local_playlist_videos")
+    suspend fun getAllLocalPlaylistVideosStatic(): List<LocalPlaylistVideoEntity>
+
+    @Query("DELETE FROM local_playlists")
+    fun clearLocalPlaylistsSync()
+
+    @Query("DELETE FROM local_playlist_videos")
+    fun clearLocalPlaylistVideosSync()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertLocalPlaylistsSync(playlists: List<LocalPlaylistEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    fun insertLocalPlaylistVideosSync(videos: List<LocalPlaylistVideoEntity>)
 }

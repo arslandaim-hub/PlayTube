@@ -10,7 +10,21 @@ import kotlinx.serialization.Serializable
 @Serializable
 sealed interface Destination {
     val isTopLevel: Boolean get() = false
-    val routeRoot: String get() = this::class.simpleName ?: ""
+    val routeRoot: String get() = when (this) {
+        is Home -> "Home"
+        is Subscriptions -> "Subscriptions"
+        is Library -> "Library"
+        is Search -> "Search"
+        is Settings -> "Settings"
+        is History -> "History"
+        is SubscriptionsList -> "SubscriptionsList"
+        is Downloads -> "Downloads"
+        is Channel -> "Channel"
+        is Player -> "Player"
+        is Playlist -> "Playlist"
+        is Onboarding -> "Onboarding"
+        is DataManagement -> "DataManagement"
+    }
 
     @Serializable data object Home : Destination {
         override val isTopLevel: Boolean get() = true

@@ -17,6 +17,7 @@ import com.arslandaim.playtube.domain.usecase.UpdateUserInterestsUseCase
 import com.arslandaim.playtube.workers.ImportWorker
 import com.arslandaim.playtube.utils.PTLog
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import com.google.gson.stream.JsonReader
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -167,6 +168,8 @@ class DataManagerRepositoryImpl @Inject constructor(
             val searchHistory = database.searchHistoryDao().getAllSearchHistoryStatic()
             val userInterests = database.userInterestDao().getAllInterestsStatic()
             val blacklist = database.blacklistDao().getAllBlacklistedStatic()
+            val localPlaylists = database.localPlaylistDao().getAllLocalPlaylistsStatic()
+            val localPlaylistVideos = database.localPlaylistDao().getAllLocalPlaylistVideosStatic()
             
             val prefs = PlayTubePreferences(
                 isHistoryEnabled = preferencesManager.isHistoryEnabled.first(),
@@ -177,7 +180,8 @@ class DataManagerRepositoryImpl @Inject constructor(
                 isOnboardingCompleted = preferencesManager.isOnboardingCompleted.first(),
                 isSearchGridView = preferencesManager.isSearchGridView.first(),
                 isAutoUpdateEnabled = preferencesManager.isAutoUpdateEnabled.first(),
-                isRecommendationsPaused = preferencesManager.isRecommendationsPaused.first()
+                isRecommendationsPaused = preferencesManager.isRecommendationsPaused.first(),
+                isPlayerGesturesEnabled = preferencesManager.isPlayerGesturesEnabled.first()
             )
 
             val backup = PlayTubeBackup(
@@ -190,6 +194,8 @@ class DataManagerRepositoryImpl @Inject constructor(
                 searchHistory = searchHistory,
                 userInterests = userInterests,
                 blacklist = blacklist,
+                localPlaylists = localPlaylists,
+                localPlaylistVideos = localPlaylistVideos,
                 preferences = prefs
             )
 
@@ -207,59 +213,105 @@ class DataManagerRepositoryImpl @Inject constructor(
             }
             Result.success(Unit)
         } catch (e: Exception) {
+            PTLog.e("DataManager", "Failed to create backup", e)
             Result.failure(e)
         }
     }
 
     override suspend fun restoreBackup(uri: Uri): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                ZipInputStream(inputStream).use { zis ->
-                    val entry = zis.nextEntry
-                    if (entry?.name == "backup.json") {
-                        val reader = InputStreamReader(zis)
-                        val backup = gson.fromJson(reader, PlayTubeBackup::class.java)
-                            ?: return@withContext Result.failure(Exception("Failed to parse backup file"))
-                        
-                        database.runInTransaction {
-                            database.historyDao().clearHistorySync()
-                            database.favoriteDao().clearFavorites()
-                            database.playlistFavoriteDao().clearPlaylistFavorites()
-                            database.subscriptionDao().clearSubscriptions()
-                            database.searchHistoryDao().clearAllSearchHistorySync()
-                            database.userInterestDao().clearInterestsSync()
-                            database.blacklistDao().getAllBlacklistedStaticSync().forEach { 
-                                database.blacklistDao().deleteSync(it) 
-                            }
+            var backup: PlayTubeBackup? = null
 
-                            database.historyDao().insertAllIgnoreSync(backup.history)
-                            database.favoriteDao().insertAllIgnoreSync(backup.favorites)
-                            database.playlistFavoriteDao().insertAllIgnoreSync(backup.playlistFavorites)
-                            database.subscriptionDao().insertAllIgnoreSync(backup.subscriptions)
-                            database.searchHistoryDao().insertAllIgnoreSync(backup.searchHistory)
-                            database.userInterestDao().insertAllIgnoreSync(backup.userInterests)
-                            backup.blacklist?.let { list ->
-                                list.forEach { database.blacklistDao().insertSync(it) }
+            // 1. Try reading as ZIP file first
+            try {
+                context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                    ZipInputStream(inputStream).use { zis ->
+                        var entry = zis.nextEntry
+                        while (entry != null) {
+                            val name = entry.name
+                            if (!entry.isDirectory && (name.endsWith("backup.json", ignoreCase = true) || name.endsWith(".json", ignoreCase = true)) && !name.contains("__MACOSX")) {
+                                val reader = InputStreamReader(zis)
+                                backup = gson.fromJson(reader, PlayTubeBackup::class.java)
+                                if (backup != null) break
                             }
-                        }
-
-                        // Restore preferences outside transaction as DataStore is not part of Room transaction
-                        coroutineScope {
-                            launch { preferencesManager.setHistoryEnabled(backup.preferences.isHistoryEnabled) }
-                            launch { preferencesManager.setSearchHistoryPaused(backup.preferences.isSearchHistoryPaused) }
-                            launch { preferencesManager.setPipEnabled(backup.preferences.isPipEnabled) }
-                            launch { preferencesManager.setBackgroundPlayEnabled(backup.preferences.isBackgroundPlayEnabled) }
-                            launch { preferencesManager.setSubtitlesEnabled(backup.preferences.isSubtitlesEnabled) }
-                            launch { preferencesManager.setOnboardingCompleted(backup.preferences.isOnboardingCompleted) }
-                            launch { preferencesManager.setSearchGridView(backup.preferences.isSearchGridView) }
-                            launch { preferencesManager.setAutoUpdateEnabled(backup.preferences.isAutoUpdateEnabled) }
-                            launch { preferencesManager.setRecommendationsPaused(backup.preferences.isRecommendationsPaused) }
+                            zis.closeEntry()
+                            entry = zis.nextEntry
                         }
                     }
                 }
+            } catch (e: Exception) {
+                PTLog.w("DataManager", "Failed to open backup as ZIP, falling back to plain JSON: ${e.message}")
             }
+
+            // 2. Fallback: Try reading as plain JSON file directly if ZIP didn't produce backup
+            if (backup == null) {
+                context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                    val reader = InputStreamReader(inputStream)
+                    backup = gson.fromJson(reader, PlayTubeBackup::class.java)
+                }
+            }
+
+            val parsedBackup = backup ?: return@withContext Result.failure(Exception("Could not parse backup file or missing backup data"))
+
+            // Perform Room database restore inside a transaction
+            database.runInTransaction {
+                database.historyDao().clearHistorySync()
+                database.favoriteDao().clearFavorites()
+                database.playlistFavoriteDao().clearPlaylistFavorites()
+                database.subscriptionDao().clearSubscriptions()
+                database.searchHistoryDao().clearAllSearchHistorySync()
+                database.userInterestDao().clearInterestsSync()
+                database.localPlaylistDao().clearLocalPlaylistVideosSync()
+                database.localPlaylistDao().clearLocalPlaylistsSync()
+                database.blacklistDao().getAllBlacklistedStaticSync().forEach { 
+                    database.blacklistDao().deleteSync(it) 
+                }
+
+                database.historyDao().insertAllIgnoreSync(parsedBackup.history ?: emptyList())
+                database.favoriteDao().insertAllIgnoreSync(parsedBackup.favorites ?: emptyList())
+                database.playlistFavoriteDao().insertAllIgnoreSync(parsedBackup.playlistFavorites ?: emptyList())
+                database.subscriptionDao().insertAllIgnoreSync(parsedBackup.subscriptions ?: emptyList())
+                database.searchHistoryDao().insertAllIgnoreSync(parsedBackup.searchHistory ?: emptyList())
+                database.userInterestDao().insertAllIgnoreSync(parsedBackup.userInterests ?: emptyList())
+                
+                parsedBackup.blacklist?.let { list ->
+                    list.forEach { database.blacklistDao().insertSync(it) }
+                }
+
+                parsedBackup.localPlaylists?.let { playlists ->
+                    if (playlists.isNotEmpty()) {
+                        database.localPlaylistDao().insertLocalPlaylistsSync(playlists)
+                    }
+                }
+
+                parsedBackup.localPlaylistVideos?.let { videos ->
+                    if (videos.isNotEmpty()) {
+                        database.localPlaylistDao().insertLocalPlaylistVideosSync(videos)
+                    }
+                }
+            }
+
+            // Restore preferences if present in backup
+            parsedBackup.preferences?.let { prefs ->
+                coroutineScope {
+                    launch { preferencesManager.setHistoryEnabled(prefs.isHistoryEnabled) }
+                    launch { preferencesManager.setSearchHistoryPaused(prefs.isSearchHistoryPaused) }
+                    launch { preferencesManager.setPipEnabled(prefs.isPipEnabled) }
+                    launch { preferencesManager.setBackgroundPlayEnabled(prefs.isBackgroundPlayEnabled) }
+                    launch { preferencesManager.setSubtitlesEnabled(prefs.isSubtitlesEnabled) }
+                    launch { preferencesManager.setOnboardingCompleted(prefs.isOnboardingCompleted) }
+                    launch { preferencesManager.setSearchGridView(prefs.isSearchGridView) }
+                    launch { preferencesManager.setAutoUpdateEnabled(prefs.isAutoUpdateEnabled) }
+                    launch { preferencesManager.setRecommendationsPaused(prefs.isRecommendationsPaused) }
+                    prefs.isPlayerGesturesEnabled?.let { gestures ->
+                        launch { preferencesManager.setPlayerGesturesEnabled(gestures) }
+                    }
+                }
+            }
+
             Result.success(Unit)
         } catch (e: Exception) {
+            PTLog.e("DataManager", "Failed to restore backup", e)
             Result.failure(e)
         }
     }
@@ -279,34 +331,39 @@ class DataManagerRepositoryImpl @Inject constructor(
 }
 
 data class TakeoutHistoryItem(
-    val title: String?,
-    val titleUrl: String?,
-    val subtitles: List<TakeoutSubtitle>?,
-    val time: String?
+    @SerializedName("title") val title: String?,
+    @SerializedName("titleUrl") val titleUrl: String?,
+    @SerializedName("subtitles") val subtitles: List<TakeoutSubtitle>?,
+    @SerializedName("time") val time: String?
 )
-data class TakeoutSubtitle(val name: String?)
+data class TakeoutSubtitle(
+    @SerializedName("name") val name: String?
+)
 
 data class PlayTubeBackup(
-    val version: Int,
-    val timestamp: Long,
-    val history: List<HistoryEntity>,
-    val favorites: List<FavoriteEntity>,
-    val playlistFavorites: List<PlaylistFavoriteEntity>,
-    val subscriptions: List<SubscriptionEntity>,
-    val searchHistory: List<SearchHistoryEntity>,
-    val userInterests: List<UserInterestEntity>,
-    val blacklist: List<BlacklistEntity>? = emptyList(),
-    val preferences: PlayTubePreferences
+    @SerializedName("version") val version: Int = 2,
+    @SerializedName("timestamp") val timestamp: Long = System.currentTimeMillis(),
+    @SerializedName("history") val history: List<HistoryEntity>? = emptyList(),
+    @SerializedName("favorites") val favorites: List<FavoriteEntity>? = emptyList(),
+    @SerializedName("playlistFavorites") val playlistFavorites: List<PlaylistFavoriteEntity>? = emptyList(),
+    @SerializedName("subscriptions") val subscriptions: List<SubscriptionEntity>? = emptyList(),
+    @SerializedName("searchHistory") val searchHistory: List<SearchHistoryEntity>? = emptyList(),
+    @SerializedName("userInterests") val userInterests: List<UserInterestEntity>? = emptyList(),
+    @SerializedName("blacklist") val blacklist: List<BlacklistEntity>? = emptyList(),
+    @SerializedName("localPlaylists") val localPlaylists: List<LocalPlaylistEntity>? = emptyList(),
+    @SerializedName("localPlaylistVideos") val localPlaylistVideos: List<LocalPlaylistVideoEntity>? = emptyList(),
+    @SerializedName("preferences") val preferences: PlayTubePreferences? = null
 )
 
 data class PlayTubePreferences(
-    val isHistoryEnabled: Boolean,
-    val isSearchHistoryPaused: Boolean,
-    val isPipEnabled: Boolean,
-    val isBackgroundPlayEnabled: Boolean,
-    val isSubtitlesEnabled: Boolean,
-    val isOnboardingCompleted: Boolean,
-    val isSearchGridView: Boolean,
-    val isAutoUpdateEnabled: Boolean = false,
-    val isRecommendationsPaused: Boolean = false
+    @SerializedName("isHistoryEnabled") val isHistoryEnabled: Boolean = true,
+    @SerializedName("isSearchHistoryPaused") val isSearchHistoryPaused: Boolean = false,
+    @SerializedName("isPipEnabled") val isPipEnabled: Boolean = false,
+    @SerializedName("isBackgroundPlayEnabled") val isBackgroundPlayEnabled: Boolean = false,
+    @SerializedName("isSubtitlesEnabled") val isSubtitlesEnabled: Boolean = false,
+    @SerializedName("isOnboardingCompleted") val isOnboardingCompleted: Boolean = false,
+    @SerializedName("isSearchGridView") val isSearchGridView: Boolean = false,
+    @SerializedName("isAutoUpdateEnabled") val isAutoUpdateEnabled: Boolean = false,
+    @SerializedName("isRecommendationsPaused") val isRecommendationsPaused: Boolean = false,
+    @SerializedName("isPlayerGesturesEnabled") val isPlayerGesturesEnabled: Boolean? = true
 )

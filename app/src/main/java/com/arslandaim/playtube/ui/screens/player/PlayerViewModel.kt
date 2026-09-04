@@ -118,6 +118,17 @@ class PlayerViewModel @Inject constructor(
     val subtitleBackgroundOpacity: StateFlow<Float> = preferencesManager.subtitleBackgroundOpacity
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.65f)
 
+    val isPlayerGesturesEnabled: StateFlow<Boolean> = preferencesManager.isPlayerGesturesEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val chapters: StateFlow<List<VideoChapter>> = uiState.map { state ->
+        if (state is PlayerUiState.Success) {
+            VideoChapterParser.parseChapters(state.bundle.description)
+        } else {
+            emptyList()
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     private val _currentQuality = MutableStateFlow<String?>(null)
     val currentQuality: StateFlow<String?> = _currentQuality.asStateFlow()
 
@@ -394,7 +405,11 @@ class PlayerViewModel @Inject constructor(
         
         // Phase 4: Restore Session Metadata (Speed, Pitch, Subtitles)
         viewModelScope.launch {
-            val speed = preferencesManager.playbackSpeed.first()
+            var speed = preferencesManager.playbackSpeed.first()
+            if (speed == 2.0f) {
+                speed = 1.0f
+                preferencesManager.setPlaybackSpeed(1.0f)
+            }
             val pitch = preferencesManager.playbackPitch.first()
             _playbackSpeed.value = speed
             _playbackPitch.value = pitch
@@ -704,6 +719,13 @@ class PlayerViewModel @Inject constructor(
         playbackManager.setPlaybackSpeed(speed)
         viewModelScope.launch { preferencesManager.setPlaybackSpeed(speed) }
     }
+    fun setTemporarySpeedBoost(active: Boolean) {
+        if (active) {
+            playbackManager.setPlaybackSpeed(2.0f)
+        } else {
+            playbackManager.setPlaybackSpeed(_playbackSpeed.value)
+        }
+    }
     fun setPlaybackPitch(pitch: Float) { 
         _playbackPitch.value = pitch
         playbackManager.setPitch(pitch)
@@ -768,13 +790,28 @@ class PlayerViewModel @Inject constructor(
         if (_isSeekForward.value != forward || !_showSeekFeedback.value) _seekAmount.value = 10 else _seekAmount.value += 10
         _isSeekForward.value = forward
         _showSeekFeedback.value = true
-        playbackManager.seekTo(playbackManager.player.currentPosition + if (forward) 10000L else -10000L)
+        val targetPos = (playbackManager.player.currentPosition + if (forward) 10000L else -10000L).coerceAtLeast(0L)
+        playbackManager.seekTo(targetPos)
         seekJob = viewModelScope.launch { delay(800); _showSeekFeedback.value = false; _seekAmount.value = 0; saveWatchProgress() }
     }
     private var seekJob: Job? = null
     fun seekForward() = performSeek(true)
     fun seekBackward() = performSeek(false)
     fun toggleSubtitles() = setSubtitlesEnabled(!_isCcEnabled.value)
+
+    val abLoopState: StateFlow<ABLoopState> = playbackManager.abLoopState
+
+    fun setABLoopPointA() {
+        playbackManager.setABLoopPointA(playbackManager.player.currentPosition)
+    }
+
+    fun setABLoopPointB() {
+        playbackManager.setABLoopPointB(playbackManager.player.currentPosition)
+    }
+
+    fun clearABLoop() {
+        playbackManager.clearABLoop()
+    }
 
     private fun syncSubtitles(bundle: StreamBundle) {
         val available = bundle.subtitles

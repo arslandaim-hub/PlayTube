@@ -31,6 +31,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.IOException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicLong
 
@@ -135,6 +137,14 @@ class DownloadWorker @AssistedInject constructor(
             } catch (ex: Exception) {
                 if (ex is CancellationException) throw ex
                 PTLog.e("DownloadWorker", "Retry failed for $videoId", ex)
+                
+                // If exception is transient network issue, return Result.retry() so WorkManager reschedules
+                if (ex is IOException) {
+                    PTLog.w("DownloadWorker", "Transient network error for $videoId, scheduling WorkManager retry...")
+                    downloadDao.setDownloadStatus(videoId, DownloadStatus.WAITING)
+                    return@withContext Result.retry()
+                }
+                
                 downloadDao.updateProgress(videoId, DownloadStatus.FAILED, 0, 0)
                 Result.failure()
             }
@@ -393,7 +403,7 @@ class DownloadWorker @AssistedInject constructor(
                 partFiles.add(partFile)
                 
                 async {
-                    downloadChunk(url, partFile, start, end, videoId, title, isPart, previousDownloaded, combinedTotalSize, downloadedBytes)
+                    downloadChunkWithRetry(url, partFile, start, end, videoId, title, isPart, previousDownloaded, combinedTotalSize, downloadedBytes)
                 }
             }
 
@@ -511,6 +521,35 @@ class DownloadWorker @AssistedInject constructor(
             -1
         } finally {
             response?.close()
+        }
+    }
+
+    private suspend fun downloadChunkWithRetry(
+        url: String,
+        partFile: File,
+        start: Long,
+        end: Long,
+        videoId: String,
+        title: String,
+        isPart: Boolean,
+        previousDownloaded: Long,
+        combinedTotalSize: Long,
+        downloadedBytes: AtomicLong
+    ) {
+        var attempt = 0
+        val maxRetries = 5
+        while (attempt < maxRetries) {
+            try {
+                downloadChunk(url, partFile, start, end, videoId, title, isPart, previousDownloaded, combinedTotalSize, downloadedBytes)
+                return
+            } catch (e: Exception) {
+                if (e is CancellationException || e is ExpiredUrlException) throw e
+                attempt++
+                if (attempt >= maxRetries) throw e
+                val delayTime = (1000L * attempt * attempt).coerceAtMost(15000L)
+                PTLog.w("DownloadWorker", "Retrying chunk for $videoId (attempt $attempt/$maxRetries): ${e.message}")
+                delay(delayTime)
+            }
         }
     }
 

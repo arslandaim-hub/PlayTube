@@ -100,8 +100,7 @@ private fun HistoryContent(
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = androidx.compose.ui.graphics.Color.Transparent
-                    ),
-                    windowInsets = WindowInsets(0, 0, 0, 0)
+                    )
                 )
             }
         }

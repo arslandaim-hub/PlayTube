@@ -153,6 +153,17 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
             preferences[INCOGNITO_MODE] ?: false
         }
 
+    open val isPlayerGesturesEnabled: Flow<Boolean> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }.map { preferences ->
+            preferences[PLAYER_GESTURES_ENABLED] ?: true
+        }
+
     open val preferredSubtitleLanguage: Flow<String?> = dataStore.data
         .catch { exception ->
             if (exception is IOException) {
@@ -290,6 +301,12 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
         }
     }
 
+    suspend fun setPlayerGesturesEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PLAYER_GESTURES_ENABLED] = enabled
+        }
+    }
+
     suspend fun setPreferredSubtitleLanguage(language: String?) {
         dataStore.edit { preferences ->
             if (language == null) preferences.remove(PREFERRED_SUBTITLE_LANGUAGE)
@@ -369,6 +386,7 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
         val RECOMMENDATIONS_PAUSED = booleanPreferencesKey("recommendations_paused")
         val AUTOPLAY_ENABLED = booleanPreferencesKey("autoplay_enabled")
         val INCOGNITO_MODE = booleanPreferencesKey("incognito_mode")
+        val PLAYER_GESTURES_ENABLED = booleanPreferencesKey("player_gestures_enabled")
         val PREFERRED_SUBTITLE_LANGUAGE = stringPreferencesKey("preferred_subtitle_language")
         val PREFERRED_QUALITY = stringPreferencesKey("preferred_quality")
         val SUBTITLE_FONT_SIZE = floatPreferencesKey("subtitle_font_size")

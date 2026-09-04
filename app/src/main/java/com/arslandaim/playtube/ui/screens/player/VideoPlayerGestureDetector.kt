@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -29,6 +30,9 @@ fun VideoPlayerGestureDetector(
     onDragCancel: () -> Unit = {},
     onVerticalSwipeLeft: (Float) -> Unit = {},
     onVerticalSwipeRight: (Float) -> Unit = {},
+    onLongPressStart: () -> Unit = {},
+    onLongPressEnd: () -> Unit = {},
+    areVolumeBrightnessGesturesEnabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val doubleTapTimeout = 300L
@@ -40,62 +44,81 @@ fun VideoPlayerGestureDetector(
                 coroutineScope {
                     var tapCount = 0
                     var tapJob: kotlinx.coroutines.Job? = null
-                    
+                    var longPressJob: Job? = null
+                    var isLongPressActive = false
+
                     awaitPointerEventScope {
                         while (true) {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
                             val down = event.changes.find { it.changedToDownIgnoreConsumed() }
-                            
+
                             if (down != null) {
                                 tapCount++
                                 tapJob?.cancel()
-                                
+                                longPressJob?.cancel()
+                                isLongPressActive = false
+
                                 val isLeftSide = (down.position.x < size.width / 2)
-                                
+
                                 if (tapCount >= 2) {
-                                    // Multi-tap detected
                                     down.consume()
                                     if (isLeftSide) onDoubleTapLeft() else onDoubleTapRight()
-                                    
-                                    // After a double tap, we reset to avoid triple-tap confusion
                                     tapCount = 0
                                 } else {
-                                    // First tap, wait to see if it's a double tap
+                                    longPressJob = launch {
+                                        delay(450L)
+                                        isLongPressActive = true
+                                        onLongPressStart()
+                                    }
+
                                     tapJob = launch {
                                         delay(doubleTapTimeout)
-                                        if (tapCount == 1) {
+                                        if (tapCount == 1 && !isLongPressActive) {
                                             onSingleTap()
                                         }
                                         tapCount = 0
                                     }
                                 }
                             }
+
+                            val up = event.changes.find { !it.pressed }
+                            if (up != null) {
+                                longPressJob?.cancel()
+                                if (isLongPressActive) {
+                                    isLongPressActive = false
+                                    onLongPressEnd()
+                                }
+                            }
                         }
                     }
                 }
             }
-            .pointerInput(Unit) {
+            .pointerInput(areVolumeBrightnessGesturesEnabled) {
                 var totalDrag = 0f
                 var dragStartX = 0f
                 detectVerticalDragGestures(
                     onDragStart = { offset ->
                         totalDrag = 0f
                         dragStartX = offset.x
-                        onDragStart()
+                        if (areVolumeBrightnessGesturesEnabled) {
+                            onDragStart()
+                        }
                     },
                     onVerticalDrag = { change, dragAmount ->
                         change.consume()
                         totalDrag += dragAmount
                         
-                        val screenHeight = size.height
-                        val screenWidth = size.width
-                        val dragPercentage = -dragAmount / screenHeight
-                        val sideMargin = screenWidth * 0.30f // 30% from each side
-                        
-                        if (change.position.x < sideMargin) {
-                            onVerticalSwipeLeft(dragPercentage)
-                        } else if (change.position.x > screenWidth - sideMargin) {
-                            onVerticalSwipeRight(dragPercentage)
+                        if (areVolumeBrightnessGesturesEnabled) {
+                            val screenHeight = size.height
+                            val screenWidth = size.width
+                            val dragPercentage = -dragAmount / screenHeight
+                            val sideMargin = screenWidth * 0.30f // 30% from each side
+                            
+                            if (change.position.x < sideMargin) {
+                                onVerticalSwipeLeft(dragPercentage)
+                            } else if (change.position.x > screenWidth - sideMargin) {
+                                onVerticalSwipeRight(dragPercentage)
+                            }
                         }
                     },
                     onDragEnd = {

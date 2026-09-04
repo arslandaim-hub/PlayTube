@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PlayTube</string>
+
+    <!-- General -->
+    <string name="retry">Reintentar</string>
+    <string name="back">Volver</string>
+    <string name="cancel">Cancelar</string>
+    <string name="delete">Eliminar</string>
+    <string name="search">Buscar</string>
+    <string name="no_internet">Sin conexión a Internet</string>
+    <string name="error_prefix">Error: %s</string>
+    <string name="clear">Limpiar</string>
+    <string name="close">Cerrar</string>
+
+    <!-- Home -->
+    <string name="tab_for_you">Para ti</string>
+    <string name="tab_subscriptions">Suscripciones</string>
+    <string name="personalized_title">Personalizado para ti</string>
+    <string name="personalized_desc">Basado en tu historial de búsqueda</string>
+    <string name="no_subscriptions_videos">Aún no hay videos de tus suscripciones.</string>
+    <string name="no_videos_found">No se encontraron videos.</string>
+    <string name="continue_playing">Continuar reproduciendo</string>
+
+    <!-- Player -->
+    <string name="quality">Calidad</string>
+    <string name="playback_speed">Velocidad de reproducción</string>
+    <string name="description">Descripción</string>
+    <string name="more">Más</string>
+    <string name="related_videos">Videos relacionados</string>
+    <string name="download">Descargar</string>
+    <string name="downloaded">Descargado</string>
+    <string name="like">Me gusta</string>
+    <string name="liked">Le dio me gusta</string>
+    <string name="save">Guardar</string>
+    <string name="saved">Guardado</string>
+    <string name="share">Compartir</string>
+    <string name="info">Información</string>
+    <string name="subscribe">Suscribirse</string>
+    <string name="subscribed">Suscrito</string>
+    <string name="auto">Automático</string>
+    <string name="normal_speed">Normal</string>
+    <string name="no_description">Sin descripción disponible</string>
+    <string name="loading">Cargando...</string>
+    <string name="toggle_subtitles">Alternar subtítulos</string>
+    <string name="settings">Ajustes</string>
+    <string name="waiting_for_connection">Esperando conexión...</string>
+
+    <!-- Library -->
+    <string name="library">Biblioteca</string>
+    <string name="history">Historial</string>
+    <string name="subscriptions">Suscripciones</string>
+    <string name="downloads">Descargas</string>
+    <string name="favorites">Videos que me gustan</string>
+    <string name="see_all">Ver todo</string>
+    <string name="no_history">Aún no hay historial de reproducción</string>
+    <string name="no_history_desc">Los videos que veas aparecerán aquí.</string>
+    <string name="no_downloads">Aún no hay descargas</string>
+    <string name="no_downloads_desc">Descarga videos para verlos sin conexión en cualquier momento.</string>
+    <string name="no_favorites">Aún no hay videos que te gusten</string>
+    <string name="no_favorites_desc">Los videos que te gusten aparecerán aquí.</string>
+    <string name="no_subscriptions">Aún no hay suscripciones</string>
+    <string name="no_subscriptions_desc">Suscríbete a tus canales favoritos para verlos aquí.</string>
+    <string name="no_playlists">Aún no hay listas de reproducción guardadas</string>
+    <string name="no_playlists_desc">Tus listas de reproducción guardadas se mostrarán aquí.</string>
+    <string name="discover_videos">Descubrir videos</string>
+    <string name="remove_from_favorites">Quitar de Videos que me gustan</string>
+    <string name="add_to_favorites">Añadir a Videos que me gustan</string>
+    <string name="delete_download_title">¿Eliminar descarga?</string>
+    <string name="delete_download_desc">¿Estás seguro de que deseas eliminar este video descargado?</string>
+
+    <!-- Search -->
+    <string name="search_placeholder">Buscar en PlayTube</string>
+    <string name="discover_new">Descubre algo nuevo</string>
+    <string name="recent_searches">Búsquedas recientes</string>
+    <string name="clear_all">Borrar todo</string>
+    <string name="sort_relevance">Todo</string>
+    <string name="sort_newest">Más recientes</string>
+    <string name="sort_most_viewed">Más vistos</string>
+    <string name="sort_top_rated">Mejor valorados</string>
+
+    <!-- Channel & Playlist -->
+    <string name="videos">Videos</string>
+    <string name="playlists">Listas de reproducción</string>
+    <string name="subscribers_hidden">Suscriptores ocultos</string>
+    <string name="subscribers_count">%s suscriptores</string>
+    <string name="playlist">Lista de reproducción</string>
+    <string name="by_author">De %s</string>
+    <string name="download_all">Descargar todo</string>
+    <string name="video_count">%s videos</string>
+    <string name="background_play">Reproducción en segundo plano</string>
+    <string name="background_play_desc">Mantener reproduciendo el audio al minimizar la aplicación</string>
+
+    <!-- Final Audit Additions -->
+    <string name="back_online">De nuevo en línea</string>
+    <string name="offline_dialog_text">Actualmente estás sin conexión. Revisa tus descargas.</string>
+    <string name="go_to_downloads">Ir a Descargas</string>
+    <string name="incognito_label">Incógnito</string>
+    <string name="smart_cleanup_title">Limpieza inteligente</string>
+    <string name="smart_cleanup_desc">Esto eliminará todos los videos descargados que ya hayas terminado de ver (&gt;90%).</string>
+    <string name="clean_now">Limpiar ahora</string>
+    <string name="clear_history_title">¿Borrar el historial de reproducción?</string>
+    <string name="clear_history_desc">¿Estás seguro de que deseas borrar todo tu historial de reproducción? Esta acción no se puede deshacer.</string>
+    <string name="pause_watch_history">Pausar el historial de reproducción</string>
+    <string name="not_interested">No me interesa</string>
+    <string name="up_next">A continuación</string>
+    <string name="play_now">Reproducir ahora</string>
+    <string name="search_offline">Buscar sin conexión...</string>
+    <string name="duration">Duración</string>
+    <string name="apply">Aplicar</string>
+    <string name="close_app_on_finish">Cerrar la aplicación al finalizar</string>
+    <string name="close_app_desc">Ahorrar batería cerrando PlayTube</string>
+    <string name="timer_minutes_placeholder">%d minutos</string>
+    <string name="subtitles">Subtítulos</string>
+    <string name="off">Desactivado</string>
+    <string name="history_cleared">Historial borrado</string>
+    <string name="ends_at">Termina a las %s</string>
+    <string name="video_quality">Calidad de video</string>
+    <string name="video">Video</string>
+    <string name="audio">Audio</string>
+    <string name="high_quality">Alta calidad</string>
+    <string name="download_quality">Calidad de descarga</string>
+    <string name="playlist_download_quality">Calidad de descarga de listas</string>
+    <string name="auto_generated">Generado automáticamente</string>
+    <string name="app_language">Idioma de la aplicación</string>
+    <string name="language_auto_generated">%1$s (%2$s)</string>
+
+    <!-- Sleep Timer -->
+    <string name="sleep_timer">Temporizador de apagado</string>
+    <string name="timer_off">Desactivado</string>
+    <string name="timer_15">15 minutos</string>
+    <string name="timer_30">30 minutos</string>
+    <string name="timer_45">45 minutos</string>
+    <string name="timer_60">60 minutos</string>
+    <string name="timer_end_of_video">Al finalizar el video</string>
+    <string name="timer_minutes_remaining">Quedan %d minutos</string>
+    <string name="timer_end_of_video_active">Se detiene al finalizar el video</string>
+
+    <!-- Settings -->
+    <string name="about_developer">Acerca del desarrollador</string>
+    <string name="developed_by">Desarrollado por Arslan Daim Shar</string>
+    <string name="ok">Aceptar</string>
+    <string name="confirm">Confirmar</string>
+    <string name="clear_all_downloads_title">¿Borrar todas las descargas?</string>
+    <string name="clear_all_downloads_desc">¿Estás seguro de que deseas eliminar todos los videos descargados? Esta acción no se puede deshacer.</string>
+    <string name="clear_learned_data_title">¿Borrar datos aprendidos?</string>
+    <string name="clear_learned_data_desc">Esto borrará todos los intereses aprendidos del usuario y reiniciará el motor de recomendaciones. Esta acción no se puede deshacer.</string>
+    <string name="settings_group_update">Actualización de la app</string>
+    <string name="settings_auto_update">Comprobar versiones en GitHub automáticamente</string>
+    <string name="settings_auto_update_desc">Notificar cuando haya una nueva versión disponible en GitHub</string>
+    <string name="update_available">Nueva actualización disponible: %s</string>
+    <string name="download_from_github">Descargar de GitHub</string>
+    <string name="settings_group_history_privacy">Historial y privacidad</string>
+    <string name="settings_view_history">Ver historial</string>
+    <string name="settings_view_history_desc">Gestionar tus videos vistos</string>
+    <string name="settings_pause_search_history">Pausar historial de búsqueda</string>
+    <string name="settings_pause_search_history_desc">Las sugerencias también se pausarán</string>
+    <string name="settings_pip">Imagen en imagen (PiP)</string>
+    <string name="settings_pip_desc">Seguir viendo en una ventana flotante pequeña</string>
+    <string name="settings_data_backup">Datos y copia de seguridad</string>
+    <string name="settings_data_backup_desc">Importar datos de Google Takeout y copias nativas</string>
+    <string name="settings_pause_recommendations">Pausar recomendaciones</string>
+    <string name="settings_pause_recommendations_desc">Dejar de aprender tus intereses temporalmente</string>
+    <string name="settings_clear_learned_data">Borrar datos aprendidos</string>
+    <string name="settings_clear_learned_data_desc_item">Restablecer el perfil del motor de recomendaciones</string>
+    <string name="settings_group_appearance_playback">Apariencia y reproducción</string>
+    <string name="settings_player_gestures">Gestos del reproductor</string>
+    <string name="settings_player_gestures_desc">Activar gestos de deslizar para volumen y brillo</string>
+    <string name="settings_material_you">Material You</string>
+    <string name="settings_material_you_desc">Adapta los colores al tema del dispositivo</string>
+    <string name="system_default">Predeterminado del sistema</string>
+    <string name="settings_subtitle_styles">Estilos de subtítulos</string>
+    <string name="settings_subtitle_styles_desc">Personalizar el tamaño de fuente y fondo</string>
+    <string name="subtitle_font_size">Tamaño de fuente: %dsp</string>
+    <string name="subtitle_background_opacity">Opacidad del fondo: %d%%</string>
+    <string name="subtitle_preview">Vista previa de subtítulos</string>
+    <string name="settings_group_content">Contenido</string>
+    <string name="settings_clear_downloads">Borrar todas las descargas</string>
+    <string name="settings_clear_downloads_desc">Eliminar todos los videos sin conexión</string>
+    <string name="settings_group_about">Acerca de</string>
+    <string name="settings_about_developer">Acerca del desarrollador</string>
+    <string name="settings_about_developer_desc">Información sobre el creador</string>
+    <string name="settings_view_source">Ver código fuente</string>
+    <string name="settings_view_source_desc">Echa un vistazo al proyecto en GitHub</string>
+    <string name="settings_app_version">Versión de la app</string>
+
+    <!-- Import Errors -->
+    <string name="error_history_not_found">No se encontró el archivo de historial en el ZIP o selección</string>
+    <string name="error_subscriptions_not_found">No se encontró el archivo de suscripciones en el ZIP o selección</string>
+    <string name="error_malformed_history">Archivo de historial con formato incorrecto</string>
+    <string name="error_malformed_csv">Archivo de suscripciones con formato incorrecto</string>
+    <string name="importing_items">Se importaron %d elementos...</string>
+</resources>

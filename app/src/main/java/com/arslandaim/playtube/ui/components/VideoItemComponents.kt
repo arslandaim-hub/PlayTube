@@ -54,6 +54,7 @@ import coil3.request.crossfade
 import com.arslandaim.playtube.utils.VideoUtils
 import com.arslandaim.playtube.utils.Constants
 import android.content.res.Configuration
+import coil3.size.Precision
 
 enum class ThumbnailQuality {
     Low, Medium, High, Ultra
@@ -70,15 +71,15 @@ fun ThumbnailImage(
 ) {
     val context = LocalContext.current
 
-    // Structured fallback chain based on requested quality
-    val sourceUrls = remember(videoId, thumbnailUrl, quality) {
-        // Attempt to extract ID if the provided URL is a YouTube image
+    val effectiveId = remember(videoId, thumbnailUrl) {
         val extractedId = if (thumbnailUrl.contains("ytimg.com") || thumbnailUrl.contains("youtube.com")) {
             VideoUtils.extractVideoId(thumbnailUrl)
         } else null
-        
-        val effectiveId = videoId.ifBlank { extractedId ?: "" }
-        
+        videoId.ifBlank { extractedId ?: "" }
+    }
+
+    // Structured fallback chain based on requested quality
+    val sourceUrls = remember(videoId, thumbnailUrl, quality, effectiveId) {
         if (effectiveId.isBlank()) {
             listOf(thumbnailUrl)
         } else {
@@ -115,7 +116,6 @@ fun ThumbnailImage(
         val width = constraints.maxWidth
         val height = constraints.maxHeight
 
-        // Shimmer only if we don't have even the basic version yet
         if (!isLoaded) {
             Box(
                 modifier = Modifier
@@ -127,7 +127,6 @@ fun ThumbnailImage(
         AsyncImage(
             model = ImageRequest.Builder(context)
                 .data(sourceUrls.getOrNull(currentUrlIndex))
-                .crossfade(200)
                 .size(width, height)
                 .precision(coil3.size.Precision.INEXACT)
                 .allowHardware(true)
@@ -139,8 +138,7 @@ fun ThumbnailImage(
                 if (currentUrlIndex < sourceUrls.size - 1) {
                     currentUrlIndex++
                 } else {
-                    // All fallbacks failed
-                    isLoaded = true // Stop shimmering
+                    isLoaded = true
                 }
             },
             contentDescription = null,
@@ -148,21 +146,6 @@ fun ThumbnailImage(
             contentScale = contentScale,
             filterQuality = filterQuality
         )
-        
-        // Background low-res pre-loader for fast feedback
-        if (!isLoaded && sourceUrls.size > 1 && currentUrlIndex == 0) {
-            val fallbackUrl = sourceUrls.last()
-            AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(fallbackUrl)
-                    .size(width / 4, height / 4) // Much smaller for pre-load
-                    .precision(coil3.size.Precision.INEXACT)
-                    .build(),
-                onSuccess = { /* Warm up cache */ },
-                contentDescription = null,
-                modifier = Modifier.size(1.dp).alpha(0f)
-            )
-        }
     }
 }
 

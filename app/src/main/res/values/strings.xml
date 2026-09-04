@@ -163,6 +163,8 @@
     <string name="settings_clear_learned_data">Clear learned data</string>
     <string name="settings_clear_learned_data_desc_item">Reset recommendation engine profile</string>
     <string name="settings_group_appearance_playback">Appearance &amp; Playback</string>
+    <string name="settings_player_gestures">Player Gestures</string>
+    <string name="settings_player_gestures_desc">Enable swipe gestures for volume and brightness</string>
     <string name="settings_material_you">Material You</string>
     <string name="settings_material_you_desc">Adapts device theme color</string>
     <string name="system_default">System Default</string>

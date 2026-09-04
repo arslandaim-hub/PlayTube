@@ -20,11 +20,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -121,51 +119,6 @@ private fun LibraryDashboard(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // 1. Immersive Ambient Mode (Profile Glow)
-        val lastVideoThumbnail = history.firstOrNull()?.thumbnailUrl
-        if (!lastVideoThumbnail.isNullOrBlank()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(260.dp)
-                    .graphicsLayer {
-                        alpha = 0.35f
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                            renderEffect = android.graphics.RenderEffect.createBlurEffect(
-                                110f, 110f, android.graphics.Shader.TileMode.CLAMP
-                            ).asComposeRenderEffect()
-                        }
-                    }
-                    .then(
-                        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
-                            Modifier.blur(90.dp)
-                        } else Modifier
-                    )
-            ) {
-                ThumbnailImage(
-                    videoId = "",
-                    thumbnailUrl = lastVideoThumbnail,
-                    quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.Low,
-                    modifier = Modifier.fillMaxSize()
-                )
-                
-                // Gradient to transition glow to background
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    MaterialTheme.colorScheme.background.copy(alpha = 0.8f),
-                                    MaterialTheme.colorScheme.background
-                                )
-                            )
-                        )
-                )
-            }
-        }
-
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()

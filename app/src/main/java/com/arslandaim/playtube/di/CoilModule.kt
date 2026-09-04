@@ -41,7 +41,7 @@ object CoilModule {
             .diskCache {
                 DiskCache.Builder()
                     .directory(context.cacheDir.resolve("image_cache").absolutePath.toPath())
-                    .maxSizePercent(0.10)
+                    .maxSizeBytes(250L * 1024L * 1024L) // 250MB persistent disk cache for ultra-HD thumbnails
                     .build()
             }
             .components {

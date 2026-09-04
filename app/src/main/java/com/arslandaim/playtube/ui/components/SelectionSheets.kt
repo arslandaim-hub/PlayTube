@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.arslandaim.playtube.R
 import com.arslandaim.playtube.domain.model.StreamItem
 import com.arslandaim.playtube.domain.model.SubtitleItem
+import com.arslandaim.playtube.utils.VideoChapter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -356,6 +357,58 @@ fun PlaylistDownloadSelectionSheet(
                             )
                         },
                         modifier = Modifier.clickable { onDownload(quality) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChapterSelectionSheet(
+    chapters: List<VideoChapter>,
+    currentPositionMs: Long,
+    onDismiss: () -> Unit,
+    onChapterSelected: (VideoChapter) -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(modifier = Modifier.padding(bottom = 32.dp)) {
+            Text(
+                text = "Video Chapters",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+
+            LazyColumn {
+                items(chapters) { chapter ->
+                    val isCurrent = currentPositionMs >= chapter.startMs
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                text = chapter.title,
+                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            )
+                        },
+                        supportingContent = {
+                            Text(
+                                text = chapter.formattedTimestamp(),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        },
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.PlaylistPlay,
+                                contentDescription = null,
+                                tint = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        modifier = Modifier.clickable { onChapterSelected(chapter) }
                     )
                 }
             }

@@ -132,7 +132,7 @@ fun DataManagementScreen(
                         title = "Restore Backup",
                         subtitle = "Restore your data from a previous backup",
                         icon = Icons.Default.Restore,
-                        onClick = { backupPicker.launch(arrayOf("application/zip")) }
+                        onClick = { backupPicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream", "application/json", "*/*")) }
                     )
                 }
             }

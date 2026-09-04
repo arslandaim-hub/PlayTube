@@ -49,10 +49,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import com.arslandaim.playtube.ui.theme.GlassAlpha
 import com.arslandaim.playtube.R
@@ -278,50 +276,6 @@ private fun HomeContent(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        val firstVideoThumbnail = state.trendingVideos.firstOrNull()?.thumbnailUrl
-
-        // Modern Ambient Glow (Professional Polish)
-        if (!firstVideoThumbnail.isNullOrBlank()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(300.dp)
-                    .graphicsLayer {
-                        alpha = 0.35f
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                            renderEffect = android.graphics.RenderEffect.createBlurEffect(
-                                120f, 120f, android.graphics.Shader.TileMode.CLAMP
-                            ).asComposeRenderEffect()
-                        }
-                    }
-                    .then(
-                        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
-                            Modifier.blur(100.dp)
-                        } else Modifier
-                    )
-            ) {
-                com.arslandaim.playtube.ui.components.ThumbnailImage(
-                    videoId = "",
-                    thumbnailUrl = firstVideoThumbnail,
-                    quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.Low,
-                    modifier = Modifier.fillMaxSize()
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            androidx.compose.ui.graphics.Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    MaterialTheme.colorScheme.background.copy(alpha = 0.6f),
-                                    MaterialTheme.colorScheme.background
-                                )
-                            )
-                        )
-                )
-            }
-        }
-
         PullToRefreshBox(
             isRefreshing = isRefreshing,
             onRefresh = { onRefresh() },

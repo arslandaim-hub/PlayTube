@@ -76,6 +76,9 @@ class PlaybackManager @Inject constructor(
     private val _playbackStats = MutableStateFlow(PlaybackStats())
     val playbackStats: StateFlow<PlaybackStats> = _playbackStats.asStateFlow()
 
+    private val _abLoopState = MutableStateFlow(ABLoopState())
+    val abLoopState: StateFlow<ABLoopState> = _abLoopState.asStateFlow()
+
     private var _lastPauseTimestamp = 0L
     val lastPauseTimestamp: Long get() = _lastPauseTimestamp
 
@@ -299,6 +302,9 @@ class PlaybackManager @Inject constructor(
 
         player.setMediaSource(newSource, false) // false = don't reset position
         player.prepare()
+        if (currentPosition > 0) {
+            player.seekTo(currentPosition)
+        }
         // No need to call play() if it was already playing
     }
 
@@ -423,6 +429,18 @@ class PlaybackManager @Inject constructor(
 
     fun updateCcState(enabled: Boolean, preferredLang: String?) {
         trackManager.updateCcState(player, enabled, preferredLang)
+    }
+
+    fun setABLoopPointA(pointA: Long?) {
+        _abLoopState.update { it.copy(pointA = pointA) }
+    }
+
+    fun setABLoopPointB(pointB: Long?) {
+        _abLoopState.update { it.copy(pointB = pointB) }
+    }
+
+    fun clearABLoop() {
+        _abLoopState.value = ABLoopState()
     }
 
     fun setSponsorSegments(segments: List<com.arslandaim.playtube.domain.model.SponsorSegment>) {
@@ -570,6 +588,16 @@ class PlaybackManager @Inject constructor(
                     }
                 }
 
+                // AB Loop Enforcement
+                val abState = _abLoopState.value
+                if (abState.isActive) {
+                    val start = abState.pointA!!
+                    val end = abState.pointB!!
+                    if (currentPos >= end || currentPos < start) {
+                        player.seekTo(start)
+                    }
+                }
+
                 delay(500)
             }
         }
@@ -634,3 +662,10 @@ data class PlaybackStats(
     val droppedFrames: Int = 0,
     val bandwidthEstimate: Long = 0
 )
+
+data class ABLoopState(
+    val pointA: Long? = null,
+    val pointB: Long? = null
+) {
+    val isActive: Boolean get() = pointA != null && pointB != null && pointB > pointA
+}

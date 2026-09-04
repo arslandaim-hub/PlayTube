@@ -52,6 +52,9 @@ class SettingsViewModel @Inject constructor(
     val isDynamicColorEnabled: StateFlow<Boolean> = preferencesManager.isDynamicColorEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    val isPlayerGesturesEnabled: StateFlow<Boolean> = preferencesManager.isPlayerGesturesEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
     val isRecommendationsPaused: StateFlow<Boolean> = preferencesManager.isRecommendationsPaused
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
@@ -99,6 +102,12 @@ class SettingsViewModel @Inject constructor(
     fun setDynamicColorEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesManager.setDynamicColorEnabled(enabled)
+        }
+    }
+
+    fun setPlayerGesturesEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesManager.setPlayerGesturesEnabled(enabled)
         }
     }
 

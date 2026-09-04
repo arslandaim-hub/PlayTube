@@ -23,11 +23,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
@@ -165,64 +162,6 @@ private fun SubscriptionFeedContent(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // 1. Immersive Ambient Header Glow
-        val activeFeed = state.activeFeed
-        val firstVideoThumbnail = activeFeed.videos.firstOrNull()?.thumbnailUrl
-        val selectedChannelThumbnail = state.subscriptions.find { it.channelId == state.selectedChannelId }?.thumbnailUrl
-        val ambientColorSource = selectedChannelThumbnail ?: firstVideoThumbnail
-
-        if (!ambientColorSource.isNullOrBlank()) {
-            val blurEffect = remember(ambientColorSource) {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                    android.graphics.RenderEffect.createBlurEffect(
-                        120f, 120f, android.graphics.Shader.TileMode.CLAMP
-                    ).asComposeRenderEffect()
-                } else null
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(280.dp)
-                    .graphicsLayer {
-                        alpha = 0.35f
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                            renderEffect = blurEffect
-                        }
-                    }
-                    .then(
-                        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
-                            Modifier.blur(100.dp)
-                        } else Modifier
-                    )
-            ) {
-                val backgroundColor = MaterialTheme.colorScheme.background
-                val ambientGradient = remember(backgroundColor) {
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            backgroundColor.copy(alpha = 0.8f),
-                            backgroundColor
-                        )
-                    )
-                }
-
-                com.arslandaim.playtube.ui.components.ThumbnailImage(
-                    videoId = "",
-                    thumbnailUrl = ambientColorSource,
-                    quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.Low,
-                    modifier = Modifier.fillMaxSize()
-                )
-                
-                // Vertical gradient to blend into background
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(ambientGradient)
-                )
-            }
-        }
-
         val pullToRefreshState = rememberPullToRefreshState()
         PullToRefreshBox(
             isRefreshing = isRefreshing,
@@ -232,6 +171,7 @@ private fun SubscriptionFeedContent(
             contentAlignment = Alignment.TopCenter
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
+                val activeFeed = state.activeFeed
                 val isLoadingInitial = activeFeed.isLoading && activeFeed.videos.isEmpty() && !state.isThoroughSearching
                 
                 if (isLoadingInitial) {

@@ -39,9 +39,11 @@
 # 8. JSOUP (Often used by NewPipe)
 -keep class org.jsoup.** { *; }
 
-# 9. PlayTube Models (Keep domain models to avoid serialization issues)
+# 9. PlayTube Models & Navigation (Keep data models, repository backup classes, and navigation)
 -keep class com.arslandaim.playtube.domain.model.** { *; }
--keep class com.arslandaim.playtube.data.local.** { *; }
+-keep class com.arslandaim.playtube.data.** { *; }
+-keep class com.arslandaim.playtube.ui.navigation.** { *; }
+-keepclassmembers class com.arslandaim.playtube.ui.navigation.** { *; }
 
 # 10. Missing classes detected by R8
 -dontwarn java.beans.BeanDescriptor

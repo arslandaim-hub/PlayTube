@@ -6,6 +6,7 @@
 package com.arslandaim.playtube.ui.screens.player
 
 import android.app.Activity
+import android.content.Context
 import android.content.pm.ActivityInfo
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -22,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.ClosedCaptionDisabled
 import androidx.compose.material.icons.filled.Description
@@ -46,7 +48,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
@@ -114,6 +115,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import com.arslandaim.playtube.utils.VideoChapter
 import kotlinx.coroutines.flow.SharedFlow
 
 @UnstableApi
@@ -157,6 +159,8 @@ fun PlayerScreen(
     val shouldCloseAppOnTimerFinish by viewModel.shouldCloseAppOnTimerFinish.collectAsStateWithLifecycle()
     val subtitleFontSize by viewModel.subtitleFontSize.collectAsStateWithLifecycle()
     val subtitleBackgroundOpacity by viewModel.subtitleBackgroundOpacity.collectAsStateWithLifecycle()
+    val isPlayerGesturesEnabled by viewModel.isPlayerGesturesEnabled.collectAsStateWithLifecycle()
+    val chapters by viewModel.chapters.collectAsStateWithLifecycle()
     val playbackPitch by viewModel.playbackPitch.collectAsStateWithLifecycle()
     val showStatsForNerds by viewModel.showStatsForNerds.collectAsStateWithLifecycle()
     val playbackStats by viewModel.playbackStats.collectAsStateWithLifecycle()
@@ -246,6 +250,7 @@ fun PlayerScreen(
             onToggleSubscription = viewModel::toggleSubscription,
             onSetQuality = viewModel::setQuality,
             onSetPlaybackSpeed = viewModel::setPlaybackSpeed,
+            onSetTemporarySpeedBoost = viewModel::setTemporarySpeedBoost,
             onToggleSubtitles = viewModel::toggleSubtitles,
             onSetSubtitleLanguage = viewModel::setSubtitleLanguage,
             onPlayPause = viewModel::togglePlayPause,
@@ -279,6 +284,8 @@ fun PlayerScreen(
             onToggleStats = viewModel::toggleStatsForNerds,
             subtitleFontSize = subtitleFontSize,
             subtitleBackgroundOpacity = subtitleBackgroundOpacity,
+            isPlayerGesturesEnabled = isPlayerGesturesEnabled,
+            chapters = chapters,
             comments = comments,
             isFetchingComments = isFetchingComments,
             onLoadComments = viewModel::loadComments,
@@ -336,6 +343,7 @@ private fun PlayerContent(
     onToggleSubscription: () -> Unit,
     onSetQuality: (com.arslandaim.playtube.domain.model.StreamItem?) -> Unit,
     onSetPlaybackSpeed: (Float) -> Unit,
+    onSetTemporarySpeedBoost: (Boolean) -> Unit,
     onToggleSubtitles: () -> Unit,
     onSetSubtitleLanguage: (String?) -> Unit,
     onPlayPause: () -> Unit,
@@ -369,6 +377,8 @@ private fun PlayerContent(
     onToggleStats: () -> Unit,
     subtitleFontSize: Float,
     subtitleBackgroundOpacity: Float,
+    isPlayerGesturesEnabled: Boolean = true,
+    chapters: List<VideoChapter> = emptyList(),
     comments: List<com.arslandaim.playtube.domain.model.CommentItem>,
     isFetchingComments: Boolean,
     onLoadComments: () -> Unit,
@@ -402,6 +412,29 @@ private fun PlayerContent(
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val view = LocalView.current
 
+    var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
+    var aspectRatioText by remember { mutableStateOf("Fit") }
+    var aspectRatioOverlayVisible by remember { mutableStateOf(false) }
+
+    fun cycleAspectRatio() {
+        if (!isLandscape) return
+        resizeMode = when (resizeMode) {
+            AspectRatioFrameLayout.RESIZE_MODE_FIT -> {
+                aspectRatioText = "Zoom (Fill)"
+                AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            }
+            AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> {
+                aspectRatioText = "Stretch"
+                AspectRatioFrameLayout.RESIZE_MODE_FILL
+            }
+            else -> {
+                aspectRatioText = "Fit"
+                AspectRatioFrameLayout.RESIZE_MODE_FIT
+            }
+        }
+        aspectRatioOverlayVisible = true
+    }
+
     LaunchedEffect(isLandscape) {
         val window = (context as? Activity)?.window ?: return@LaunchedEffect
         val controller = WindowCompat.getInsetsController(window, view)
@@ -411,16 +444,19 @@ private fun PlayerContent(
             controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         } else {
             controller.show(WindowInsetsCompat.Type.systemBars())
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            aspectRatioText = "Fit"
         }
     }
 
     // Gesture states
-    val audioManager = remember { context.getSystemService(android.content.Context.AUDIO_SERVICE) as AudioManager }
+    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     var brightnessOverlayVisible by remember { mutableStateOf(false) }
     var volumeOverlayVisible by remember { mutableStateOf(false) }
     var brightnessLevel by remember { mutableFloatStateOf(0f) }
     var volumeLevel by remember { mutableFloatStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
+    var isSpeedBoostActive by remember { mutableStateOf(false) }
 
     // Initialize brightnessLevel
     LaunchedEffect(Unit) {
@@ -744,59 +780,6 @@ private fun PlayerContent(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            // Dynamic Ambient Mode (Modern Glow Effect)
-            if (!isLandscape && (uiState is PlayerUiState.Success || initialThumbnail != null)) {
-                val ambientThumbnail = when(uiState) {
-                    is PlayerUiState.Success -> uiState.bundle.thumbnailUrl
-                    is PlayerUiState.Upcoming -> uiState.thumbnailUrl
-                    else -> initialThumbnail ?: VideoUtils.getBestThumbnailUrl(videoId)
-                }
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(300.dp) // Glow only around the top player area
-                        .graphicsLayer {
-                            alpha = 0.45f
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                                renderEffect = android.graphics.RenderEffect.createBlurEffect(
-                                    120f, 120f, android.graphics.Shader.TileMode.CLAMP
-                                ).asComposeRenderEffect()
-                            }
-                        }
-                        .then(
-                            if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
-                                Modifier.blur(100.dp)
-                            } else Modifier
-                        )
-                ) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(ambientThumbnail)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                        filterQuality = FilterQuality.Low
-                    )
-                    
-                    // Gradient overlay to fade ambient glow into background
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color.Transparent,
-                                        MaterialTheme.colorScheme.background.copy(alpha = 0.8f),
-                                        MaterialTheme.colorScheme.background
-                                    )
-                                )
-                            )
-                    )
-                }
-            }
 
             Column(
                 modifier = Modifier
@@ -899,6 +882,7 @@ private fun PlayerContent(
                         is PlayerUiState.Success -> {
                             val isLive = uiState.bundle.isLive
                             VideoPlayerGestureDetector(
+                                areVolumeBrightnessGesturesEnabled = isPlayerGesturesEnabled,
                                 onDoubleTapLeft = onSeekBackward,
                                 onDoubleTapRight = onSeekForward,
                                 onSingleTap = { controlsVisible = !controlsVisible },
@@ -932,28 +916,72 @@ private fun PlayerContent(
                                     volumeOverlayVisible = true
                                     brightnessOverlayVisible = false
                                 },
+                                onLongPressStart = {
+                                    if (!isLive && !isSpeedBoostActive) {
+                                        onSetTemporarySpeedBoost(true)
+                                        isSpeedBoostActive = true
+                                    }
+                                },
+                                onLongPressEnd = {
+                                    if (isSpeedBoostActive) {
+                                        onSetTemporarySpeedBoost(false)
+                                        isSpeedBoostActive = false
+                                    }
+                                },
                                 onDragEnd = { isDragging = false },
                                 onDragCancel = { isDragging = false }
                             ) {
-                                VideoPlayerView(
-                                    player = player,
-                                    modifier = Modifier.fillMaxSize()
-                                )
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    VideoPlayerView(
+                                        player = player,
+                                        resizeMode = resizeMode,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
 
-                                // Manual Subtitle Overlay
-                                if (isCcEnabled && activeCues.isNotEmpty()) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(bottom = if (controlsVisible) 64.dp else 24.dp),
-                                        contentAlignment = Alignment.BottomCenter
-                                    ) {
-                                        ManualSubtitleView(
-                                            cues = activeCues,
-                                            fontSize = subtitleFontSize,
-                                            backgroundOpacity = subtitleBackgroundOpacity,
-                                            modifier = Modifier.fillMaxWidth().wrapContentHeight()
+                                    // 2x Speed Boost Pill Overlay
+                                    if (isSpeedBoostActive) {
+                                        Surface(
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
+                                            shape = CircleShape,
+                                            modifier = Modifier
+                                                .align(Alignment.TopCenter)
+                                                .padding(top = 16.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "2x Speed",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // Manual Subtitle Overlay
+                                    if (isCcEnabled && activeCues.isNotEmpty()) {
+                                        val subtitlePaddingBottom by animateDpAsState(
+                                            targetValue = if (controlsVisible) 64.dp else 24.dp,
+                                            animationSpec = tween(durationMillis = 200),
+                                            label = "SubtitlePaddingAnimation"
                                         )
+
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(bottom = subtitlePaddingBottom),
+                                            contentAlignment = Alignment.BottomCenter
+                                        ) {
+                                            ManualSubtitleView(
+                                                cues = activeCues,
+                                                fontSize = subtitleFontSize,
+                                                backgroundOpacity = subtitleBackgroundOpacity,
+                                                modifier = Modifier.fillMaxWidth().wrapContentHeight()
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -989,12 +1017,14 @@ private fun PlayerContent(
                                     isCcEnabled = isCcEnabled,
                                     isIncognito = isIncognito,
                                     hasSubtitles = (uiState as? PlayerUiState.Success)?.bundle?.subtitles?.isNotEmpty() == true,
+                                    isAspectRatioEnabled = isLandscape,
                                     onPlayPause = onPlayPause,
                                     onSkipNext = onSkipNext,
                                     onSkipPrevious = onSkipPrevious,
                                     onToggleSubtitles = onToggleSubtitles,
                                     onShowSubtitleSettings = { showSubtitleSheet = true },
                                     onShowSettings = { showSettingsSheet = true },
+                                    onToggleAspectRatio = { cycleAspectRatio() },
                                     onBack = onBack
                                 )
                             }
@@ -1011,7 +1041,9 @@ private fun PlayerContent(
                                     if (isLive) 1f else if (dur > 0) bufferedPosition().toFloat() / dur else 0f
                                 },
                                 isInteractive = controlsVisible && !isLive,
-                                onSeek = { percentage ->
+                                chapters = chapters,
+                                durationMs = duration(),
+                                onSeek = { percentage: Float ->
                                     val totalDuration = duration()
                                     if (totalDuration > 0) {
                                         onSeekTo((percentage * totalDuration).toLong())
@@ -1339,12 +1371,14 @@ private fun PlayerControlsOverlay(
     isCcEnabled: Boolean,
     isIncognito: Boolean,
     hasSubtitles: Boolean,
+    isAspectRatioEnabled: Boolean = true,
     onPlayPause: () -> Unit,
     onSkipNext: () -> Unit,
     onSkipPrevious: () -> Unit,
     onToggleSubtitles: () -> Unit,
     onShowSubtitleSettings: () -> Unit,
     onShowSettings: () -> Unit,
+    onToggleAspectRatio: () -> Unit,
     onBack: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
@@ -1534,6 +1568,19 @@ private fun PlayerControlsOverlay(
                                 modifier = Modifier.size(22.dp)
                             )
                         }
+                    }
+
+                    IconButton(
+                        onClick = onToggleAspectRatio, 
+                        enabled = isAspectRatioEnabled,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AspectRatio, 
+                            contentDescription = null, 
+                            tint = if (isAspectRatioEnabled) Color.White else Color.White.copy(alpha = 0.38f), 
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
 
                     IconButton(onClick = onShowSettings, modifier = Modifier.size(40.dp)) {

@@ -178,12 +178,16 @@ class DownloadRepositoryImpl @Inject constructor(
             if (it.status == DownloadStatus.PAUSED || it.status == DownloadStatus.FAILED) {
                 downloadDao.updateDownload(it.copy(status = DownloadStatus.WAITING))
                 
+                // Clear videoUrl on resume of failed downloads so fresh URLs are fetched
+                val freshVideoUrl = if (it.status == DownloadStatus.FAILED) null else it.videoUrl
+                val freshAudioUrl = if (it.status == DownloadStatus.FAILED) null else it.audioUrl
+
                 val newMission = DownloadMissionEntity(
                     videoId = it.videoId,
                     title = it.title,
                     quality = it.quality ?: "Unknown",
-                    videoUrl = it.videoUrl,
-                    audioUrl = it.audioUrl,
+                    videoUrl = freshVideoUrl,
+                    audioUrl = freshAudioUrl,
                     format = it.format,
                     outputFilePath = it.filePath
                 )

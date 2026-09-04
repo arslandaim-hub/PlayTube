@@ -29,8 +29,14 @@ class SABRDataSource(
     private var bytesRemaining = 0L
     private var currentPosition = 0L
 
-    // Optimized chunk size for 1080p streaming (512KB to 1MB)
-    private val CHUNK_SIZE = 768 * 1024L 
+    private fun calculateDynamicChunkSize(): Long {
+        val bitrate = bandwidthMeter.bitrateEstimate
+        return when {
+            bitrate >= 5_000_000L -> 2_500 * 1024L // 2.5 MB for high-bitrate / fast connections
+            bitrate >= 2_000_000L -> 1_500 * 1024L // 1.5 MB for medium connections
+            else -> 512 * 1024L                   // 512 KB for low-bitrate / slow connections
+        }
+    }
 
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
@@ -57,10 +63,11 @@ class SABRDataSource(
             return
         }
 
+        val chunkSize = calculateDynamicChunkSize()
         val chunkLength = if (bytesRemaining == C.LENGTH_UNSET.toLong()) {
-            CHUNK_SIZE
+            chunkSize
         } else {
-            CHUNK_SIZE.coerceAtMost(bytesRemaining)
+            chunkSize.coerceAtMost(bytesRemaining)
         }
 
         if (chunkLength <= 0 && bytesRemaining != C.LENGTH_UNSET.toLong()) return

@@ -161,6 +161,8 @@
     <string name="settings_clear_learned_data">Wyczyść wyuczone dane</string>
     <string name="settings_clear_learned_data_desc_item">Zresetuj profil silnika rekomendacji</string>
     <string name="settings_group_appearance_playback">Wygląd i odtwarzanie</string>
+    <string name="settings_player_gestures">Gesty odtwarzacza</string>
+    <string name="settings_player_gestures_desc">Włącz gesty przesunięcia dla głośności i jasności</string>
     <string name="settings_material_you">Material You</string>
     <string name="settings_material_you_desc">Dostosowuje kolory do motywu urządzenia</string>
     <string name="system_default">Domyślny systemowy</string>

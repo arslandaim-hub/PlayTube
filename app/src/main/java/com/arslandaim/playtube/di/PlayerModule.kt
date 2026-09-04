@@ -109,12 +109,12 @@ object PlayerModule {
     ): ExoPlayer {
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                45000,  // Min buffer: 45s (Up from 30s)
-                180000, // Max buffer: 180s (Up from 120s)
-                3500,   // Buffer for playback: 3.5s (Up from 2.5s)
-                7000    // Buffer for playback after rebuffer: 7s (Up from 5s)
+                30000,  // Min buffer: 30s (Optimal start latency)
+                90000,  // Max buffer: 90s (Balanced memory and cellular data usage)
+                3000,   // Buffer for playback: 3.0s
+                5000    // Buffer for playback after rebuffer: 5.0s
             )
-            .setBackBuffer(20000, true) // 20s back buffer (Up from 15s)
+            .setBackBuffer(20000, true) // 20s back buffer for instant backward seek
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 

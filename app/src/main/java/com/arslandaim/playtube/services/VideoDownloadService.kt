@@ -10,6 +10,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -53,6 +57,7 @@ class VideoDownloadService : Service() {
         super.onCreate()
         downloader = ParallelDownloader(okHttpClient, missionDao)
         createNotificationChannel()
+        registerNetworkCallback()
         
         // Recover from stale states (app crash/kill)
         serviceScope.launch {
@@ -424,10 +429,56 @@ class VideoDownloadService : Service() {
         }
     }
 
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
+    private fun registerNetworkCallback() {
+        val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+        networkCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                PTLog.d("VideoDownloadService", "Network restored! Checking for pending missions to auto-resume...")
+                serviceScope.launch {
+                    try {
+                        val missions = missionDao.getAllMissions().first()
+                        missions.forEach { mission ->
+                            if (mission.status == MissionStatus.DOWNLOADING || mission.status == MissionStatus.QUEUED) {
+                                if (!activeMissions.containsKey(mission.id)) {
+                                    PTLog.d("VideoDownloadService", "Auto-resuming mission ${mission.id} for ${mission.videoId}")
+                                    startMission(mission.id)
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        PTLog.e("VideoDownloadService", "Failed auto-resume on network available", e)
+                    }
+                }
+            }
+        }
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        try {
+            connectivityManager.registerNetworkCallback(request, networkCallback!!)
+        } catch (e: Exception) {
+            PTLog.w("VideoDownloadService", "Failed to register network callback: ${e.message}")
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        try {
+            val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as? ConnectivityManager
+            networkCallback?.let { connectivityManager?.unregisterNetworkCallback(it) }
+        } catch (e: Exception) {
+            PTLog.w("VideoDownloadService", "Error unregistering network callback: ${e.message}")
+        } finally {
+            networkCallback = null
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
         super.onDestroy()
+        unregisterNetworkCallback()
         serviceScope.cancel()
     }
 

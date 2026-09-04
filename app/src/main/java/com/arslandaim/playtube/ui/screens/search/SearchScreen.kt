@@ -27,12 +27,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalFocusManager
@@ -206,14 +203,6 @@ private fun SearchContent(
         modifier = Modifier.nestedScroll(scrollVisibilityConnection),
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
-            val firstItemThumbnail = (uiState as? SearchUiState.Success)?.items?.firstOrNull()?.let { item ->
-                when (item) {
-                    is SearchItem.Video -> item.video.thumbnailUrl
-                    is SearchItem.Channel -> item.thumbnailUrl
-                    is SearchItem.Playlist -> item.playlist.thumbnailUrl
-                }
-            }
-            
             GlassSurface(
                 tonalElevation = 0.dp,
                 border = null,
@@ -223,60 +212,7 @@ private fun SearchContent(
                     MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
                 }
             ) {
-                // Parent Box to establish scope for matchParentSize()
                 Box(modifier = Modifier.fillMaxWidth()) {
-                    
-                    // 1. Ambient Glow Layer (Dynamically bounded)
-                    if (!firstItemThumbnail.isNullOrBlank() && !isSearchFocused) {
-                        val blurEffect = remember(firstItemThumbnail) {
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                                android.graphics.RenderEffect.createBlurEffect(
-                                    110f, 110f, android.graphics.Shader.TileMode.CLAMP
-                                ).asComposeRenderEffect()
-                            } else null
-                        }
-                        
-                        val backgroundColor = MaterialTheme.colorScheme.background
-                        val ambientGradient = remember(backgroundColor) {
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    backgroundColor.copy(alpha = 0.5f),
-                                    backgroundColor.copy(alpha = 0.9f)
-                                )
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize() // critical fix replacing the hardcoded 180.dp
-                                .graphicsLayer {
-                                    alpha = 0.35f
-                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                                        renderEffect = blurEffect
-                                    }
-                                }
-                                .then(
-                                    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
-                                        Modifier.blur(90.dp)
-                                    } else Modifier
-                                )
-                        ) {
-                            ThumbnailImage(
-                                videoId = "",
-                                thumbnailUrl = firstItemThumbnail,
-                                quality = ThumbnailQuality.Low,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(ambientGradient)
-                            )
-                        }
-                    }
-
-                    // 2. Foreground Content Layer (Sets the height for the Box)
                     Column(modifier = Modifier.fillMaxWidth().statusBarsPadding()) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),

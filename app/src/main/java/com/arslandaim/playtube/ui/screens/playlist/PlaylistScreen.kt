@@ -22,11 +22,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
-import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -355,51 +353,6 @@ private fun PlaylistContent(
                 is PlaylistUiState.Success -> {
                     val details = uiState.details
                     
-                    // Immersive Ambient Mode
-                    if (!details.thumbnailUrl.isBlank()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(360.dp)
-                                .graphicsLayer {
-                                    translationY = -scrollOffset * 0.4f
-                                    alpha = ((1f - (scrollOffset / (bannerHeightPx * 1.5f))) * bannerProgress).coerceIn(0f, 0.6f)
-                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                                        renderEffect = android.graphics.RenderEffect.createBlurEffect(
-                                            80f, 80f, android.graphics.Shader.TileMode.CLAMP
-                                        ).asComposeRenderEffect()
-                                    }
-                                }
-                                .then(
-                                    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
-                                        Modifier.blur(60.dp)
-                                    } else Modifier
-                                )
-                        ) {
-                            AsyncImage(
-                                model = details.thumbnailUrl,
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop,
-                                filterQuality = FilterQuality.Low
-                            )
-                            
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(
-                                        androidx.compose.ui.graphics.Brush.verticalGradient(
-                                            colors = listOf(
-                                                Color.Transparent,
-                                                MaterialTheme.colorScheme.background.copy(alpha = 0.9f),
-                                                MaterialTheme.colorScheme.background
-                                            )
-                                        )
-                                    )
-                            )
-                        }
-                    }
-
                     // Banner
                     Box(
                         modifier = Modifier
