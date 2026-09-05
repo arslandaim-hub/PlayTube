@@ -24,6 +24,7 @@ import com.arslandaim.playtube.R
 import com.arslandaim.playtube.utils.PTLog
 import com.arslandaim.playtube.utils.VideoUtils
 import com.google.gson.Gson
+import com.google.gson.Strictness
 import com.google.gson.stream.JsonReader
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -76,7 +77,7 @@ class ImportWorker @AssistedInject constructor(
         
         var importedCount = 0
         var malformedCount = 0
-        val inputStream = getStreamForFile(uri, listOf("watch-history.json", "MyActivity.json")) 
+        val inputStream = getWatchHistoryStream(uri)
             ?: return Result.failure(Data.Builder().putString("error", context.getString(R.string.error_history_not_found)).build())
 
         inputStream.use { stream ->
@@ -147,7 +148,7 @@ class ImportWorker @AssistedInject constructor(
         updateProgress(0f, context.getString(R.string.loading))
         
         val channelIds = mutableListOf<String>()
-        val inputStream = getStreamForFile(uri, listOf("subscriptions.csv")) 
+        val inputStream = getSubscriptionsStream(uri) 
             ?: return Result.failure(Data.Builder().putString("error", context.getString(R.string.error_subscriptions_not_found)).build())
 
         inputStream.use { stream ->
@@ -207,40 +208,158 @@ class ImportWorker @AssistedInject constructor(
 
         return Result.success(Data.Builder().putInt(COUNT_KEY, importedCount).build())
     }
-
-    private fun getStreamForFile(uri: Uri, targetFileNames: List<String>): InputStream? {
+    
+    private fun getSubscriptionsStream(uri: Uri): InputStream? {
         val cr = context.contentResolver
         val type = cr.getType(uri)
-        val isZip = type == "application/zip" || 
-                    uri.path?.endsWith(".zip", ignoreCase = true) == true ||
-                    type == "application/x-zip-compressed"
+        val isZip = type == "application/zip" ||
+            uri.path?.endsWith(".zip", ignoreCase = true) == true ||
+            type == "application/x-zip-compressed"
 
         if (!isZip) {
-            // Check if the single file matches any of our targets
             val fileName = getFileName(uri) ?: ""
-            return if (targetFileNames.any { fileName.endsWith(it, ignoreCase = true) }) {
+            return if (fileName.endsWith("csv", ignoreCase = true)) {
                 cr.openInputStream(uri)
             } else {
                 null
             }
         }
 
-        // Search in ZIP
         return try {
-            val zipInputStream = ZipInputStream(cr.openInputStream(uri))
-            var entry = zipInputStream.nextEntry
+            val zip = ZipInputStream(cr.openInputStream(uri))
+            val byName = mutableListOf<String>()
+            val fallback = mutableListOf<String>()
+            var entry = zip.nextEntry
             while (entry != null) {
                 val name = entry.name
-                if (targetFileNames.any { name.endsWith(it, ignoreCase = true) }) {
-                    return zipInputStream
+                if (name.endsWith(".csv", ignoreCase = true)) {
+                    fallback.add(name)
+                    if (name.lowercase().contains("subscriptions")) {
+                        byName.add(name)
+                    }
                 }
-                zipInputStream.closeEntry()
-                entry = zipInputStream.nextEntry
+                zip.closeEntry()
+                entry = zip.nextEntry
             }
-            zipInputStream.close()
-            null
+            zip.close()
+
+            val chosen = byName.firstOrNull() ?: fallback.firstOrNull() ?: return null
+            openZipEntry(uri, chosen)
         } catch (e: Exception) {
             null
+        }
+    }
+
+    private fun getWatchHistoryStream(uri: Uri): InputStream? {
+        val cr = context.contentResolver
+        val type = cr.getType(uri)
+        val isZip = type == "application/zip" ||
+            uri.path?.endsWith(".zip", ignoreCase = true) == true ||
+            type == "application/x-zip-compressed"
+
+        if (!isZip) {
+            val fileName = getFileName(uri) ?: ""
+            return if (fileName.endsWith("json", ignoreCase = true)) {
+                cr.openInputStream(uri)
+            } else {
+                null
+            }
+        }
+
+        return try {
+            val zip = ZipInputStream(cr.openInputStream(uri))
+            val watchByName = mutableListOf<String>()
+            val watchByContent = mutableListOf<String>()
+            val jsonFallback = mutableListOf<String>()
+            var entry = zip.nextEntry
+            while (entry != null) {
+                val name = entry.name
+                if (name.endsWith(".json", ignoreCase = true)) {
+                    jsonFallback.add(name)
+                    if (isWatchHistoryFileName(name)) {
+                        watchByName.add(name)
+                    } else if (isWatchHistoryJson(zip)) {
+                        watchByContent.add(name)
+                    }
+                }
+                zip.closeEntry()
+                entry = zip.nextEntry
+            }
+            zip.close()
+
+            val chosen = watchByName.firstOrNull()
+                ?: watchByContent.firstOrNull()
+                ?: jsonFallback.firstOrNull()
+                ?: return null
+            openZipEntry(uri, chosen)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun openZipEntry(uri: Uri, entryName: String): ZipInputStream? {
+        val zip = try {
+            ZipInputStream(context.contentResolver.openInputStream(uri))
+        } catch (e: Exception) {
+            return null
+        }
+        var entry = zip.nextEntry
+        while (entry != null) {
+            if (entry.name == entryName) return zip
+            zip.closeEntry()
+            entry = zip.nextEntry
+        }
+        zip.close()
+        return null
+    }
+
+    private fun isWatchHistoryFileName(name: String): Boolean {
+        val lower = name.lowercase()
+        return lower.contains("watch-history") ||
+            (lower.contains("watch") && lower.contains("history"))
+    }
+
+    private fun isWatchHistoryJson(stream: InputStream): Boolean {
+        return try {
+            val reader = JsonReader(InputStreamReader(stream, "UTF-8"))
+            reader.strictness = Strictness.LENIENT
+            reader.beginArray()
+            var watchLike = 0
+            var searchLike = 0
+            var count = 0
+            while (reader.hasNext() && count < 30) {
+                reader.beginObject()
+                var hasSubtitles = false
+                var hasDescription = false
+                var hasDetails = false
+                while (reader.hasNext()) {
+                    when (reader.nextName()) {
+                        "subtitles" -> {
+                            hasSubtitles = true
+                            reader.skipValue()
+                        }
+                        "description" -> {
+                            hasDescription = true
+                            reader.skipValue()
+                        }
+                        "details" -> {
+                            hasDetails = true
+                            reader.skipValue()
+                        }
+                        else -> reader.skipValue()
+                    }
+                }
+                reader.endObject()
+                if (hasSubtitles && !hasDescription && !hasDetails) {
+                    watchLike++
+                } else if (hasDescription || hasDetails) {
+                    searchLike++
+                }
+                count++
+            }
+            watchLike >= searchLike && watchLike > 0
+        } catch (e: Exception) {
+            false
         }
     }
 
