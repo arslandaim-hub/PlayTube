@@ -1,3 +1,0 @@
-- [x] Remove duplicate timestamps above progress bar in `PlaybackProgressComponents.kt`
-- [x] Replace repeat button with fullscreen button in the top action pill in `PlayerScreen.kt`
-- [x] Build and verify project (`app:assembleDebug` success)
