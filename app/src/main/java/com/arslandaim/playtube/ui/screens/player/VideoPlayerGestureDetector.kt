@@ -37,6 +37,19 @@ fun VideoPlayerGestureDetector(
 ) {
     val doubleTapTimeout = 300L
     
+    val currentOnDoubleTapLeft by rememberUpdatedState(onDoubleTapLeft)
+    val currentOnDoubleTapRight by rememberUpdatedState(onDoubleTapRight)
+    val currentOnSingleTap by rememberUpdatedState(onSingleTap)
+    val currentOnSwipeDown by rememberUpdatedState(onSwipeDown)
+    val currentOnSwipeUp by rememberUpdatedState(onSwipeUp)
+    val currentOnDragStart by rememberUpdatedState(onDragStart)
+    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
+    val currentOnDragCancel by rememberUpdatedState(onDragCancel)
+    val currentOnVerticalSwipeLeft by rememberUpdatedState(onVerticalSwipeLeft)
+    val currentOnVerticalSwipeRight by rememberUpdatedState(onVerticalSwipeRight)
+    val currentOnLongPressStart by rememberUpdatedState(onLongPressStart)
+    val currentOnLongPressEnd by rememberUpdatedState(onLongPressEnd)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -62,19 +75,19 @@ fun VideoPlayerGestureDetector(
 
                                 if (tapCount >= 2) {
                                     down.consume()
-                                    if (isLeftSide) onDoubleTapLeft() else onDoubleTapRight()
+                                    if (isLeftSide) currentOnDoubleTapLeft() else currentOnDoubleTapRight()
                                     tapCount = 0
                                 } else {
                                     longPressJob = launch {
                                         delay(450L)
                                         isLongPressActive = true
-                                        onLongPressStart()
+                                        currentOnLongPressStart()
                                     }
 
                                     tapJob = launch {
                                         delay(doubleTapTimeout)
                                         if (tapCount == 1 && !isLongPressActive) {
-                                            onSingleTap()
+                                            currentOnSingleTap()
                                         }
                                         tapCount = 0
                                     }
@@ -86,7 +99,7 @@ fun VideoPlayerGestureDetector(
                                 longPressJob?.cancel()
                                 if (isLongPressActive) {
                                     isLongPressActive = false
-                                    onLongPressEnd()
+                                    currentOnLongPressEnd()
                                 }
                             }
                         }
@@ -101,7 +114,7 @@ fun VideoPlayerGestureDetector(
                         totalDrag = 0f
                         dragStartX = offset.x
                         if (areVolumeBrightnessGesturesEnabled) {
-                            onDragStart()
+                            currentOnDragStart()
                         }
                     },
                     onVerticalDrag = { change, dragAmount ->
@@ -115,9 +128,9 @@ fun VideoPlayerGestureDetector(
                             val sideMargin = screenWidth * 0.30f // 30% from each side
                             
                             if (change.position.x < sideMargin) {
-                                onVerticalSwipeLeft(dragPercentage)
+                                currentOnVerticalSwipeLeft(dragPercentage)
                             } else if (change.position.x > screenWidth - sideMargin) {
-                                onVerticalSwipeRight(dragPercentage)
+                                currentOnVerticalSwipeRight(dragPercentage)
                             }
                         }
                     },
@@ -131,15 +144,15 @@ fun VideoPlayerGestureDetector(
 
                         if (startedInCenter) {
                             if (totalDrag > 150) {
-                                onSwipeDown()
+                                currentOnSwipeDown()
                             } else if (totalDrag < -150) {
-                                onSwipeUp()
+                                currentOnSwipeUp()
                             }
                         }
-                        onDragEnd()
+                        currentOnDragEnd()
                     },
                     onDragCancel = {
-                        onDragCancel()
+                        currentOnDragCancel()
                     }
                 )
             }

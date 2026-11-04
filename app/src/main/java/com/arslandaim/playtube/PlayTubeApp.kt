@@ -44,6 +44,7 @@ class PlayTubeApp : Application(), Configuration.Provider, SingletonImageLoader.
     @Inject lateinit var connectivityObserver: ConnectivityObserver
     @Inject lateinit var preferencesManager: PreferencesManager
     @Inject lateinit var database: PlayTubeDatabase
+    @Inject lateinit var startupWarmups: com.arslandaim.playtube.data.network.StartupWarmups
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     
@@ -79,7 +80,7 @@ class PlayTubeApp : Application(), Configuration.Provider, SingletonImageLoader.
             createNotificationChannel()
             observeConnectivity()
             checkVersionAndCleanup()
-            prewarmNetwork()
+            startupWarmups.initiate(applicationScope)
         } catch (e: Exception) {
             PTLog.e("PlayTubeApp", "Critical error during Application initialization", e)
         }
@@ -124,24 +125,6 @@ class PlayTubeApp : Application(), Configuration.Provider, SingletonImageLoader.
             file.listFiles()?.forEach { deleteRecursively(it) }
         }
         file.delete()
-    }
-
-    private fun prewarmNetwork() {
-        val youtubeRequest = Request.Builder().url("https://www.youtube.com").head().build()
-        val gVideoRequest = Request.Builder().url("https://www.googlevideo.com").head().build()
-
-        val callback = object : okhttp3.Callback {
-            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
-                PTLog.w("PlayTubeApp", "Network pre-warming failed for ${call.request().url}: ${e.message}")
-            }
-            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
-                response.close()
-                PTLog.d("PlayTubeApp", "Network pre-warmed for ${call.request().url}")
-            }
-        }
-
-        okHttpClient.newCall(youtubeRequest).enqueue(callback)
-        okHttpClient.newCall(gVideoRequest).enqueue(callback)
     }
 
     private fun observeConnectivity() {

@@ -274,12 +274,12 @@ private fun PlaylistContent(
     snackbarMessage: kotlinx.coroutines.flow.SharedFlow<String>,
     onLoadPlaylist: (String) -> Unit,
     onDownloadPlaylist: () -> Unit,
-    onDownloadPlaylistConfirm: (String) -> Unit,
+    onDownloadPlaylistConfirm: (String, Boolean) -> Unit,
     onDismissPlaylistDownload: () -> Unit,
     onTogglePlaylistFavorite: () -> Unit,
     onToggleVideoFavorite: (VideoItem) -> Unit,
     onDownloadVideo: (VideoItem) -> Unit,
-    onDownloadConfirm: (VideoItem, com.arslandaim.playtube.domain.model.StreamBundle, String?, String?, String?, Boolean) -> Unit,
+    onDownloadConfirm: (VideoItem, com.arslandaim.playtube.domain.model.StreamBundle, String?, String?, String?, Boolean, Boolean) -> Unit,
     onDismissDownload: () -> Unit,
     onBarsVisibilityChange: (Boolean) -> Unit,
     onNavigateToDownloads: () -> Unit,
@@ -459,15 +459,17 @@ private fun PlaylistContent(
             is com.arslandaim.playtube.ui.components.DownloadDialogState.ShowDialog -> {
                 DownloadSelectionSheet(
                     videoStreams = downloadState.bundle.videoStreams,
+                    subtitles = downloadState.bundle.subtitles,
                     onDismiss = { onDismissDownload() },
-                    onDownload = { stream ->
+                    onDownload = { stream, downloadSubtitles ->
                         onDownloadConfirm(
                             downloadState.video,
                             downloadState.bundle,
                             stream.url,
                             stream.quality,
                             stream.format,
-                            stream.isAdaptive
+                            stream.isAdaptive,
+                            downloadSubtitles
                         )
                     }
                 )

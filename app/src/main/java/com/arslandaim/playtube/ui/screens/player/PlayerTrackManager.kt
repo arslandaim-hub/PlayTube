@@ -12,7 +12,6 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import com.arslandaim.playtube.domain.model.StreamBundle
-import com.arslandaim.playtube.domain.model.SubtitleItem
 import java.util.Locale
 import javax.inject.Inject
 
@@ -24,24 +23,44 @@ class PlayerTrackManager @Inject constructor() {
         
         if (enabled) {
             parametersBuilder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-            
-            if (preferredLang != null) {
-                parametersBuilder.setPreferredTextLanguage(preferredLang)
-                parametersBuilder.clearOverridesOfType(C.TRACK_TYPE_TEXT)
-            }
-            
+            parametersBuilder.clearOverridesOfType(C.TRACK_TYPE_TEXT)
+
             val currentTracks = player.currentTracks
-            val hasActiveTextTrack = currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected }
-            
-            if (!hasActiveTextTrack) {
+            var selectedOverride: TrackSelectionOverride? = null
+
+            // 1. Try to find a track matching preferredLang
+            if (!preferredLang.isNullOrBlank()) {
                 for (group in currentTracks.groups) {
                     if (group.type == C.TRACK_TYPE_TEXT && group.isSupported) {
-                        parametersBuilder.addOverride(
-                            TrackSelectionOverride(group.mediaTrackGroup, 0)
-                        )
+                        for (i in 0 until group.length) {
+                            val format = group.getTrackFormat(i)
+                            val lang = format.language ?: ""
+                            val label = format.label ?: ""
+                            if (lang.equals(preferredLang, ignoreCase = true) ||
+                                lang.startsWith(preferredLang, ignoreCase = true) ||
+                                preferredLang.startsWith(lang, ignoreCase = true) ||
+                                label.contains(preferredLang, ignoreCase = true)) {
+                                selectedOverride = TrackSelectionOverride(group.mediaTrackGroup, i)
+                                break
+                            }
+                        }
+                    }
+                    if (selectedOverride != null) break
+                }
+            }
+
+            // 2. If no preferred language match found, pick the first supported text track
+            if (selectedOverride == null) {
+                for (group in currentTracks.groups) {
+                    if (group.type == C.TRACK_TYPE_TEXT && group.isSupported) {
+                        selectedOverride = TrackSelectionOverride(group.mediaTrackGroup, 0)
                         break
                     }
                 }
+            }
+
+            if (selectedOverride != null) {
+                parametersBuilder.addOverride(selectedOverride)
             }
         } else {
             parametersBuilder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
@@ -70,7 +89,8 @@ class PlayerTrackManager @Inject constructor() {
                 .setMimeType(mimeType)
                 .setLanguage(subtitle.languageTag)
                 .setLabel(label)
-                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                .setRoleFlags(C.ROLE_FLAG_CAPTION or C.ROLE_FLAG_SUBTITLE)
+                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT or C.SELECTION_FLAG_AUTOSELECT)
                 .build()
         }
     }

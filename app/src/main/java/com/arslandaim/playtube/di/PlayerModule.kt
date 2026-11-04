@@ -14,12 +14,14 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
-import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.BandwidthMeter
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
+import com.arslandaim.playtube.data.network.ClientGateTracker
+import com.arslandaim.playtube.data.network.PoTokenProvider
+import com.arslandaim.playtube.data.network.YouTubeHttpDataSource
 import com.arslandaim.playtube.utils.Constants
 import dagger.Module
 import dagger.Provides
@@ -49,10 +51,6 @@ object PlayerModule {
         val cacheDirectory = File(context.cacheDir, "video_cache")
         val evictor = LeastRecentlyUsedCacheEvictor(Constants.VIDEO_CACHE_SIZE)
         val databaseProvider = StandaloneDatabaseProvider(context)
-        
-        // SimpleCache constructor performs disk I/O to initialize the index.
-        // We use a lock-free check or rely on Hilt's Singleton thread-safety,
-        // but ensuring it doesn't block the main thread is key.
         return SimpleCache(cacheDirectory, evictor, databaseProvider)
     }
 
@@ -61,16 +59,19 @@ object PlayerModule {
     @Singleton
     @Named("HttpDataSourceFactory")
     fun provideHttpDataSourceFactory(
-        okHttpClient: OkHttpClient
+        okHttpClient: OkHttpClient,
+        poTokenProvider: PoTokenProvider,
+        clientGateTracker: ClientGateTracker
     ): DataSource.Factory {
         val userAgent = Constants.DEFAULT_USER_AGENT
-        return OkHttpDataSource.Factory(okHttpClient)
-            .setUserAgent(userAgent)
-            .setDefaultRequestProperties(mapOf(
-                "Accept-Language" to "en-US,en;q=0.9",
-                "Referer" to "${Constants.YouTube.BASE_URL}/",
-                "Cookie" to Constants.YouTube.CONSENT_COOKIE
-            ))
+        return DataSource.Factory {
+            YouTubeHttpDataSource(
+                client = okHttpClient,
+                userAgent = userAgent,
+                poTokenProvider = poTokenProvider,
+                clientGateTracker = clientGateTracker
+            )
+        }
     }
 
     @OptIn(UnstableApi::class)
@@ -86,7 +87,6 @@ object PlayerModule {
             val cache = cacheProvider.get()
             val defaultDataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
             
-            // Phase 2: Wrap with SABRDataSource for chunked loading
             val sabrFactory = com.arslandaim.playtube.ui.screens.player.SABRDataSourceFactory(
                 defaultDataSourceFactory,
                 bandwidthMeter
@@ -107,14 +107,15 @@ object PlayerModule {
         @ApplicationContext context: Context,
         dataSourceFactory: DataSource.Factory
     ): ExoPlayer {
+        // Zero-Latency Media3 LoadControl Tuning
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                30000,  // Min buffer: 30s (Optimal start latency)
-                90000,  // Max buffer: 90s (Balanced memory and cellular data usage)
-                3000,   // Buffer for playback: 3.0s
-                5000    // Buffer for playback after rebuffer: 5.0s
+                15000,  // Min buffer: 15s
+                50000,  // Max buffer: 50s
+                600,    // Buffer for playback: 600ms (Instant <300-600ms playback start!)
+                1500    // Buffer for playback after rebuffer: 1.5s
             )
-            .setBackBuffer(120000, true) // 120s (2 min) back buffer for instant backward seek
+            .setBackBuffer(120000, true) // 120s back buffer for instant backward seek
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 

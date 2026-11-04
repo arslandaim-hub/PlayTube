@@ -74,8 +74,8 @@ fun SubscriptionFeedScreen(
     val onFavoriteClick = remember(viewModel) { { video: VideoItem -> viewModel.toggleFavorite(video) } }
     val onDownloadClick = remember(viewModel) { { video: VideoItem -> viewModel.prepareDownload(video) } }
     val onDownloadConfirm = remember(viewModel) {
-        { video: VideoItem, bundle: com.arslandaim.playtube.domain.model.StreamBundle, url: String?, quality: String?, format: String?, isAdaptive: Boolean ->
-            viewModel.download(video, bundle, url, quality, format, isAdaptive)
+        { video: VideoItem, bundle: com.arslandaim.playtube.domain.model.StreamBundle, url: String?, quality: String?, format: String?, isAdaptive: Boolean, downloadSubtitles: Boolean ->
+            viewModel.download(video, bundle, url, quality, format, isAdaptive, downloadSubtitles)
         }
     }
     val onDismissDownload = remember(viewModel) { { viewModel.dismissDownloadDialog() } }
@@ -127,7 +127,7 @@ private fun SubscriptionFeedContent(
     onRefresh: () -> Unit,
     onFavoriteClick: (VideoItem) -> Unit,
     onDownloadClick: (VideoItem) -> Unit,
-    onDownloadConfirm: (VideoItem, com.arslandaim.playtube.domain.model.StreamBundle, String?, String?, String?, Boolean) -> Unit,
+    onDownloadConfirm: (VideoItem, com.arslandaim.playtube.domain.model.StreamBundle, String?, String?, String?, Boolean, Boolean) -> Unit,
     onDismissDownload: () -> Unit,
     onChannelSelected: (String?) -> Unit,
     onLoadMore: () -> Unit,
@@ -286,15 +286,17 @@ private fun SubscriptionFeedContent(
             is DownloadDialogState.ShowDialog -> {
                 DownloadSelectionSheet(
                     videoStreams = downloadDialogState.bundle.videoStreams,
+                    subtitles = downloadDialogState.bundle.subtitles,
                     onDismiss = { onDismissDownload() },
-                    onDownload = { stream ->
+                    onDownload = { stream, downloadSubtitles ->
                         onDownloadConfirm(
                             downloadDialogState.video,
                             downloadDialogState.bundle,
                             stream.url,
                             stream.quality,
                             stream.format,
-                            stream.isAdaptive
+                            stream.isAdaptive,
+                            downloadSubtitles
                         )
                     }
                 )

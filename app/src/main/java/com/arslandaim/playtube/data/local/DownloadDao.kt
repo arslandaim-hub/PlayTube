@@ -34,6 +34,9 @@ interface DownloadDao {
     @Query("UPDATE downloads SET status = :status WHERE videoId = :videoId")
     suspend fun setDownloadStatus(videoId: String, status: DownloadStatus)
 
+    @Query("UPDATE downloads SET subtitlePath = :subtitlePath, subtitleLanguage = :subtitleLanguage WHERE videoId = :videoId")
+    suspend fun updateSubtitlePath(videoId: String, subtitlePath: String, subtitleLanguage: String?)
+
     @Query("SELECT * FROM downloads WHERE status = 'DOWNLOADING' OR status = 'PENDING'")
     suspend fun getActiveDownloads(): List<DownloadEntity>
 

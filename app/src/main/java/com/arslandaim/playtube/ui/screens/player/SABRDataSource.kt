@@ -13,10 +13,12 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.upstream.BandwidthMeter
 import com.arslandaim.playtube.utils.PTLog
+import java.io.IOException
 
 /**
- * High-performance Chunked Adaptive Streaming DataSource (SABR Proxy)
- * Intercepts requests and loads media in small byte-range chunks for resilience.
+ * High-performance Chunked Adaptive Streaming DataSource (SABR Proxy).
+ * Intercepts requests and loads media in optimal bounded byte-range chunks.
+ * Bypasses YouTube's CDN bandwidth throttling on video streams for instant playback.
  */
 @UnstableApi
 class SABRDataSource(
@@ -24,51 +26,148 @@ class SABRDataSource(
     private val bandwidthMeter: BandwidthMeter
 ) : DataSource {
 
-    private var currentDataSpec: DataSpec? = null
-    private var opened = false
-    private var bytesRemaining = 0L
+    companion object {
+        private const val CHUNK_SIZE = 2 * 1024 * 1024L // 2 MB bounded chunk
+        private const val MAX_RETRIES = 2
+    }
+
+    private var originalDataSpec: DataSpec? = null
+    private var isChunked = false
     private var currentPosition = 0L
+    private var totalLength = C.LENGTH_UNSET.toLong()
+    private var bytesRemainingInOriginal = C.LENGTH_UNSET.toLong()
+    private var currentChunkRemaining = 0L
+    private var opened = false
 
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
     }
 
     override fun open(dataSpec: DataSpec): Long {
-        currentDataSpec = dataSpec
+        originalDataSpec = dataSpec
         currentPosition = dataSpec.position
+        totalLength = dataSpec.length
+        bytesRemainingInOriginal = dataSpec.length
+
+        val scheme = dataSpec.uri.scheme
+        val isNetworkStream = scheme == "http" || scheme == "https"
+
+        // Enable chunking for network streams when requested length is open-ended or larger than CHUNK_SIZE
+        isChunked = isNetworkStream && (dataSpec.length == C.LENGTH_UNSET.toLong() || dataSpec.length > CHUNK_SIZE)
+
         opened = true
 
-        try {
-            val bytes = upstream.open(dataSpec)
-            bytesRemaining = bytes
-            PTLog.d("SABRDataSource", "Opened stream at ${dataSpec.position}, bytesRemaining=$bytes")
-            return bytes
-        } catch (e: Exception) {
-            PTLog.e("SABRDataSource", "Failed to open stream at ${dataSpec.position}", e)
-            throw e
+        return if (isChunked) {
+            openNextChunkWithRetry()
+            if (dataSpec.length != C.LENGTH_UNSET.toLong()) dataSpec.length else C.LENGTH_UNSET.toLong()
+        } else {
+            try {
+                val bytes = upstream.open(dataSpec)
+                PTLog.d("SABRDataSource", "Opened direct stream at ${dataSpec.position}, bytes=$bytes")
+                bytes
+            } catch (e: Exception) {
+                PTLog.e("SABRDataSource", "Failed to open direct stream at ${dataSpec.position}", e)
+                throw e
+            }
         }
+    }
+
+    private fun openNextChunkWithRetry() {
+        val original = originalDataSpec ?: return
+        var attempts = 0
+        var lastException: Exception? = null
+
+        val requestLength = if (bytesRemainingInOriginal != C.LENGTH_UNSET.toLong()) {
+            CHUNK_SIZE.coerceAtMost(bytesRemainingInOriginal)
+        } else {
+            CHUNK_SIZE
+        }
+
+        val chunkSpec = original.buildUpon()
+            .setPosition(currentPosition)
+            .setLength(requestLength)
+            .build()
+
+        while (attempts <= MAX_RETRIES) {
+            try {
+                val chunkBytes = upstream.open(chunkSpec)
+                currentChunkRemaining = if (chunkBytes != C.LENGTH_UNSET.toLong()) chunkBytes else requestLength
+                PTLog.d("SABRDataSource", "Opened chunk at pos=$currentPosition, chunkSize=$currentChunkRemaining")
+                return
+            } catch (e: Exception) {
+                lastException = e
+                attempts++
+                if (attempts <= MAX_RETRIES) {
+                    PTLog.w("SABRDataSource", "Retrying chunk open (attempt $attempts) at pos=$currentPosition")
+                    try { upstream.close() } catch (_: Exception) {}
+                }
+            }
+        }
+        throw lastException ?: IOException("Failed to open chunk at pos=$currentPosition")
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         if (!opened) return C.RESULT_END_OF_INPUT
+        if (length == 0) return 0
 
-        val bytesRead = upstream.read(buffer, offset, length)
-        if (bytesRead != C.RESULT_END_OF_INPUT) {
+        if (!isChunked) {
+            return upstream.read(buffer, offset, length)
+        }
+
+        if (bytesRemainingInOriginal == 0L) {
+            return C.RESULT_END_OF_INPUT
+        }
+
+        val readLength = if (currentChunkRemaining > 0) {
+            length.toLong().coerceAtMost(currentChunkRemaining).toInt()
+        } else {
+            length
+        }
+
+        var bytesRead = upstream.read(buffer, offset, readLength)
+
+        if (bytesRead == C.RESULT_END_OF_INPUT || bytesRead == 0) {
+            // End of current chunk - attempt to open next chunk if more bytes are expected
+            if (bytesRemainingInOriginal == C.LENGTH_UNSET.toLong() || bytesRemainingInOriginal > 0) {
+                try {
+                    upstream.close()
+                } catch (_: Exception) {}
+
+                try {
+                    openNextChunkWithRetry()
+                    bytesRead = upstream.read(buffer, offset, length)
+                } catch (e: Exception) {
+                    PTLog.e("SABRDataSource", "Failed to fetch subsequent chunk at pos=$currentPosition", e)
+                    return C.RESULT_END_OF_INPUT
+                }
+            } else {
+                return C.RESULT_END_OF_INPUT
+            }
+        }
+
+        if (bytesRead > 0) {
             currentPosition += bytesRead
-            if (bytesRemaining != C.LENGTH_UNSET.toLong()) {
-                bytesRemaining -= bytesRead
+            if (currentChunkRemaining != C.LENGTH_UNSET.toLong() && currentChunkRemaining > 0) {
+                currentChunkRemaining -= bytesRead
+            }
+            if (bytesRemainingInOriginal != C.LENGTH_UNSET.toLong()) {
+                bytesRemainingInOriginal = (bytesRemainingInOriginal - bytesRead).coerceAtLeast(0L)
             }
         }
 
         return bytesRead
     }
 
-    override fun getUri(): Uri? = upstream.getUri()
+    override fun getUri(): Uri? = upstream.getUri() ?: originalDataSpec?.uri
 
     override fun close() {
         if (opened) {
             opened = false
-            upstream.close()
+            try {
+                upstream.close()
+            } catch (e: Exception) {
+                PTLog.w("SABRDataSource", "Error closing upstream: ${e.message}")
+            }
         }
     }
 }

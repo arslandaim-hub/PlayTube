@@ -73,10 +73,17 @@ class DownloadRepositoryImpl @Inject constructor(
         format: String?,
         audioUrl: String?,
         playlistId: String?,
-        playlistTitle: String?
+        playlistTitle: String?,
+        subtitleUrl: String?,
+        subtitleLanguage: String?
     ) {
         val extension = if (format?.contains("webm", ignoreCase = true) == true) "webm" else "mp4"
         val filePath = File(context.getExternalFilesDir(null), "$videoId.$extension").absolutePath
+        val subtitlePath = if (!subtitleUrl.isNullOrBlank()) {
+            val lang = subtitleLanguage ?: "en"
+            File(context.getExternalFilesDir(null), "${videoId}_$lang.vtt").absolutePath
+        } else null
+
         val entity = DownloadEntity(
             videoId = videoId,
             title = title,
@@ -91,7 +98,9 @@ class DownloadRepositoryImpl @Inject constructor(
             videoUrl = url,
             audioUrl = audioUrl,
             playlistId = playlistId,
-            playlistTitle = playlistTitle
+            playlistTitle = playlistTitle,
+            subtitlePath = subtitlePath,
+            subtitleLanguage = subtitleLanguage
         )
         downloadDao.insertDownload(entity)
         
@@ -103,7 +112,10 @@ class DownloadRepositoryImpl @Inject constructor(
             videoUrl = url,
             audioUrl = audioUrl,
             format = format,
-            outputFilePath = filePath
+            outputFilePath = filePath,
+            subtitleUrl = subtitleUrl,
+            subtitlePath = subtitlePath,
+            subtitleLanguage = subtitleLanguage
         )
         val missionId = missionDao.insertMission(mission)
         

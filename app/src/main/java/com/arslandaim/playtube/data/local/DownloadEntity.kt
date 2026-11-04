@@ -25,7 +25,9 @@ data class DownloadEntity(
     val videoUrl: String?,
     val audioUrl: String? = null,
     val playlistId: String? = null,
-    val playlistTitle: String? = null
+    val playlistTitle: String? = null,
+    val subtitlePath: String? = null,
+    val subtitleLanguage: String? = null
 ) {
     fun toVideoItem() = VideoItem(
         id = videoId,

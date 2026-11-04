@@ -120,6 +120,22 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
             preferences[DYNAMIC_COLOR_ENABLED] ?: false
         }
 
+    open val isBlockAiContentEnabled: Flow<Boolean> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) emit(emptyPreferences())
+            else throw exception
+        }.map { preferences ->
+            preferences[BLOCK_AI_CONTENT_ENABLED] ?: true
+        }
+
+    open val appThemeColor: Flow<String> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) emit(emptyPreferences())
+            else throw exception
+        }.map { preferences ->
+            preferences[APP_THEME_COLOR] ?: "RED"
+        }
+
     open val isRecommendationsPaused: Flow<Boolean> = dataStore.data
         .catch { exception ->
             if (exception is IOException) {
@@ -284,6 +300,18 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
         }
     }
 
+    suspend fun setBlockAiContentEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[BLOCK_AI_CONTENT_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setAppThemeColor(colorName: String) {
+        dataStore.edit { preferences ->
+            preferences[APP_THEME_COLOR] = colorName
+        }
+    }
+
     suspend fun setRecommendationsPaused(paused: Boolean) {
         dataStore.edit { preferences ->
             preferences[RECOMMENDATIONS_PAUSED] = paused
@@ -390,6 +418,8 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
         val SEARCH_GRID_VIEW = booleanPreferencesKey("search_grid_view")
         val AUTO_UPDATE_ENABLED = booleanPreferencesKey("auto_update_enabled")
         val DYNAMIC_COLOR_ENABLED = booleanPreferencesKey("dynamic_color_enabled")
+        val BLOCK_AI_CONTENT_ENABLED = booleanPreferencesKey("block_ai_content_enabled")
+        val APP_THEME_COLOR = stringPreferencesKey("app_theme_color")
         val RECOMMENDATIONS_PAUSED = booleanPreferencesKey("recommendations_paused")
         val AUTOPLAY_ENABLED = booleanPreferencesKey("autoplay_enabled")
         val INCOGNITO_MODE = booleanPreferencesKey("incognito_mode")

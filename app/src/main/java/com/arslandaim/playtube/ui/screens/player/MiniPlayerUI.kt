@@ -49,16 +49,15 @@ fun MiniPlayerUI(
 
     Surface(
         modifier = modifier
-            .width(200.dp)
-            .height(112.5.dp)
-            .padding(8.dp)
+            .fillMaxSize()
+            .padding(4.dp)
             .clickable(
                 onClick = onMaximize,
                 indication = null,
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
             ),
         color = containerColor,
-        shape = RoundedCornerShape(12.dp), // Slightly sharper for rectangular look
+        shape = RoundedCornerShape(6.dp), // Sharper/pointier corners
         shadowElevation = 8.dp,
         border = androidx.compose.foundation.BorderStroke(
             width = 1.dp,

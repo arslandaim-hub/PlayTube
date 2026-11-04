@@ -18,16 +18,19 @@ import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
 import java.io.InputStream
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Adaptive Chunk-Recovery DataSource for High-Resilience Streaming.
- * Implements byte-range splitting and retry-on-failure for media chunks.
+ * Implements byte-range splitting, connection reuse, request sequence numbering (&rn=),
+ * and gate tracker failure recording for YouTube CDN streams.
  */
 @UnstableApi
 class YouTubeHttpDataSource(
     private val client: OkHttpClient,
     private val userAgent: String,
-    private val poTokenProvider: PoTokenProvider
+    private val poTokenProvider: PoTokenProvider,
+    private val clientGateTracker: ClientGateTracker
 ) : BaseDataSource(true), HttpDataSource {
 
     private val requestProperties = HttpDataSource.RequestProperties()
@@ -36,13 +39,22 @@ class YouTubeHttpDataSource(
     private var inputStream: InputStream? = null
     private var opened = false
     private var bytesRemaining = 0L
+    private val requestCounter = AtomicInteger(1)
 
     override fun open(dataSpec: DataSpec): Long {
         this.dataSpec = dataSpec
-        PTLog.d("YouTubeHttpDataSource", "Opening stream: ${dataSpec.uri}")
+        var targetUrl = dataSpec.uri.toString()
+
+        // Append request sequence number (&rn=) for googlevideo CDN stream requests to avoid throttling
+        if (targetUrl.contains("googlevideo.com") && !targetUrl.contains("&rn=")) {
+            val count = requestCounter.getAndIncrement()
+            targetUrl = if (targetUrl.contains("?")) "$targetUrl&rn=$count" else "$targetUrl?rn=$count"
+        }
+
+        PTLog.d("YouTubeHttpDataSource", "Opening stream: $targetUrl")
 
         val requestBuilder = Request.Builder()
-            .url(dataSpec.uri.toString())
+            .url(targetUrl)
             .header("User-Agent", userAgent)
 
         // Attach PoToken and VisitorData
@@ -63,6 +75,7 @@ class YouTubeHttpDataSource(
             this.response = callResponse
 
             if (!callResponse.isSuccessful) {
+                clientGateTracker.recordFailure("ANDROID", callResponse.code)
                 val headers = requestProperties.getSnapshot().mapValues { listOf(it.value) }
                 throw HttpDataSource.InvalidResponseCodeException(
                     callResponse.code,
@@ -74,6 +87,7 @@ class YouTubeHttpDataSource(
                 )
             }
 
+            clientGateTracker.recordSuccess("ANDROID")
             val body = callResponse.body
             inputStream = body.byteStream()
             

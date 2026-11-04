@@ -5,6 +5,7 @@
 */
 package com.arslandaim.playtube.ui.screens.library
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -191,11 +192,11 @@ fun ModernHistoryCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(14.dp))
                 .border(
                     width = 0.5.dp, 
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f), 
-                    shape = RoundedCornerShape(18.dp)
+                    shape = RoundedCornerShape(14.dp)
                 )
         ) {
             ThumbnailImage(
@@ -344,11 +345,11 @@ fun ModernPlaylistCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(14.dp))
                 .border(
                     width = 0.5.dp, 
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f), 
-                    shape = RoundedCornerShape(18.dp)
+                    shape = RoundedCornerShape(14.dp)
                 )
         ) {
             ThumbnailImage(
@@ -547,11 +548,11 @@ fun ModernDownloadCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(14.dp))
                 .border(
                     width = 0.5.dp, 
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f), 
-                    shape = RoundedCornerShape(18.dp)
+                    shape = RoundedCornerShape(14.dp)
                 )
         ) {
             ThumbnailImage(
@@ -801,17 +802,17 @@ fun VideoRow(
                 enabled = onRowClickEnabled,
                 onClick = onClick
             )
-            .padding(vertical = 10.dp, horizontal = 20.dp),
+            .padding(vertical = 10.dp, horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
                 .size(width = 150.dp, height = 84.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(14.dp))
                 .border(
                     width = 0.5.dp, 
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f), 
-                    shape = RoundedCornerShape(16.dp)
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f), 
+                    shape = RoundedCornerShape(14.dp)
                 )
         ) {
             ThumbnailImage(
@@ -820,12 +821,25 @@ fun VideoRow(
                 quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.High,
                 modifier = Modifier.fillMaxSize()
             )
+
+            // Soft Gradient Vignette
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
+                            startY = 40f
+                        )
+                    )
+            )
             
-            // Premium Duration Badge
+            // Frosted Glass Pill Duration Badge
             if (duration > 0) {
                 Surface(
-                    color = Color.Black.copy(alpha = 0.7f),
-                    shape = RoundedCornerShape(6.dp),
+                    color = Color.Black.copy(alpha = 0.70f),
+                    shape = CircleShape,
+                    border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.25f)),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(6.dp)
@@ -835,9 +849,9 @@ fun VideoRow(
                         color = Color.White,
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 10.sp,
-                            fontWeight = FontWeight.Black
+                            fontWeight = FontWeight.Bold
                         ),
-                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
             }

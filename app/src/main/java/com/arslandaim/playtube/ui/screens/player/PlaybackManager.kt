@@ -41,7 +41,8 @@ class PlaybackManager @Inject constructor(
     private val okHttpClient: okhttp3.OkHttpClient,
     @Named("HttpDataSourceFactory") private val httpDataSourceFactory: DataSource.Factory,
     private val dataSourceFactory: DataSource.Factory,
-    private val trackManager: PlayerTrackManager
+    private val trackManager: PlayerTrackManager,
+    private val dashManifestGenerator: com.arslandaim.playtube.data.network.AdaptiveDashManifestGenerator
 ) {
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
@@ -86,6 +87,8 @@ class PlaybackManager @Inject constructor(
     private var currentBundle: StreamBundle? = null
     private var currentStream: StreamItem? = null
     private var isAutoQualityEnabled = true
+    private var currentCcEnabled = false
+    private var currentPreferredLang: String? = null
     private var sponsorSegments: List<com.arslandaim.playtube.domain.model.SponsorSegment> = emptyList()
 
     private var managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -166,6 +169,18 @@ class PlaybackManager @Inject constructor(
             _playbackStats.update { it.copy(width = videoSize.width, height = videoSize.height) }
         }
 
+        override fun onRenderedFirstFrame() {
+            val videoId = player.currentMediaItem?.mediaId
+            if (videoId != null) {
+                com.arslandaim.playtube.utils.InstantPlaybackTracker.onFirstFrameRendered(videoId)
+            }
+        }
+
+        override fun onTracksChanged(tracks: Tracks) {
+            trackManager.updateCcState(player, currentCcEnabled, currentPreferredLang)
+            PTLog.d("PlaybackManager", "onTracksChanged: updated CC state (enabled=$currentCcEnabled, lang=$currentPreferredLang)")
+        }
+
         override fun onMetadata(metadata: Metadata) {
             // Handle metadata if needed
         }
@@ -236,11 +251,8 @@ class PlaybackManager @Inject constructor(
                 val audioSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(audioUrl))
                 player.setMediaSource(MergingMediaSource(videoSource, audioSource))
             } else {
-                // Fallback: If adaptive is requested but no audio stream is found, 
-                // try to find a non-adaptive stream (standard MPEG-4) to avoid silent playback.
                 val fallbackStream = bundle.videoStreams.find { !it.isAdaptive }
                 if (fallbackStream != null) {
-                    PTLog.w("PlaybackManager", "Adaptive stream requested but audio URL missing. Falling back to standard stream: ${fallbackStream.quality}")
                     val fallbackMediaItem = mediaItem.buildUpon().setUri(fallbackStream.url).build()
                     player.setMediaSource(mediaSourceFactory.createMediaSource(fallbackMediaItem))
                 } else {
@@ -308,17 +320,20 @@ class PlaybackManager @Inject constructor(
         // No need to call play() if it was already playing
     }
 
-    fun playLocal(videoId: String, file: java.io.File, title: String, uploader: String, thumbnail: String?) {
+    fun playLocal(videoId: String, file: java.io.File, title: String, uploader: String, thumbnail: String?, bundle: StreamBundle? = null) {
         val metadata = MediaMetadata.Builder()
             .setTitle(title)
             .setArtist(uploader)
             .setArtworkUri(thumbnail?.let { Uri.parse(it) })
             .build()
 
+        val subtitleConfigs = bundle?.let { trackManager.createSubtitleConfigs(it) } ?: emptyList()
+
         val mediaItem = MediaItem.Builder()
             .setUri(Uri.fromFile(file))
             .setMediaId(videoId)
             .setMediaMetadata(metadata)
+            .setSubtitleConfigurations(subtitleConfigs)
             .build()
 
         player.stop()
@@ -326,6 +341,10 @@ class PlaybackManager @Inject constructor(
         player.setMediaItem(mediaItem)
         player.prepare()
         player.playWhenReady = true
+
+        if (bundle != null && bundle.subtitles.isNotEmpty()) {
+            updateCcState(true, bundle.subtitles.first().languageTag)
+        }
     }
 
     fun stop() {
@@ -427,7 +446,46 @@ class PlaybackManager @Inject constructor(
         player.setPlaybackParameters(PlaybackParameters(player.playbackParameters.speed, pitch))
     }
 
+    fun switchAudioTrack(videoId: String, bundle: StreamBundle, audioStream: StreamItem) {
+        val position = player.currentPosition
+        val isPlaying = player.isPlaying
+        
+        val videoStream = currentStream ?: bundle.videoStreams.firstOrNull() ?: return
+        currentStream = videoStream
+
+        val metadata = MediaMetadata.Builder()
+            .setTitle(bundle.title)
+            .setArtist(bundle.uploaderName)
+            .setArtworkUri(bundle.thumbnailUrl?.let { Uri.parse(it) })
+            .build()
+
+        val subtitleConfigs = trackManager.createSubtitleConfigs(bundle)
+        val mediaItem = MediaItem.Builder()
+            .setUri(videoStream.url)
+            .setMediaId(videoId)
+            .setMediaMetadata(metadata)
+            .setSubtitleConfigurations(subtitleConfigs)
+            .build()
+
+        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
+        val videoSource = mediaSourceFactory.createMediaSource(mediaItem)
+        val audioSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(audioStream.url))
+        val mergingSource = MergingMediaSource(videoSource, audioSource)
+
+        PTLog.d("PlaybackManager", "Switching audio track for $videoId to ${audioStream.quality}")
+        player.setMediaSource(mergingSource, false)
+        player.prepare()
+        if (position > 0) {
+            player.seekTo(position)
+        }
+        if (isPlaying) {
+            player.play()
+        }
+    }
+
     fun updateCcState(enabled: Boolean, preferredLang: String?) {
+        currentCcEnabled = enabled
+        currentPreferredLang = preferredLang
         trackManager.updateCcState(player, enabled, preferredLang)
     }
 

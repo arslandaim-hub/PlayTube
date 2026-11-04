@@ -1,0 +1,210 @@
+<resources>
+    <string name="app_name">PlayTube</string>
+
+    <!-- General -->
+    <string name="retry">Повторить</string>
+    <string name="back">Назад</string>
+    <string name="cancel">Отмена</string>
+    <string name="delete">Удалить</string>
+    <string name="search">Поиск</string>
+    <string name="no_internet">Нет подключения к Интернету</string>
+    <string name="error_prefix">Ошибка: %s</string>
+    <string name="clear">Очистить</string>
+    <string name="close">Закрыть</string>
+
+    <!-- Home -->
+    <string name="tab_for_you">Для вас</string>
+    <string name="tab_subscriptions">Подписки</string>
+    <string name="personalized_title">Персональные рекомендации</string>
+    <string name="personalized_desc">На основе вашей истории поиска</string>
+    <string name="no_subscriptions_videos">Видео из ваших подписок пока нет.</string>
+    <string name="no_videos_found">Видео не найдены.</string>
+    <string name="continue_playing">Продолжить просмотр</string>
+
+    <!-- Player -->
+    <string name="quality">Качество</string>
+    <string name="playback_speed">Скорость воспроизведения</string>
+    <string name="description">Описание</string>
+    <string name="more">Ещё</string>
+    <string name="related_videos">Похожие видео</string>
+    <string name="download">Скачать</string>
+    <string name="downloaded">Скачано</string>
+    <string name="like">Нравится</string>
+    <string name="liked">Понравилось</string>
+    <string name="save">Сохранить</string>
+    <string name="saved">Сохранено</string>
+    <string name="share">Поделиться</string>
+    <string name="info">Информация</string>
+    <string name="subscribe">Подписаться</string>
+    <string name="subscribed">Вы подписаны</string>
+    <string name="auto">Авто</string>
+    <string name="normal_speed">Обычная</string>
+    <string name="no_description">Описание отсутствует</string>
+    <string name="loading">Загрузка...</string>
+    <string name="toggle_subtitles">Субтитры</string>
+    <string name="settings">Настройки</string>
+    <string name="waiting_for_connection">Ожидание подключения...</string>
+
+    <!-- Library -->
+    <string name="library">Библиотека</string>
+    <string name="history">История</string>
+    <string name="subscriptions">Подписки</string>
+    <string name="downloads">Скачивания</string>
+    <string name="favorites">Понравившиеся видео</string>
+    <string name="see_all">Смотреть все</string>
+    <string name="no_history">История просмотров пуста</string>
+    <string name="no_history_desc">Здесь будут отображаться просмотренные видео.</string>
+    <string name="no_downloads">Нет скачанных видео</string>
+    <string name="no_downloads_desc">Скачивайте видео, чтобы смотреть их оффлайн в любое время.</string>
+    <string name="no_favorites">Нет понравившихся видео</string>
+    <string name="no_favorites_desc">Здесь будут отображаться понравившиеся видео.</string>
+    <string name="no_subscriptions">Нет подписок</string>
+    <string name="no_subscriptions_desc">Подпишитесь на любимые каналы, чтобы следить за новыми видео.</string>
+    <string name="no_playlists">Нет сохранённых плейлистов</string>
+    <string name="no_playlists_desc">Здесь будут отображаться ваши сохранённые плейлисты.</string>
+    <string name="discover_videos">Искать видео</string>
+    <string name="remove_from_favorites">Удалить из понравившихся</string>
+    <string name="add_to_favorites">Добавить в понравившиеся</string>
+    <string name="delete_download_title">Удалить скачанное видео?</string>
+    <string name="delete_download_desc">Вы уверены, что хотите удалить это скачанное видео?</string>
+
+    <!-- Search -->
+    <string name="search_placeholder">Поиск в PlayTube</string>
+    <string name="discover_new">Откройте для себя что-то новое</string>
+    <string name="recent_searches">Недавние поиски</string>
+    <string name="clear_all">Очистить всё</string>
+    <string name="sort_relevance">Все</string>
+    <string name="sort_newest">Новые</string>
+    <string name="sort_most_viewed">По просмотрам</string>
+    <string name="sort_top_rated">Высокий рейтинг</string>
+
+    <!-- Channel & Playlist -->
+    <string name="videos">Видео</string>
+    <string name="playlists">Плейлисты</string>
+    <string name="subscribers_hidden">Число подписчиков скрыто</string>
+    <string name="subscribers_count">%s подписчиков</string>
+    <string name="playlist">Плейлист</string>
+    <string name="by_author">Автор: %s</string>
+    <string name="download_all">Скачать всё</string>
+    <string name="video_count">%s видео</string>
+    <string name="background_play">Фоновое воспроизведение</string>
+    <string name="background_play_desc">Продолжать воспроизведение аудио при сворачивании приложения</string>
+
+    <!-- Final Audit Additions -->
+    <string name="back_online">Снова в сети</string>
+    <string name="offline_dialog_text">Вы находитесь в оффлайн-режиме. Проверьте ваши скачанные видео.</string>
+    <string name="go_to_downloads">Перейти к скачиваниям</string>
+    <string name="incognito_label">Инкогнито</string>
+    <string name="smart_cleanup_title">Умная очистка</string>
+    <string name="smart_cleanup_desc">Удалит все скачанные видео, которые вы уже просмотрели (>90%).</string>
+    <string name="clean_now">Очистить сейчас</string>
+    <string name="clear_history_title">Очистить историю просмотров?</string>
+    <string name="clear_history_desc">Вы уверены, что хотите очистить всю историю просмотров? Это действие нельзя отменить.</string>
+    <string name="pause_watch_history">Приостановить запись истории</string>
+    <string name="not_interested">Не интересует</string>
+    <string name="up_next">Следующее</string>
+    <string name="play_now">Воспроизвести сейчас</string>
+    <string name="search_offline">Поиск оффлайн...</string>
+    <string name="duration">Длительность</string>
+    <string name="apply">Применить</string>
+    <string name="close_app_on_finish">Закрыть приложение по окончании</string>
+    <string name="close_app_desc">Экономия заряда батареи путём закрытия PlayTube</string>
+    <string name="timer_minutes_placeholder">%d мин.</string>
+    <string name="subtitles">Субтитры</string>
+    <string name="off">Выкл.</string>
+    <string name="history_cleared">История очищена</string>
+    <string name="ends_at">Завершится в %s</string>
+    <string name="video_quality">Качество видео</string>
+    <string name="video">Видео</string>
+    <string name="audio">Аудио</string>
+    <string name="high_quality">Высокое качество</string>
+    <string name="download_quality">Качество скачивания</string>
+    <string name="playlist_download_quality">Качество скачивания плейлистов</string>
+    <string name="auto_generated">Автоматически созданные</string>
+    <string name="app_language">Язык приложения</string>
+    <string name="language_auto_generated">%1$s (%2$s)</string>
+
+    <!-- Sleep Timer -->
+    <string name="sleep_timer">Таймер сна</string>
+    <string name="timer_off">Выкл.</string>
+    <string name="timer_15">15 минут</string>
+    <string name="timer_30">30 минут</string>
+    <string name="timer_45">45 минут</string>
+    <string name="timer_60">60 минут</string>
+    <string name="timer_end_of_video">В конце видео</string>
+    <string name="timer_minutes_remaining">Осталось %d мин.</string>
+    <string name="timer_end_of_video_active">Остановится в конце видео</string>
+
+    <!-- Settings -->
+    <string name="about_developer">О разработчике</string>
+    <string name="developed_by">Разработано Arsalan Daim и участниками</string>
+    <string name="ok">ОК</string>
+    <string name="confirm">Подтвердить</string>
+    <string name="clear_all_downloads_title">Удалить все скачанные видео?</string>
+    <string name="clear_all_downloads_desc">Вы уверены, что хотите удалить все скачанные видео? Это действие нельзя отменить.</string>
+    <string name="clear_learned_data_title">Очистить историю предпочтений?</string>
+    <string name="clear_learned_data_desc">Это удалит все собранные данные об интересах и сбросит рекомендательную систему. Это действие нельзя отменить.</string>
+    <string name="settings_group_update">Обновление приложения</string>
+    <string name="settings_auto_update">Автопроверка релизов на GitHub</string>
+    <string name="settings_auto_update_desc">Уведомлять о выходе новой версии на GitHub</string>
+    <string name="update_available">Доступно новое обновление: %s</string>
+    <string name="download_from_github">Скачать с GitHub</string>
+    <string name="settings_group_history_privacy">История и конфиденциальность</string>
+    <string name="settings_view_history">Просмотр истории</string>
+    <string name="settings_view_history_desc">Управление просмотренными видео</string>
+    <string name="settings_pause_search_history">Приостановить историю поиска</string>
+    <string name="settings_pause_search_history_desc">Подсказки поиска также будут приостановлены</string>
+    <string name="settings_pip">Режим «Картинка в картинке»</string>
+    <string name="settings_pip_desc">Продолжать просмотр в уменьшенном окне</string>
+    <string name="settings_data_backup">Данные и резервное копирование</string>
+    <string name="settings_data_backup_desc">Импорт Takeout и локальных бэкапов</string>
+    <string name="settings_pause_recommendations">Приостановить рекомендации</string>
+    <string name="settings_pause_recommendations_desc">Временно прекратить анализ ваших интересов</string>
+    <string name="settings_clear_learned_data">Сбросить данные рекомендаций</string>
+    <string name="settings_clear_learned_data_desc_item">Сбросить профиль рекомендательной системы</string>
+    <string name="settings_group_appearance_playback">Внешний вид и воспроизведение</string>
+    <string name="settings_player_gestures">Жесты плеера</string>
+    <string name="settings_player_gestures_desc">Включить жесты свайпа для громкости и яркости</string>
+    <string name="settings_material_you">Material You</string>
+    <string name="settings_material_you_desc">Адаптировать цвета под тему устройства</string>
+    <string name="theme_accent_color">Акцентный цвет темы</string>
+    <string name="theme_accent_color_desc">Выберите пользовательскую цветовую схему</string>
+    <string name="system_default">Системная тема</string>
+    <string name="settings_subtitle_styles">Стиль субтитров</string>
+    <string name="settings_subtitle_styles_desc">Настройка размера шрифта и фона</string>
+    <string name="subtitle_font_size">Размер шрифта: %d sp</string>
+    <string name="subtitle_background_opacity">Прозрачность фона: %d%%</string>
+    <string name="subtitle_preview">Предпросмотр субтитров</string>
+    <string name="settings_group_content">Контент</string>
+    <string name="settings_clear_downloads">Очистить все скачанные видео</string>
+    <string name="settings_clear_downloads_desc">Удалить все оффлайн-видео</string>
+    <string name="settings_group_about">О приложении</string>
+    <string name="settings_about_developer">О разработчике</string>
+    <string name="settings_about_developer_desc">Информация о создателе</string>
+    <string name="settings_view_source">Исходный код</string>
+    <string name="settings_view_source_desc">Посмотреть проект на GitHub</string>
+    <string name="settings_app_version">Версия приложения</string>
+
+    <!-- Import Errors -->
+    <string name="error_history_not_found">Файл истории не найден в ZIP-архиве или выборе</string>
+    <string name="error_subscriptions_not_found">Файл подписок не найден в ZIP-архиве или выборе</string>
+    <string name="error_malformed_history">Повреждённый файл истории</string>
+    <string name="error_malformed_csv">Повреждённый CSV-файл подписок</string>
+    <string name="importing_items">Импортировано элементов: %d...</string>
+
+    <!-- Player Action & Repeat Modes -->
+    <string name="repeat_off">Повтор выкл.</string>
+    <string name="repeat_one">Повторять 1</string>
+    <string name="repeat_play_next">Автовоспроизведение</string>
+    <string name="repeat_mode">Режим повтора</string>
+    <string name="downloaded_videos">Скачанные видео</string>
+    <string name="offline_downloads">Оффлайн-скачивания</string>
+    <string name="added_to_favorites">Добавлено в «Понравившиеся»</string>
+    <string name="removed_from_favorites">Удалено из «Понравившихся»</string>
+    <string name="downloading_started">Загрузка начата</string>
+    <string name="connection_lost_waiting">Соединение потеряно. Ожидание возобновления...</string>
+    <string name="no_previous_video">В текущей сессии нет предыдущего видео</string>
+    <string name="skipped_segment">Пропущено %s</string>
+    <string name="audio_track">Аудиодорожка</string>
+    <string name="select_audio_track">Выбрать аудиодорожку</string>
+</resources>

@@ -73,14 +73,14 @@ fun VideoCardSkeleton(transition: InfiniteTransition? = null) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 6.dp, vertical = 8.dp)
     ) {
         // Thumbnail placeholder
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(14.dp))
                 .shimmerEffect(transition)
         )
         
@@ -92,12 +92,12 @@ fun VideoCardSkeleton(transition: InfiniteTransition? = null) {
             // Avatar placeholder
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(40.dp)
                     .clip(CircleShape)
                     .shimmerEffect(transition)
             )
             
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(14.dp))
             
             Column(modifier = Modifier.weight(1f)) {
                 // Title placeholder
@@ -457,9 +457,50 @@ fun PlaylistMetadataSkeleton(transition: InfiniteTransition? = null) {
         
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Content Placeholders (Videos)
-        repeat(3) {
-            VideoCardSkeleton(actualTransition)
+        // Content Placeholders (Videos matching VideoRow)
+        repeat(5) {
+            VideoRowSkeleton(actualTransition)
+        }
+    }
+}
+
+@Composable
+fun VideoRowSkeleton(transition: InfiniteTransition? = null) {
+    val actualTransition = transition ?: rememberSyncShimmerTransition()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp, horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Thumbnail Placeholder (150.dp x 84.dp)
+        Box(
+            modifier = Modifier
+                .size(width = 150.dp, height = 84.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .shimmerEffect(actualTransition)
+        )
+        
+        Spacer(modifier = Modifier.width(14.dp))
+        
+        Column(modifier = Modifier.weight(1f)) {
+            // Title Placeholder
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .height(18.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .shimmerEffect(actualTransition)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            // Uploader Placeholder
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.5f)
+                    .height(14.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .shimmerEffect(actualTransition)
+            )
         }
     }
 }
@@ -550,7 +591,7 @@ fun LibraryDashboardSkeleton() {
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(16f / 9f)
-                                    .clip(RoundedCornerShape(16.dp))
+                                    .clip(RoundedCornerShape(14.dp))
                                     .shimmerEffect(transition)
                             )
                             Spacer(modifier = Modifier.height(8.dp))

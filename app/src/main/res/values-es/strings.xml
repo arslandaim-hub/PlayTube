@@ -168,6 +168,8 @@
     <string name="settings_player_gestures_desc">Activar gestos de deslizar para volumen y brillo</string>
     <string name="settings_material_you">Material You</string>
     <string name="settings_material_you_desc">Adapta los colores al tema del dispositivo</string>
+    <string name="theme_accent_color">Color de acento del tema</string>
+    <string name="theme_accent_color_desc">Elegir esquema de colores de acento personalizado</string>
     <string name="system_default">Predeterminado del sistema</string>
     <string name="settings_subtitle_styles">Estilos de subtítulos</string>
     <string name="settings_subtitle_styles_desc">Personalizar el tamaño de fuente y fondo</string>
@@ -204,4 +206,6 @@
     <string name="connection_lost_waiting">Conexión perdida. Esperando para reanudar...</string>
     <string name="no_previous_video">No hay video anterior en la sesión</string>
     <string name="skipped_segment">Se omitió %s</string>
+    <string name="audio_track">Pista de audio</string>
+    <string name="select_audio_track">Seleccionar pista de audio</string>
 </resources>

@@ -3,6 +3,7 @@
  * arslandaim-hub (GitHub.com/arslandaim-hub)
  * Licenced Under GPL-3.0+
 */
+@file:OptIn(androidx.media3.common.util.UnstableApi::class)
 package com.arslandaim.playtube
 
 import android.Manifest
@@ -39,6 +40,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -82,7 +84,8 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
     companion object {
-        val BOTTOM_BAR_HEIGHT = 64.dp
+        val TOP_BAR_HEIGHT = 56.dp
+        val BOTTOM_BAR_HEIGHT = 52.dp
     }
 
     @Inject lateinit var connectivityObserver: ConnectivityObserver
@@ -95,7 +98,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val mainViewModel: MainViewModel by viewModels()
-    @OptIn(UnstableApi::class)
     private val playerViewModel: com.arslandaim.playtube.ui.screens.player.PlayerViewModel by viewModels()
     private val updateViewModel: UpdateViewModel by viewModels()
 
@@ -182,7 +184,8 @@ class MainActivity : AppCompatActivity() {
 
             PlayTubeTheme(
                 darkTheme = darkTheme,
-                isDynamicColorEnabled = mainViewModel.isDynamicColorEnabled.collectAsStateWithLifecycle().value
+                isDynamicColorEnabled = mainViewModel.isDynamicColorEnabled.collectAsStateWithLifecycle().value,
+                appThemeColor = mainViewModel.appThemeColor.collectAsStateWithLifecycle().value
             ) {
                 val navController = rememberNavController()
                 val uiState by mainViewModel.uiState.collectAsStateWithLifecycle()
@@ -316,7 +319,7 @@ class MainActivity : AppCompatActivity() {
                                         if (uiState.isBarsVisible || barsProgress > 0f) {
                                             Box(modifier = Modifier
                                                 .fillMaxWidth()
-                                                .height(BOTTOM_BAR_HEIGHT)
+                                                .height(TOP_BAR_HEIGHT)
                                             ) {
                                                 PlayTubeTopAppBar(
                                                     isIncognitoMode = isIncognitoMode,
@@ -359,23 +362,24 @@ class MainActivity : AppCompatActivity() {
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
-                                    .padding(horizontal = 24.dp, vertical = 20.dp)
-                                    .navigationBarsPadding()
                                     .graphicsLayer {
-                                        translationY = 100.dp.toPx() * (1f - barsVisibilityProgress)
+                                        translationY = 150.dp.toPx() * (1f - barsVisibilityProgress)
                                         alpha = barsVisibilityProgress
                                     }
                             ) {
-                                GlassSurface(
-                                    modifier = Modifier
-                                        .widthIn(max = 500.dp)
-                                        .fillMaxWidth()
-                                        .height(MainActivity.BOTTOM_BAR_HEIGHT),
-                                    shape = RoundedCornerShape(32.dp),
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = androidx.compose.ui.graphics.RectangleShape,
                                     shadowElevation = 16.dp,
-                                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
+                                    color = MaterialTheme.colorScheme.surface
                                 ) {
-                                    PlayTubeBottomBar(navController = navController)
+                                    Box(
+                                        modifier = Modifier
+                                            .navigationBarsPadding()
+                                            .height(MainActivity.BOTTOM_BAR_HEIGHT)
+                                    ) {
+                                        PlayTubeBottomBar(navController = navController)
+                                    }
                                 }
                             }
                         }
@@ -595,13 +599,13 @@ fun PlayTubeBottomBar(navController: androidx.navigation.NavHostController) {
                     Icon(
                         imageVector = icon, 
                         contentDescription = null, 
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(20.dp)
                     ) 
                 },
                 label = { 
                     Text(
                         text = label, 
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                     ) 
                 },

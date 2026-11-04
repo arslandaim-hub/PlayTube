@@ -81,6 +81,7 @@ fun PlayerOverlay(
     }
 
     val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     val density = LocalDensity.current
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val screenHeight = with(density) { configuration.screenHeightDp.dp.toPx() }
@@ -88,8 +89,8 @@ fun PlayerOverlay(
 
     // Dynamic calculation for mini-player position
     val navBarHeight = WindowInsets.navigationBars.asPaddingValues(density).calculateBottomPadding()
-    val miniPlayerWidth = 200.dp
-    val miniPlayerHeight = 112.5.dp
+    val miniPlayerWidth = 228.dp
+    val miniPlayerHeight = 128.25.dp
     
     // Offset for dragging
     var offsetY by remember { mutableFloatStateOf(0f) }
@@ -121,7 +122,8 @@ fun PlayerOverlay(
     }
 
     // Target offset and scale based on state
-    val bottomBarSpacing = if (bottomBarHeight > 0.dp) bottomBarHeight + 28.dp else 16.dp
+    val bottomBarSpacing = 16.dp + bottomBarHeight
+    
     val targetY = if (isExpanded) 0f else screenHeight - with(density) { (navBarHeight + bottomBarSpacing + miniPlayerHeight).toPx() }
     val targetX = if (isExpanded) 0f else persistentMiniPlayerOffsetX
 
@@ -166,9 +168,14 @@ fun PlayerOverlay(
         // SSOT Back Interception: Maintain handler during minimize animation to prevent back-bleed
         // Use key to force re-registration when player state or navigation route changes, 
         // ensuring this handler is always the "most recent" in the dispatcher.
-        key(isExpanded, isMinimizing, currentRoute) {
+        key(isExpanded, isMinimizing, isLandscape, currentRoute) {
             BackHandler(enabled = isExpanded || isMinimizing) {
-                safeMinimize()
+                if (isLandscape) {
+                    (localContext as? android.app.Activity)?.requestedOrientation = 
+                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                } else {
+                    safeMinimize()
+                }
             }
         }
 
@@ -183,7 +190,7 @@ fun PlayerOverlay(
                         scaleY = animatedScale
                         alpha = animatedAlpha
                     }
-                    .pointerInput(isExpanded) {
+                    .pointerInput(isExpanded, isLandscape) {
                         detectDragGestures(
                             onDrag = { change, dragAmount ->
                                 change.consume()
@@ -193,7 +200,12 @@ fun PlayerOverlay(
                             },
                             onDragEnd = {
                                 if (offsetY > screenHeight * 0.2f) {
-                                    safeMinimize()
+                                    if (isLandscape) {
+                                        (localContext as? android.app.Activity)?.requestedOrientation = 
+                                            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                    } else {
+                                        safeMinimize()
+                                    }
                                 }
                                 offsetY = 0f
                             },

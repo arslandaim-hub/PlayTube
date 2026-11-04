@@ -7,9 +7,32 @@ package com.arslandaim.playtube.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Primary Branding
+// Primary Branding (Red)
 val YoutubeRed = Color(0xFFFF0000)
 val DarkRed = Color(0xFFB90000)
+
+// Theme Colors
+data class ThemePalette(
+    val name: String,
+    val displayName: String,
+    val primary: Color,
+    val secondary: Color
+)
+
+val AppThemePalettes = listOf(
+    ThemePalette("RED", "Classic Red", Color(0xFFFF0000), Color(0xFFB90000)),
+    ThemePalette("BLUE", "Ocean Blue", Color(0xFF1E88E5), Color(0xFF1565C0)),
+    ThemePalette("GREEN", "Emerald Green", Color(0xFF2E7D32), Color(0xFF1B5E20)),
+    ThemePalette("PURPLE", "Royal Purple", Color(0xFF8E24AA), Color(0xFF6A1B9A)),
+    ThemePalette("AMBER", "Sunset Amber", Color(0xFFF57C00), Color(0xFFE65100)),
+    ThemePalette("CYAN", "Neon Cyan", Color(0xFF00ACC1), Color(0xFF00838F)),
+    ThemePalette("PINK", "Rose Pink", Color(0xFFE91E63), Color(0xFFC2185B))
+)
+
+fun getThemePalette(colorName: String): ThemePalette {
+    return AppThemePalettes.find { it.name.equals(colorName, ignoreCase = true) }
+        ?: AppThemePalettes.first()
+}
 
 // Light Theme Colors
 val LightBackground = Color(0xFFFFFFFF)

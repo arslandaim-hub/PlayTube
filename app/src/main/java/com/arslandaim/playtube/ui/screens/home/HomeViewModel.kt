@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.arslandaim.playtube.data.local.FavoriteEntity
 import com.arslandaim.playtube.data.local.SearchHistoryDao
 import com.arslandaim.playtube.domain.model.StreamBundle
+import com.arslandaim.playtube.domain.model.SubtitleItem
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.domain.repository.LibraryRepository
 import com.arslandaim.playtube.domain.repository.SearchRepository
@@ -17,7 +18,10 @@ import com.arslandaim.playtube.domain.repository.VideoRepository
 import com.arslandaim.playtube.domain.usecase.DownloadVideoUseCase
 import com.arslandaim.playtube.domain.usecase.GetVideoStreamsUseCase
 import com.arslandaim.playtube.domain.usecase.ToggleFavoriteUseCase
+import com.arslandaim.playtube.data.local.BlacklistType
+import com.arslandaim.playtube.data.local.PreferencesManager
 import com.arslandaim.playtube.ui.components.DownloadDialogState
+import com.arslandaim.playtube.utils.AiContentDetector
 import com.arslandaim.playtube.utils.PlayTubeError
 import com.arslandaim.playtube.utils.HistoryUtils.applyHistory
 import com.arslandaim.playtube.utils.HistoryUtils.getContinuePlaying
@@ -34,13 +38,15 @@ import javax.inject.Inject
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val libraryRepository: LibraryRepository,
+    private val preferencesManager: PreferencesManager,
     private val toggleFavoriteUseCase: ToggleFavoriteUseCase,
     private val getVideoStreamsUseCase: GetVideoStreamsUseCase,
     private val downloadVideoUseCase: DownloadVideoUseCase,
     private val videoRepository: VideoRepository,
     private val getRecommendationsUseCase: com.arslandaim.playtube.domain.usecase.GetRecommendationsUseCase,
     private val markNotInterestedUseCase: com.arslandaim.playtube.domain.usecase.MarkNotInterestedUseCase,
-    private val getTrendingVideosUseCase: com.arslandaim.playtube.domain.usecase.GetTrendingVideosUseCase
+    private val getTrendingVideosUseCase: com.arslandaim.playtube.domain.usecase.GetTrendingVideosUseCase,
+    private val playbackPrefetcher: com.arslandaim.playtube.data.network.PlaybackPrefetcher
 ) : ViewModel() {
 
     private val _internalState = MutableStateFlow(HomeState())
@@ -115,16 +121,30 @@ class HomeViewModel @Inject constructor(
                 trendingVideos
             }
 
+            val blacklistedIds = libraryRepository.getBlacklistStatic().map { it.id }.toSet()
+            val isBlockAiEnabled = preferencesManager.isBlockAiContentEnabled.first()
+
+            val cleanVideos = combinedVideos.filter { video ->
+                val isBlacklisted = video.id in blacklistedIds || 
+                                    video.uploaderName in blacklistedIds || 
+                                    (video.uploaderUrl != null && video.uploaderUrl in blacklistedIds)
+                val isAi = isBlockAiEnabled && AiContentDetector.isAiContent(video)
+                !isBlacklisted && !isAi
+            }
+
             _internalState.update { 
                 it.copy(
-                    trendingVideos = combinedVideos,
+                    trendingVideos = cleanVideos,
                     nextTrendingPage = trendingResult?.nextPage,
                     isPersonalized = isRefresh && recommendations.isNotEmpty()
                 )
             }
 
+            // Phase 3: Proactive Top-Items Viewport Prefetching
+            playbackPrefetcher.prefetchViewport(cleanVideos.map { it.id })
+
             // Phase 1: Silent Cache Update
-            libraryRepository.updateCachedFeed("home_trending", combinedVideos)
+            libraryRepository.updateCachedFeed("home_trending", cleanVideos)
             
         } catch (e: Exception) {
             _internalState.update { it.copy(error = PlayTubeError.fromThrowable(e)) }
@@ -141,9 +161,18 @@ class HomeViewModel @Inject constructor(
                 if (page != null) {
                     getTrendingVideosUseCase.fetchNextPage(page)
                         .onSuccess { result ->
+                            val blacklistedIds = libraryRepository.getBlacklistStatic().map { it.id }.toSet()
+                            val isBlockAiEnabled = preferencesManager.isBlockAiContentEnabled.first()
+                            val cleanItems = result.items.filter { video ->
+                                val isBlacklisted = video.id in blacklistedIds || 
+                                                    video.uploaderName in blacklistedIds || 
+                                                    (video.uploaderUrl != null && video.uploaderUrl in blacklistedIds)
+                                val isAi = isBlockAiEnabled && AiContentDetector.isAiContent(video)
+                                !isBlacklisted && !isAi
+                            }
                             _internalState.update { state ->
                                 state.copy(
-                                    trendingVideos = (state.trendingVideos + result.items).distinctBy { it.id },
+                                    trendingVideos = (state.trendingVideos + cleanItems).distinctBy { it.id },
                                     nextTrendingPage = result.nextPage,
                                     isLoadingMore = false
                                 )
@@ -207,7 +236,21 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun download(video: VideoItem, bundle: StreamBundle, url: String?, quality: String?, format: String?, isAdaptive: Boolean) {
+    private fun selectSubtitleTrack(subtitles: List<SubtitleItem>, preferredLang: String?): SubtitleItem? {
+        if (subtitles.isEmpty()) return null
+        if (!preferredLang.isNullOrBlank()) {
+            val match = subtitles.find { 
+                it.languageTag.equals(preferredLang, ignoreCase = true) || 
+                it.languageTag.startsWith(preferredLang, ignoreCase = true) 
+            }
+            if (match != null) return match
+        }
+        return subtitles.find { it.languageTag.startsWith("en", ignoreCase = true) }
+            ?: subtitles.find { !it.isAutoGenerated }
+            ?: subtitles.first()
+    }
+
+    fun download(video: VideoItem, bundle: StreamBundle, url: String?, quality: String?, format: String?, isAdaptive: Boolean, downloadSubtitles: Boolean = false) {
         viewModelScope.launch {
             val audioUrl = if (isAdaptive) {
                 val isWebm = format?.contains("webm", ignoreCase = true) == true
@@ -226,6 +269,9 @@ class HomeViewModel @Inject constructor(
                     ?.url ?: compatibleStreams.maxByOrNull { it.quality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }?.url
             } else null
 
+            val preferredLang = preferencesManager.preferredSubtitleLanguage.first()
+            val selectedSubtitle = if (downloadSubtitles) selectSubtitleTrack(bundle.subtitles, preferredLang) else null
+
             downloadVideoUseCase(
                 videoId = video.id,
                 url = url,
@@ -234,7 +280,9 @@ class HomeViewModel @Inject constructor(
                 uploaderName = video.uploaderName,
                 quality = quality,
                 format = format,
-                audioUrl = audioUrl
+                audioUrl = audioUrl,
+                subtitleUrl = selectedSubtitle?.url,
+                subtitleLanguage = selectedSubtitle?.languageTag
             )
             _snackbarMessage.emit("Downloading started")
             _downloadState.value = DownloadDialogState.Idle
@@ -268,6 +316,25 @@ class HomeViewModel @Inject constructor(
             _internalState.update { state ->
                 state.copy(
                     trendingVideos = state.trendingVideos.filter { it.id != video.id }
+                )
+            }
+        }
+    }
+
+    fun blockChannel(video: VideoItem) {
+        viewModelScope.launch {
+            val channelKey = video.uploaderUrl ?: video.uploaderName
+            libraryRepository.addToBlacklist(channelKey, BlacklistType.CHANNEL)
+            if (video.uploaderName != channelKey) {
+                libraryRepository.addToBlacklist(video.uploaderName, BlacklistType.CHANNEL)
+            }
+            _snackbarMessage.emit("Channel '${video.uploaderName}' blocked")
+
+            _internalState.update { state ->
+                state.copy(
+                    trendingVideos = state.trendingVideos.filter { 
+                        it.uploaderName != video.uploaderName && it.uploaderUrl != video.uploaderUrl 
+                    }
                 )
             }
         }

@@ -4,7 +4,7 @@
  * Licenced Under GPL-3.0+
 */
 package com.arslandaim.playtube.ui.components
-
+import android.content.Intent
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.graphicsLayer
@@ -383,6 +384,7 @@ fun VideoList(
     onChannelClick: ((String) -> Unit)? = null,
     onFavoriteClick: ((VideoItem) -> Unit)? = null,
     onNotInterestedClick: ((VideoItem) -> Unit)? = null,
+    onBlockChannelClick: ((VideoItem) -> Unit)? = null,
     onDownloadClick: ((VideoItem) -> Unit)? = null,
     onAddToPlaylistClick: ((VideoItem) -> Unit)? = null,
     onRemoveFromPlaylistClick: ((VideoItem) -> Unit)? = null,
@@ -429,6 +431,9 @@ fun VideoList(
                 val currentOnNotInterestedClick = remember(video, onNotInterestedClick) {
                     if (onNotInterestedClick != null) { { onNotInterestedClick(video) } } else null
                 }
+                val currentOnBlockChannelClick = remember(video, onBlockChannelClick) {
+                    if (onBlockChannelClick != null) { { onBlockChannelClick(video) } } else null
+                }
                 val currentOnDownloadClick = remember(video, onDownloadClick) {
                     if (onDownloadClick != null) { { onDownloadClick(video) } } else null
                 }
@@ -452,6 +457,7 @@ fun VideoList(
                     isSaved = savedVideoIds.contains(video.id),
                     onFavoriteClick = currentOnFavoriteClick,
                     onNotInterestedClick = currentOnNotInterestedClick,
+                    onBlockChannelClick = currentOnBlockChannelClick,
                     onDownloadClick = currentOnDownloadClick,
                     onAddToPlaylistClick = currentOnAddToPlaylistClick,
                     onRemoveFromPlaylistClick = currentOnRemoveFromPlaylistClick,
@@ -504,6 +510,9 @@ fun VideoList(
                 val currentOnNotInterestedClick = remember(video, onNotInterestedClick) {
                     if (onNotInterestedClick != null) { { onNotInterestedClick(video) } } else null
                 }
+                val currentOnBlockChannelClick = remember(video, onBlockChannelClick) {
+                    if (onBlockChannelClick != null) { { onBlockChannelClick(video) } } else null
+                }
                 val currentOnDownloadClick = remember(video, onDownloadClick) {
                     if (onDownloadClick != null) { { onDownloadClick(video) } } else null
                 }
@@ -526,6 +535,7 @@ fun VideoList(
                     isFavorite = favoriteIds.contains(video.id),
                     onFavoriteClick = currentOnFavoriteClick,
                     onNotInterestedClick = currentOnNotInterestedClick,
+                    onBlockChannelClick = currentOnBlockChannelClick,
                     onDownloadClick = currentOnDownloadClick,
                     onAddToPlaylistClick = currentOnAddToPlaylistClick,
                     onRemoveFromPlaylistClick = currentOnRemoveFromPlaylistClick,
@@ -558,12 +568,14 @@ fun VideoItemRow(
     isSaved: Boolean = false,
     onFavoriteClick: (() -> Unit)? = null,
     onNotInterestedClick: (() -> Unit)? = null,
+    onBlockChannelClick: (() -> Unit)? = null,
     onDownloadClick: (() -> Unit)? = null,
     onAddToPlaylistClick: (() -> Unit)? = null,
     onRemoveFromPlaylistClick: (() -> Unit)? = null,
     onChannelClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
+    val context = LocalContext.current
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -572,7 +584,7 @@ fun VideoItemRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 6.dp, vertical = 8.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -586,11 +598,11 @@ fun VideoItemRow(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(14.dp))
                 .border(
                     width = 0.5.dp, 
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f), 
-                    shape = RoundedCornerShape(16.dp)
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f), 
+                    shape = RoundedCornerShape(14.dp)
                 )
         ) {
             ThumbnailImage(
@@ -601,24 +613,37 @@ fun VideoItemRow(
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
             )
+
+            // Soft Gradient Vignette for high contrast
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
+                            startY = 120f
+                        )
+                    )
+            )
             
-            // High-End Duration Badge
+            // Frosted Glass Pill Duration Badge
             if (video.duration > 0) {
                 Surface(
-                    color = Color.Black.copy(alpha = 0.75f),
-                    shape = RoundedCornerShape(6.dp),
+                    color = Color.Black.copy(alpha = 0.70f),
+                    shape = CircleShape,
+                    border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.25f)),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(8.dp)
+                        .padding(10.dp)
                 ) {
                     Text(
                         text = VideoUtils.formatDuration(video.duration),
                         color = Color.White,
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.Black
+                            fontWeight = FontWeight.Bold
                         ),
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
                 }
             }
@@ -627,13 +652,13 @@ fun VideoItemRow(
             if (isDownloaded) {
                 Surface(
                     color = MaterialTheme.colorScheme.primary,
-                    shape = RoundedCornerShape(bottomStart = 12.dp),
+                    shape = RoundedCornerShape(bottomStart = 10.dp, topEnd = 14.dp),
                     modifier = Modifier.align(Alignment.TopEnd)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Check,
                         contentDescription = "Downloaded",
-                        modifier = Modifier.padding(8.dp).size(18.dp),
+                        modifier = Modifier.padding(8.dp).size(16.dp),
                         tint = MaterialTheme.colorScheme.onPrimary
                     )
                 }
@@ -732,6 +757,28 @@ fun VideoItemRow(
                                 expanded = showMenu,
                                 onDismissRequest = { showMenu = false }
                             ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.share))},
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Share,
+                                            contentDescription = null
+                                        )
+                                    },
+                                    onClick = {
+                                        showMenu = false
+                                        val url = "https://www.youtube.com/watch?v=${video.id}"
+                                        val sendIntent = Intent().apply {
+                                            action = Intent.ACTION_SEND
+                                            putExtra(Intent.EXTRA_TEXT, "${video.title}\n\n$url")
+                                            type = "text/palin"
+                                        }
+                                        context.startActivity(Intent.createChooser(sendIntent,null).apply {
+
+                                        })
+                                    }
+
+                                )
                                 if (onDownloadClick != null) {
                                     DropdownMenuItem(
                                         text = { Text(if (isDownloaded) stringResource(R.string.downloaded) else stringResource(R.string.download)) },
@@ -798,7 +845,7 @@ fun VideoItemRow(
                                 }
                                 if (onNotInterestedClick != null) {
                                     DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.not_interested)) },
+                                        text = { Text("Block Video") },
                                         leadingIcon = { 
                                             Icon(
                                                 imageVector = Icons.Default.Block, 
@@ -808,6 +855,21 @@ fun VideoItemRow(
                                         onClick = {
                                             showMenu = false
                                             onNotInterestedClick()
+                                        }
+                                    )
+                                }
+                                if (onBlockChannelClick != null) {
+                                    DropdownMenuItem(
+                                        text = { Text("Block Channel") },
+                                        leadingIcon = { 
+                                            Icon(
+                                                imageVector = Icons.Default.PersonOff, 
+                                                contentDescription = null
+                                            ) 
+                                        },
+                                        onClick = {
+                                            showMenu = false
+                                            onBlockChannelClick()
                                         }
                                     )
                                 }

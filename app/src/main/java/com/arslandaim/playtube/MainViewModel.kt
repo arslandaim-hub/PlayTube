@@ -58,6 +58,9 @@ class MainViewModel @Inject constructor(
     val isDynamicColorEnabled: StateFlow<Boolean> = preferencesManager.isDynamicColorEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    val appThemeColor: StateFlow<String> = preferencesManager.appThemeColor
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "RED")
+
     val isOnboardingCompleted: StateFlow<Boolean?> = preferencesManager.isOnboardingCompleted
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 

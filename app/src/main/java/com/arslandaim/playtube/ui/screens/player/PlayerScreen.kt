@@ -4,7 +4,8 @@
  * Licenced Under GPL-3.0+
 */
 package com.arslandaim.playtube.ui.screens.player
-
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import android.app.Activity
 import android.content.Context
 import android.content.pm.ActivityInfo
@@ -83,6 +84,8 @@ import com.arslandaim.playtube.ui.components.PlaybackSpeedSelectionSheet
 import com.arslandaim.playtube.ui.components.PitchSelectionSheet
 import com.arslandaim.playtube.ui.components.QualitySelectionSheet
 import com.arslandaim.playtube.ui.components.SubtitleSelectionSheet
+import com.arslandaim.playtube.ui.components.AudioTrackSelectionSheet
+import androidx.compose.material.icons.filled.GraphicEq
 import com.arslandaim.playtube.ui.components.DownloadDialogState
 import com.arslandaim.playtube.domain.model.StreamItem
 import com.arslandaim.playtube.domain.model.VideoItem
@@ -148,6 +151,8 @@ fun PlayerScreen(
     val isCcEnabled by viewModel.isCcEnabled.collectAsStateWithLifecycle()
     val availableSubtitles by viewModel.availableSubtitles.collectAsStateWithLifecycle()
     val selectedSubtitleLanguage by viewModel.selectedSubtitleLanguage.collectAsStateWithLifecycle()
+    val availableAudioStreams by viewModel.availableAudioStreams.collectAsStateWithLifecycle()
+    val selectedAudioStream by viewModel.selectedAudioStream.collectAsStateWithLifecycle()
     val currentPosition by viewModel.currentPosition.collectAsStateWithLifecycle()
     val bufferedPosition by viewModel.bufferedPosition.collectAsStateWithLifecycle()
     val duration by viewModel.duration.collectAsStateWithLifecycle()
@@ -240,6 +245,8 @@ fun PlayerScreen(
             isCcEnabled = isCcEnabled,
             availableSubtitles = memoizedSubtitles,
             selectedSubtitleLanguage = selectedSubtitleLanguage,
+            availableAudioStreams = availableAudioStreams,
+            selectedAudioStream = selectedAudioStream,
             currentPosition = { currentPosition },
             bufferedPosition = { bufferedPosition },
             duration = { duration },
@@ -255,6 +262,7 @@ fun PlayerScreen(
             onSetTemporarySpeedBoost = viewModel::setTemporarySpeedBoost,
             onToggleSubtitles = viewModel::toggleSubtitles,
             onSetSubtitleLanguage = viewModel::setSubtitleLanguage,
+            onSetAudioTrack = viewModel::setAudioTrack,
             onPlayPause = viewModel::togglePlayPause,
             onSkipNext = viewModel::playNext,
             onSkipPrevious = viewModel::playPrevious,
@@ -333,6 +341,8 @@ private fun PlayerContent(
     isCcEnabled: Boolean,
     availableSubtitles: List<com.arslandaim.playtube.domain.model.SubtitleItem>,
     selectedSubtitleLanguage: String?,
+    availableAudioStreams: List<com.arslandaim.playtube.domain.model.StreamItem>,
+    selectedAudioStream: com.arslandaim.playtube.domain.model.StreamItem?,
     currentPosition: () -> Long,
     bufferedPosition: () -> Long,
     duration: () -> Long,
@@ -348,10 +358,11 @@ private fun PlayerContent(
     onSetTemporarySpeedBoost: (Boolean) -> Unit,
     onToggleSubtitles: () -> Unit,
     onSetSubtitleLanguage: (String?) -> Unit,
+    onSetAudioTrack: (com.arslandaim.playtube.domain.model.StreamItem) -> Unit,
     onPlayPause: () -> Unit,
     onSkipNext: () -> Unit,
     onSkipPrevious: () -> Unit,
-    onDownloadConfirm: (VideoItem, StreamBundle, String?, String?, String?, Boolean) -> Unit,
+    onDownloadConfirm: (VideoItem, StreamBundle, String?, String?, String?, Boolean, Boolean) -> Unit,
     onDownloadClick: (VideoItem?) -> Unit,
     onDismissDownload: () -> Unit,
     onLoadMore: () -> Unit,
@@ -399,6 +410,7 @@ private fun PlayerContent(
     val snackbarHostState = remember { SnackbarHostState() }
     var showQualityDialog by remember { mutableStateOf(false) }
     var showSubtitleSheet by remember { mutableStateOf(false) }
+    var showAudioTrackSheet by remember { mutableStateOf(false) }
     var showSpeedSheet by remember { mutableStateOf(false) }
     var showPitchSheet by remember { mutableStateOf(false) }
     var showSettingsSheet by remember { mutableStateOf(false) }
@@ -550,6 +562,18 @@ private fun PlayerContent(
         )
     }
 
+    if (showAudioTrackSheet) {
+        AudioTrackSelectionSheet(
+            audioStreams = availableAudioStreams,
+            currentAudioStream = selectedAudioStream,
+            onDismiss = { showAudioTrackSheet = false },
+            onAudioStreamSelected = { stream ->
+                onSetAudioTrack(stream)
+                showAudioTrackSheet = false
+            }
+        )
+    }
+
     if (showDescriptionSheet) {
         val state = uiState as? PlayerUiState.Success
         state?.let {
@@ -632,6 +656,18 @@ private fun PlayerContent(
                         showSubtitleSheet = true
                     }
                 )
+                if (availableAudioStreams.isNotEmpty()) {
+                    val currentAudioLabel = selectedAudioStream?.quality ?: availableAudioStreams.firstOrNull()?.quality ?: "Default"
+                    ListItem(
+                        headlineContent = { Text(stringResource(R.string.audio_track)) },
+                        supportingContent = { Text(currentAudioLabel) },
+                        leadingContent = { Icon(Icons.Default.GraphicEq, null) },
+                        modifier = Modifier.clickable {
+                            showSettingsSheet = false
+                            showAudioTrackSheet = true
+                        }
+                    )
+                }
                 ListItem(
                     headlineContent = { Text(stringResource(R.string.playback_speed)) },
                     supportingContent = { Text(if (playbackSpeed == 1f) stringResource(R.string.normal_speed) else "${playbackSpeed}x") },
@@ -888,7 +924,14 @@ private fun PlayerContent(
                                 onDoubleTapLeft = onSeekBackward,
                                 onDoubleTapRight = onSeekForward,
                                 onSingleTap = { controlsVisible = !controlsVisible },
-                                onSwipeDown = onBack,
+                                onSwipeDown = {
+                                    if (isLandscape) {
+                                        val activity = context as? Activity
+                                        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                    } else {
+                                        onBack()
+                                    }
+                                },
                                 onSwipeUp = {
                                     val activity = context as? Activity
                                     activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -966,7 +1009,7 @@ private fun PlayerContent(
                                     // Manual Subtitle Overlay
                                     if (isCcEnabled && activeCues.isNotEmpty()) {
                                         val subtitlePaddingBottom by animateDpAsState(
-                                            targetValue = if (controlsVisible) 64.dp else 24.dp,
+                                            targetValue = if (controlsVisible) 84.dp else 24.dp,
                                             animationSpec = tween(durationMillis = 200),
                                             label = "SubtitlePaddingAnimation"
                                         )
@@ -1018,17 +1061,24 @@ private fun PlayerContent(
                                     isLive = isLive,
                                     isCcEnabled = isCcEnabled,
                                     isIncognito = isIncognito,
-                                    repeatMode = repeatMode,
                                     hasSubtitles = (uiState as? PlayerUiState.Success)?.bundle?.subtitles?.isNotEmpty() == true,
                                     isAspectRatioEnabled = isLandscape,
+                                    isLandscape = isLandscape,
                                     onPlayPause = onPlayPause,
                                     onSkipNext = onSkipNext,
                                     onSkipPrevious = onSkipPrevious,
                                     onToggleSubtitles = onToggleSubtitles,
-                                    onRepeatClick = onRepeatClick,
                                     onShowSubtitleSettings = { showSubtitleSheet = true },
                                     onShowSettings = { showSettingsSheet = true },
                                     onToggleAspectRatio = { cycleAspectRatio() },
+                                    onToggleFullscreen = {
+                                        val activity = context as? Activity
+                                        if (isLandscape) {
+                                            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                        } else {
+                                            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                                        }
+                                    },
                                     onBack = onBack
                                 )
                             }
@@ -1268,15 +1318,18 @@ private fun PlayerContent(
                 is DownloadDialogState.ShowDialog -> {
                 DownloadSelectionSheet(
                     videoStreams = currentDownloadState.bundle.videoStreams,
+                    subtitles = currentDownloadState.bundle.subtitles,
+                    preferredLanguage = selectedSubtitleLanguage,
                     onDismiss = { onDismissDownload() },
-                    onDownload = { stream ->
+                    onDownload = { stream, downloadSubtitles ->
                         onDownloadConfirm(
                             currentDownloadState.video,
                             currentDownloadState.bundle,
                             stream.url,
                             stream.quality,
                             stream.format,
-                            stream.isAdaptive
+                            stream.isAdaptive,
+                            downloadSubtitles
                         )
                     }
                 )
@@ -1376,17 +1429,17 @@ private fun PlayerControlsOverlay(
     isLive: Boolean,
     isCcEnabled: Boolean,
     isIncognito: Boolean,
-    repeatMode: RepeatMode,
     hasSubtitles: Boolean,
     isAspectRatioEnabled: Boolean = true,
+    isLandscape: Boolean,
     onPlayPause: () -> Unit,
     onSkipNext: () -> Unit,
     onSkipPrevious: () -> Unit,
     onToggleSubtitles: () -> Unit,
-    onRepeatClick: () -> Unit,
     onShowSubtitleSettings: () -> Unit,
     onShowSettings: () -> Unit,
     onToggleAspectRatio: () -> Unit,
+    onToggleFullscreen: () -> Unit,
     onBack: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
@@ -1459,9 +1512,9 @@ private fun PlayerControlsOverlay(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .displayCutoutPadding()
-                .padding(bottom = 12.dp) // Sit closer to the bottom border
+                .padding(bottom = 60.dp)
         ) {
-            // Time Display & Live Badge
+            // Time Display / Live Badge & Fullscreen Button on bottom right
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1565,17 +1618,13 @@ private fun PlayerControlsOverlay(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
-                        onClick = onRepeatClick,
+                        onClick = onToggleFullscreen,
                         modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
-                            imageVector = if (repeatMode == RepeatMode.REPEAT_ONE) Icons.Default.RepeatOne else Icons.Default.Repeat,
-                            contentDescription = stringResource(R.string.repeat_mode),
-                            tint = when (repeatMode) {
-                                RepeatMode.OFF -> Color.White.copy(alpha = 0.38f)
-                                RepeatMode.REPEAT_ONE -> MaterialTheme.colorScheme.primary
-                                RepeatMode.PLAY_NEXT -> Color.White
-                            },
+                            imageVector = if (isLandscape) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                            contentDescription = "Fullscreen",
+                            tint = Color.White,
                             modifier = Modifier.size(22.dp)
                         )
                     }

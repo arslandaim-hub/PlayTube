@@ -183,6 +183,8 @@
     <string name="settings_player_gestures_desc">Ses ve parlaklık için kaydırma hareketlerini etkinleştir</string>
     <string name="settings_material_you">Material You</string>
     <string name="settings_material_you_desc">Cihaz tema rengine uyum sağlar</string>
+    <string name="theme_accent_color">Tema Vurgu Rengi</string>
+    <string name="theme_accent_color_desc">Özel vurgu rengi düzenini seçin</string>
     <string name="system_default">Sistem Varsayılanı</string>
     <string name="settings_subtitle_styles">Altyazı Stilleri</string>
     <string name="settings_subtitle_styles_desc">Yazı tipi boyutunu ve arka planı özelleştirin</string>
@@ -205,4 +207,6 @@
     <string name="error_malformed_history">Hatalı geçmiş dosyası formatı</string>
     <string name="error_malformed_csv">Hatalı abonelikler dosyası formatı</string>
     <string name="importing_items">%d öğe içe aktarıldı...</string>
+    <string name="audio_track">Ses parçası</string>
+    <string name="select_audio_track">Ses parçası seçin</string>
 </resources>

@@ -28,7 +28,20 @@ class LibraryRepositoryImpl @Inject constructor(
         historyDao.getRecentHistory(limit)
 
     override suspend fun addToHistory(history: HistoryEntity) {
-        historyDao.insertHistory(history)
+        val existing = historyDao.getAllHistoryStatic().find { it.videoId == history.videoId }
+        if (existing != null) {
+            val progress = if (history.progressMs > 0) history.progressMs else existing.progressMs
+            val duration = if (history.durationMs > 0) history.durationMs else existing.durationMs
+            historyDao.insertHistory(
+                history.copy(
+                    progressMs = progress,
+                    durationMs = duration,
+                    timestamp = System.currentTimeMillis()
+                )
+            )
+        } else {
+            historyDao.insertHistory(history)
+        }
     }
 
     override suspend fun updateWatchProgress(videoId: String, progressMs: Long, durationMs: Long) {

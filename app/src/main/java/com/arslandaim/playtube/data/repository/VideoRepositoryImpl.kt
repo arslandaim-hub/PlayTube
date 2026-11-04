@@ -26,15 +26,18 @@ import org.schabi.newpipe.extractor.kiosk.KioskInfo
 import org.schabi.newpipe.extractor.playlist.PlaylistInfo
 import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
 import org.schabi.newpipe.extractor.stream.*
+import com.arslandaim.playtube.data.network.InFlightRequestCoalescer
+import com.arslandaim.playtube.data.network.ResolvedStreamCache
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class VideoRepositoryImpl @Inject constructor(
     private val preferencesManager: PreferencesManager,
-    private val initializer: NewPipeInitializer
+    private val initializer: NewPipeInitializer,
+    private val resolvedStreamCache: ResolvedStreamCache,
+    private val inFlightRequestCoalescer: InFlightRequestCoalescer
 ) : VideoRepository {
-    private val streamCache = LruCache<String, StreamBundle>(Constants.STREAM_CACHE_SIZE)
     private val commentsCache = LruCache<String, CommentsInfoItem>(100)
 
     private suspend fun ensureInit() {
@@ -47,62 +50,66 @@ class VideoRepositoryImpl @Inject constructor(
         ensureInit()
         val isIncognito = preferencesManager.isIncognitoMode.first()
         
-        if (!forceRefresh && !isIncognito) {
-            streamCache.get(videoId)?.let { 
-                if (!it.isExpired()) return it 
+        if (forceRefresh) {
+            resolvedStreamCache.evict(videoId)
+        } else if (!isIncognito) {
+            resolvedStreamCache.get(videoId)?.let { 
+                return it 
             }
         }
         
-        return withContext(Dispatchers.IO) {
-            try {
-                val service = ServiceList.YouTube
-                val videoUrl = Constants.YouTube.VIDEO_URL_PREFIX + videoId
-                val streamInfo = StreamInfo.getInfo(service, videoUrl)
+        return inFlightRequestCoalescer.coalesce(videoId) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val service = ServiceList.YouTube
+                    val videoUrl = Constants.YouTube.VIDEO_URL_PREFIX + videoId
+                    val streamInfo = StreamInfo.getInfo(service, videoUrl)
 
-                val isLive = streamInfo.streamType == StreamType.LIVE_STREAM || 
-                             streamInfo.streamType == StreamType.AUDIO_LIVE_STREAM ||
-                             streamInfo.streamType.name == "LIVE"
+                    val isLive = streamInfo.streamType == StreamType.LIVE_STREAM || 
+                                 streamInfo.streamType == StreamType.AUDIO_LIVE_STREAM ||
+                                 streamInfo.streamType.name == "LIVE"
 
-                val videoStreamsDeferred = async { extractVideoStreams(streamInfo, isLive) }
-                val audioStreamsDeferred = async { extractAudioStreams(streamInfo) }
-                val subtitlesDeferred = async { extractSubtitles(streamInfo) }
+                    val videoStreamsDeferred = async { extractVideoStreams(streamInfo, isLive) }
+                    val audioStreamsDeferred = async { extractAudioStreams(streamInfo) }
+                    val subtitlesDeferred = async { extractSubtitles(streamInfo) }
 
-                val bestAudioStream = selectBestAudioStream(streamInfo)
+                    val bestAudioStream = selectBestAudioStream(streamInfo)
 
-                val videoStreams = videoStreamsDeferred.await()
-                val isUpcoming = (isLive && videoStreams.isEmpty()) || streamInfo.viewCount == -1L
-                val scheduledStartTime = if (isUpcoming) {
-                    streamInfo.uploadDate?.offsetDateTime()?.toString() ?: streamInfo.textualUploadDate
-                } else null
+                    val videoStreams = videoStreamsDeferred.await()
+                    val isUpcoming = (isLive && videoStreams.isEmpty()) || streamInfo.viewCount == -1L
+                    val scheduledStartTime = if (isUpcoming) {
+                        streamInfo.uploadDate?.offsetDateTime()?.toString() ?: streamInfo.textualUploadDate
+                    } else null
 
-                val bundle = StreamBundle(
-                    videoStreams = videoStreams,
-                    audioStreams = audioStreamsDeferred.await(),
-                    title = streamInfo.name ?: "Unknown",
-                    uploaderName = streamInfo.uploaderName ?: "Unknown",
-                    uploaderUrl = streamInfo.uploaderUrl,
-                    uploaderThumbnailUrl = streamInfo.uploaderAvatars.maxByOrNull { it.width }?.url ?: streamInfo.uploaderAvatars.firstOrNull()?.url,
-                    uploaderSubscriberCount = streamInfo.uploaderSubscriberCount,
-                    description = VideoUtils.sanitizeDescription(streamInfo.description?.content),
-                    viewCount = streamInfo.viewCount,
-                    uploadDate = streamInfo.textualUploadDate ?: streamInfo.uploadDate?.offsetDateTime()?.toLocalDate()?.toString(),
-                    thumbnailUrl = streamInfo.thumbnails.maxByOrNull { it.width }?.url ?: VideoUtils.getBestThumbnailUrl(videoId),
-                    isLive = isLive,
-                    isUpcoming = isUpcoming,
-                    scheduledStartTime = scheduledStartTime,
-                    relatedVideos = streamInfo.relatedItems
-                        ?.filterIsInstance<StreamInfoItem>()
-                        ?.map { mapToVideoItem(it) } ?: emptyList(),
-                    nextRelatedVideosPage = null,
-                    bestAudioStreamUrl = bestAudioStream?.url,
-                    subtitles = subtitlesDeferred.await()
-                )
-                
-                if (!isIncognito) streamCache.put(videoId, bundle)
-                bundle
-            } catch (e: Exception) {
-                PTLog.e("VideoRepository", "Error fetching stream bundle for $videoId", e)
-                throw e
+                    val bundle = StreamBundle(
+                        videoStreams = videoStreams,
+                        audioStreams = audioStreamsDeferred.await(),
+                        title = streamInfo.name ?: "Unknown",
+                        uploaderName = streamInfo.uploaderName ?: "Unknown",
+                        uploaderUrl = streamInfo.uploaderUrl,
+                        uploaderThumbnailUrl = streamInfo.uploaderAvatars.maxByOrNull { it.width }?.url ?: streamInfo.uploaderAvatars.firstOrNull()?.url,
+                        uploaderSubscriberCount = streamInfo.uploaderSubscriberCount,
+                        description = VideoUtils.sanitizeDescription(streamInfo.description?.content),
+                        viewCount = streamInfo.viewCount,
+                        uploadDate = streamInfo.textualUploadDate ?: streamInfo.uploadDate?.offsetDateTime()?.toLocalDate()?.toString(),
+                        thumbnailUrl = streamInfo.thumbnails.maxByOrNull { it.width }?.url ?: VideoUtils.getBestThumbnailUrl(videoId),
+                        isLive = isLive,
+                        isUpcoming = isUpcoming,
+                        scheduledStartTime = scheduledStartTime,
+                        relatedVideos = streamInfo.relatedItems
+                            ?.filterIsInstance<StreamInfoItem>()
+                            ?.map { mapToVideoItem(it) } ?: emptyList(),
+                        nextRelatedVideosPage = null,
+                        bestAudioStreamUrl = bestAudioStream?.url,
+                        subtitles = subtitlesDeferred.await()
+                    )
+                    
+                    if (!isIncognito) resolvedStreamCache.put(videoId, bundle)
+                    bundle
+                } catch (e: Exception) {
+                    PTLog.e("VideoRepository", "Error fetching stream bundle for $videoId", e)
+                    throw e
+                }
             }
         }
     }
@@ -131,7 +138,29 @@ class VideoRepositoryImpl @Inject constructor(
 
     private fun extractAudioStreams(streamInfo: StreamInfo): List<StreamItem> {
         return streamInfo.audioStreams?.map {
-            StreamItem(url = it.url ?: "", quality = "${it.averageBitrate}kbps", format = it.format?.suffix ?: "m4a", languageTag = it.audioLocale?.language, trackType = it.audioTrackType?.name)
+            val langName = it.audioLocale?.displayName?.replaceFirstChar { c -> c.uppercase() }
+                ?: it.audioLocale?.displayLanguage?.replaceFirstChar { c -> c.uppercase() }
+            val trackType = when (it.audioTrackType?.name) {
+                "ORIGINAL" -> "Original"
+                "DUBBED" -> "Dubbed"
+                "DESCRIPTIVE" -> "Descriptive"
+                else -> it.audioTrackName
+            }
+            val labelParts = mutableListOf<String>()
+            if (!langName.isNullOrBlank()) labelParts.add(langName)
+            if (!trackType.isNullOrBlank()) labelParts.add("($trackType)")
+            val bitrate = if (it.averageBitrate > 0) "${it.averageBitrate}kbps" else ""
+            if (bitrate.isNotBlank()) labelParts.add("- $bitrate")
+
+            val displayQuality = if (labelParts.isNotEmpty()) labelParts.joinToString(" ") else "${it.averageBitrate}kbps"
+
+            StreamItem(
+                url = it.url ?: "",
+                quality = displayQuality,
+                format = it.format?.suffix ?: "m4a",
+                languageTag = it.audioLocale?.toLanguageTag() ?: it.audioLocale?.language,
+                trackType = it.audioTrackType?.name ?: it.audioTrackName
+            )
         } ?: emptyList()
     }
 
@@ -149,15 +178,13 @@ class VideoRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getCachedStreamBundle(videoId: String): StreamBundle? {
-        val cached = streamCache.get(videoId)
-        return if (cached != null && !cached.isExpired()) cached else null
+        return resolvedStreamCache.get(videoId)
     }
 
     override suspend fun preloadStreamBundle(videoId: String) {
         if (videoId.isBlank()) return
-        val cached = streamCache.get(videoId)
-        if (cached != null && !cached.isExpired()) return
-        try { getStreamBundle(videoId, forceRefresh = true) } catch (e: Exception) { PTLog.w("VideoRepository", "Preload failed for $videoId: ${e.message}") }
+        if (resolvedStreamCache.get(videoId) != null) return
+        try { getStreamBundle(videoId, forceRefresh = false) } catch (e: Exception) { PTLog.w("VideoRepository", "Preload failed for $videoId: ${e.message}") }
     }
 
     override suspend fun fetchNextRelatedPage(videoId: String, page: Page): PaginatedList<VideoItem> {

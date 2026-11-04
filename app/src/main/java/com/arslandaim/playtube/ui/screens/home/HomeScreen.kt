@@ -11,6 +11,8 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
@@ -18,6 +20,9 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.unit.sp
+import com.arslandaim.playtube.utils.VideoUtils
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Subscriptions
@@ -92,6 +97,7 @@ fun HomeScreen(
         onLoadMore = viewModel::loadNextTrendingPage,
         onFavoriteClick = viewModel::toggleFavorite,
         onNotInterestedClick = viewModel::markNotInterested,
+        onBlockChannelClick = viewModel::blockChannel,
         onDownloadClick = viewModel::prepareDownload,
         onDownloadConfirm = viewModel::download,
         onDismissDownload = viewModel::dismissDownloadDialog,
@@ -146,14 +152,52 @@ private fun ContinueWatchingCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(112.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(14.dp))
+                .border(
+                    width = 0.5.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
+                    shape = RoundedCornerShape(14.dp)
+                )
         ) {
             com.arslandaim.playtube.ui.components.ThumbnailImage(
                 videoId = video.id,
                 thumbnailUrl = video.thumbnailUrl,
                 modifier = Modifier.fillMaxSize()
             )
-            
+
+            // Soft Gradient Vignette
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
+                            startY = 80f
+                        )
+                    )
+            )
+
+            if (video.duration > 0) {
+                Surface(
+                    color = Color.Black.copy(alpha = 0.70f),
+                    shape = CircleShape,
+                    border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.25f)),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp)
+                ) {
+                    Text(
+                        text = VideoUtils.formatDuration(video.duration),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
             video.watchProgress?.let { progress ->
                 LinearProgressIndicator(
                     progress = { progress },
@@ -161,7 +205,7 @@ private fun ContinueWatchingCard(
                         .fillMaxWidth()
                         .height(3.dp)
                         .align(Alignment.BottomCenter),
-                    color = Color.Red,
+                    color = MaterialTheme.colorScheme.primary,
                     trackColor = Color.White.copy(alpha = 0.3f)
                 )
             }
@@ -198,8 +242,9 @@ private fun HomeContent(
     onLoadMore: () -> Unit,
     onFavoriteClick: (VideoItem) -> Unit,
     onNotInterestedClick: (VideoItem) -> Unit,
+    onBlockChannelClick: (VideoItem) -> Unit,
     onDownloadClick: (VideoItem) -> Unit,
-    onDownloadConfirm: (VideoItem, com.arslandaim.playtube.domain.model.StreamBundle, String?, String?, String?, Boolean) -> Unit,
+    onDownloadConfirm: (VideoItem, com.arslandaim.playtube.domain.model.StreamBundle, String?, String?, String?, Boolean, Boolean) -> Unit,
     onDismissDownload: () -> Unit,
     onAddToPlaylistClick: (VideoItem) -> Unit,
     onPersonalizedNotifyShown: () -> Unit,
@@ -326,6 +371,7 @@ private fun HomeContent(
                         onChannelClick = onChannelClick,
                         onFavoriteClick = onFavoriteClick,
                         onNotInterestedClick = onNotInterestedClick,
+                        onBlockChannelClick = onBlockChannelClick,
                         onDownloadClick = onDownloadClick,
                         onAddToPlaylistClick = onAddToPlaylistClick,
                         onLoadMore = onLoadMore,
@@ -375,15 +421,17 @@ private fun HomeContent(
             is DownloadDialogState.ShowDialog -> {
                 DownloadSelectionSheet(
                     videoStreams = downloadDialogState.bundle.videoStreams,
+                    subtitles = downloadDialogState.bundle.subtitles,
                     onDismiss = { onDismissDownload() },
-                    onDownload = { stream ->
+                    onDownload = { stream, downloadSubtitles ->
                         onDownloadConfirm(
                             downloadDialogState.video,
                             downloadDialogState.bundle,
                             stream.url,
                             stream.quality,
                             stream.format,
-                            stream.isAdaptive
+                            stream.isAdaptive,
+                            downloadSubtitles
                         )
                     }
                 )

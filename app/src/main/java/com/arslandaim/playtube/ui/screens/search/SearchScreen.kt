@@ -165,7 +165,7 @@ private fun SearchContent(
     onClearHistory: () -> Unit,
     onFavoriteClick: (VideoItem) -> Unit,
     onDownloadClick: (VideoItem) -> Unit,
-    onDownloadConfirm: (VideoItem, StreamBundle, String?, String?, String?, Boolean) -> Unit,
+    onDownloadConfirm: (VideoItem, StreamBundle, String?, String?, String?, Boolean, Boolean) -> Unit,
     onDismissDownload: () -> Unit,
     onToggleSubscription: (SearchItem.Channel) -> Unit,
     onBarsVisibilityChange: (Boolean) -> Unit,
@@ -206,11 +206,7 @@ private fun SearchContent(
             GlassSurface(
                 tonalElevation = 0.dp,
                 border = null,
-                containerColor = if (isSearchFocused) {
-                    MaterialTheme.colorScheme.surface
-                } else {
-                    MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
-                }
+                containerColor = MaterialTheme.colorScheme.surface
             ) {
                 Box(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.fillMaxWidth().statusBarsPadding()) {
@@ -294,7 +290,7 @@ private fun SearchContent(
                                 Surface(
                                     onClick = onToggleGrid,
                                     shape = RoundedCornerShape(10.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
                                     modifier = Modifier.size(32.dp) // Smaller size
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
@@ -328,8 +324,8 @@ private fun SearchContent(
                                         colors = FilterChipDefaults.filterChipColors(
                                             selectedContainerColor = MaterialTheme.colorScheme.primary,
                                             selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant
                                         ),
                                         border = null,
                                         modifier = Modifier.height(32.dp) // Smaller height
@@ -590,15 +586,17 @@ private fun SearchContent(
                 is DownloadDialogState.ShowDialog -> {
                 DownloadSelectionSheet(
                     videoStreams = currentDownloadState.bundle.videoStreams,
+                    subtitles = currentDownloadState.bundle.subtitles,
                     onDismiss = { onDismissDownload() },
-                    onDownload = { stream ->
+                    onDownload = { stream, downloadSubtitles ->
                         onDownloadConfirm(
                             currentDownloadState.video,
                             currentDownloadState.bundle,
                             stream.url,
                             stream.quality,
                             stream.format,
-                            stream.isAdaptive
+                            stream.isAdaptive,
+                            downloadSubtitles
                         )
                     }
                 )
@@ -704,18 +702,13 @@ fun ModernSearchBar(
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val focusManager = LocalFocusManager.current
 
-    val containerAlpha by animateFloatAsState(
-        targetValue = if (isFocused) 0.85f else 0.4f, 
-        label = "SearchContainerAlpha"
-    )
-
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 0.dp)
             .height(52.dp)
             .animateContentSize(),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = containerAlpha),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         shape = CircleShape,
         border = androidx.compose.foundation.BorderStroke(
             width = 0.5.dp,

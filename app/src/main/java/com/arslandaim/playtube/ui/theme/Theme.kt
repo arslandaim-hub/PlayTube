@@ -21,49 +21,52 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val DarkColorScheme = darkColorScheme(
-    primary = YoutubeRed,
-    secondary = DarkRed,
-    tertiary = DarkOnSurfaceVariant,
-    background = DarkBackground,
-    surface = DarkBackground,
-    onPrimary = DarkOnSurface,
-    onSecondary = DarkOnSurface,
-    onTertiary = DarkOnSurface,
-    onBackground = DarkOnSurface,
-    onSurface = DarkOnSurface,
-    surfaceVariant = DarkSurface,
-    onSurfaceVariant = DarkOnSurfaceVariant
-)
-
-private val LightColorScheme = lightColorScheme(
-    primary = YoutubeRed,
-    onPrimary = Color.White,
-    secondary = DarkRed,
-    onSecondary = Color.White,
-    tertiary = LightOnSurfaceVariant,
-    onTertiary = Color.White,
-    background = LightBackground,
-    onBackground = LightOnSurface,
-    surface = LightBackground,
-    onSurface = LightOnSurface,
-    surfaceVariant = LightSurface,
-    onSurfaceVariant = LightOnSurfaceVariant
-)
-
 @Composable
 fun PlayTubeTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     isDynamicColorEnabled: Boolean = false,
+    appThemeColor: String = "RED",
     content: @Composable () -> Unit
 ) {
+    val palette = getThemePalette(appThemeColor)
+
+    val darkColors = darkColorScheme(
+        primary = palette.primary,
+        secondary = palette.secondary,
+        tertiary = DarkOnSurfaceVariant,
+        background = DarkBackground,
+        surface = DarkBackground,
+        onPrimary = Color.White,
+        onSecondary = Color.White,
+        onTertiary = DarkOnSurface,
+        onBackground = DarkOnSurface,
+        onSurface = DarkOnSurface,
+        surfaceVariant = DarkSurface,
+        onSurfaceVariant = DarkOnSurfaceVariant
+    )
+
+    val lightColors = lightColorScheme(
+        primary = palette.primary,
+        onPrimary = Color.White,
+        secondary = palette.secondary,
+        onSecondary = Color.White,
+        tertiary = LightOnSurfaceVariant,
+        onTertiary = Color.White,
+        background = LightBackground,
+        onBackground = LightOnSurface,
+        surface = LightBackground,
+        onSurface = LightOnSurface,
+        surfaceVariant = LightSurface,
+        onSurfaceVariant = LightOnSurfaceVariant
+    )
+
     val colorScheme = when {
         isDynamicColorEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+        darkTheme -> darkColors
+        else -> lightColors
     }
 
     val view = LocalView.current

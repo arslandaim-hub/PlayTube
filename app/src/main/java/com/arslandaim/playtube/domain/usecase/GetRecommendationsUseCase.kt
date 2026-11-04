@@ -5,6 +5,7 @@
 */
 package com.arslandaim.playtube.domain.usecase
 
+import com.arslandaim.playtube.data.local.PreferencesManager
 import com.arslandaim.playtube.domain.model.SearchItem
 import com.arslandaim.playtube.domain.model.VideoItem
 import com.arslandaim.playtube.domain.recommendation.NeuroDiscovery
@@ -13,6 +14,7 @@ import com.arslandaim.playtube.domain.recommendation.NeuroTokenizer
 import com.arslandaim.playtube.domain.repository.LibraryRepository
 import com.arslandaim.playtube.domain.repository.SearchRepository
 import com.arslandaim.playtube.domain.repository.VideoRepository
+import com.arslandaim.playtube.utils.AiContentDetector
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -23,7 +25,8 @@ import javax.inject.Inject
 class GetRecommendationsUseCase @Inject constructor(
     private val searchRepository: SearchRepository,
     private val videoRepository: VideoRepository,
-    private val libraryRepository: LibraryRepository
+    private val libraryRepository: LibraryRepository,
+    private val preferencesManager: PreferencesManager
 ) {
     private var cachedRecommendations: List<VideoItem>? = null
     private var lastFetchTime = 0L
@@ -101,17 +104,28 @@ class GetRecommendationsUseCase @Inject constructor(
 
             // 4. Filtering
             val watchedIds = watchHistory.map { it.videoId }.toSet()
-            val blacklist = libraryRepository.getBlacklistStatic().map { it.id }.toSet()
+            val blacklistedEntities = libraryRepository.getBlacklistStatic()
+            val blacklistedIds = blacklistedEntities.map { it.id }.toSet()
+            val isBlockAiEnabled = preferencesManager.isBlockAiContentEnabled.first()
+
+            fun isAllowed(video: VideoItem): Boolean {
+                if (video.id in watchedIds) return false
+                if (video.id in blacklistedIds) return false
+                if (video.uploaderName in blacklistedIds) return false
+                if (video.uploaderUrl != null && video.uploaderUrl in blacklistedIds) return false
+                if (isBlockAiEnabled && AiContentDetector.isAiContent(video)) return false
+                return true
+            }
             
             var filteredCandidates = candidates
                 .distinctBy { it.id }
-                .filter { (it.id !in watchedIds) && (it.id !in blacklist) }
+                .filter { isAllowed(it) }
 
             // Final Fallback: If still empty or very small, pull directly from the curated Trending kiosk
             if (filteredCandidates.size < 20) {
                 try {
                     val trending = videoRepository.getTrendingVideos().items
-                        .filter { (it.id !in watchedIds) && (it.id !in blacklist) }
+                        .filter { isAllowed(it) }
                     filteredCandidates = (filteredCandidates + trending).distinctBy { it.id }
                 } catch (e: Exception) { /* ignore fallback errors */ }
             }

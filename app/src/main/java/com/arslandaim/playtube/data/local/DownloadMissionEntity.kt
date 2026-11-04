@@ -21,7 +21,10 @@ data class DownloadMissionEntity(
     val creationTime: Long = System.currentTimeMillis(),
     val videoUrl: String? = null,
     val audioUrl: String? = null,
-    val format: String? = null
+    val format: String? = null,
+    val subtitleUrl: String? = null,
+    val subtitlePath: String? = null,
+    val subtitleLanguage: String? = null
 )
 
 enum class MissionStatus {

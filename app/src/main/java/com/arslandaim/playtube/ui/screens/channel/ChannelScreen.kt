@@ -292,7 +292,7 @@ private fun ChannelContent(
     onToggleSubscription: () -> Unit,
     onFavoriteClick: (VideoItem) -> Unit,
     onDownloadClick: (VideoItem) -> Unit,
-    onDownloadConfirm: (VideoItem, StreamBundle, String?, String?, String?, Boolean) -> Unit,
+    onDownloadConfirm: (VideoItem, StreamBundle, String?, String?, String?, Boolean, Boolean) -> Unit,
     onDismissDownload: () -> Unit,
     onBarsVisibilityChange: (Boolean) -> Unit,
     onNavigateToDownloads: () -> Unit,
@@ -511,15 +511,17 @@ private fun ChannelContent(
                 is DownloadDialogState.ShowDialog -> {
                 DownloadSelectionSheet(
                     videoStreams = currentDownloadState.bundle.videoStreams,
+                    subtitles = currentDownloadState.bundle.subtitles,
                     onDismiss = { onDismissDownload() },
-                    onDownload = { stream ->
+                    onDownload = { stream, downloadSubtitles ->
                         onDownloadConfirm(
                             currentDownloadState.video,
                             currentDownloadState.bundle,
                             stream.url,
                             stream.quality,
                             stream.format,
-                            stream.isAdaptive
+                            stream.isAdaptive,
+                            downloadSubtitles
                         )
                     }
                 )

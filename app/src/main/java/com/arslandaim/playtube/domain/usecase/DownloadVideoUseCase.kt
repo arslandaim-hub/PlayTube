@@ -21,8 +21,23 @@ class DownloadVideoUseCase @Inject constructor(
         format: String?,
         audioUrl: String? = null,
         playlistId: String? = null,
-        playlistTitle: String? = null
+        playlistTitle: String? = null,
+        subtitleUrl: String? = null,
+        subtitleLanguage: String? = null
     ) {
-        repository.startDownload(videoId, url, title, thumbnailUrl, uploaderName, quality, format, audioUrl, playlistId, playlistTitle)
+        repository.startDownload(
+            videoId = videoId,
+            url = url,
+            title = title,
+            thumbnailUrl = thumbnailUrl,
+            uploaderName = uploaderName,
+            quality = quality,
+            format = format,
+            audioUrl = audioUrl,
+            playlistId = playlistId,
+            playlistTitle = playlistTitle,
+            subtitleUrl = subtitleUrl,
+            subtitleLanguage = subtitleLanguage
+        )
     }
 }

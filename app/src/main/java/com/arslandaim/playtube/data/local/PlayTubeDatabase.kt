@@ -25,7 +25,7 @@ import androidx.room.TypeConverters
         DownloadMissionEntity::class,
         DownloadChunkEntity::class
     ],
-    version = 15
+    version = 16
 )
 @TypeConverters(Converters::class)
 abstract class PlayTubeDatabase : RoomDatabase() {

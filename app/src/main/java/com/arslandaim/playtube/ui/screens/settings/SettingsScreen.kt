@@ -27,15 +27,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PictureInPicture
@@ -43,6 +49,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Recommend
+import com.arslandaim.playtube.ui.theme.AppThemePalettes
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
@@ -107,12 +114,17 @@ fun SettingsScreen(
     val isAutoUpdateEnabled by updateViewModel.isAutoUpdateEnabled.collectAsStateWithLifecycle()
     val updateInfo by updateViewModel.updateInfo.collectAsStateWithLifecycle()
 
+    val isBlockAiContentEnabled by viewModel.isBlockAiContentEnabled.collectAsStateWithLifecycle()
+    val appThemeColor by viewModel.appThemeColor.collectAsStateWithLifecycle()
+
     SettingsContent(
         isSearchHistoryPaused = isSearchHistoryPaused,
         isPipEnabled = isPipEnabled,
         isBackgroundPlayEnabled = isBackgroundPlayEnabled,
         isRecommendationsPaused = isRecommendationsPaused,
         isDynamicColorEnabled = isDynamicColorEnabled,
+        isBlockAiContentEnabled = isBlockAiContentEnabled,
+        appThemeColor = appThemeColor,
         isPlayerGesturesEnabled = isPlayerGesturesEnabled,
         subtitleFontSize = subtitleFontSize,
         subtitleBackgroundOpacity = subtitleBackgroundOpacity,
@@ -125,6 +137,8 @@ fun SettingsScreen(
         onSetBackgroundPlayEnabled = viewModel::setBackgroundPlayEnabled,
         onSetRecommendationsPaused = viewModel::setRecommendationsPaused,
         onSetDynamicColorEnabled = viewModel::setDynamicColorEnabled,
+        onSetBlockAiContentEnabled = viewModel::setBlockAiContentEnabled,
+        onSetAppThemeColor = viewModel::setAppThemeColor,
         onSetPlayerGesturesEnabled = viewModel::setPlayerGesturesEnabled,
         onSetSubtitleFontSize = viewModel::setSubtitleFontSize,
         onSetSubtitleBackgroundOpacity = viewModel::setSubtitleBackgroundOpacity,
@@ -146,6 +160,8 @@ private fun SettingsContent(
     isBackgroundPlayEnabled: Boolean,
     isRecommendationsPaused: Boolean,
     isDynamicColorEnabled: Boolean,
+    isBlockAiContentEnabled: Boolean,
+    appThemeColor: String,
     isPlayerGesturesEnabled: Boolean,
     subtitleFontSize: Float,
     subtitleBackgroundOpacity: Float,
@@ -158,6 +174,8 @@ private fun SettingsContent(
     onSetBackgroundPlayEnabled: (Boolean) -> Unit,
     onSetRecommendationsPaused: (Boolean) -> Unit,
     onSetDynamicColorEnabled: (Boolean) -> Unit,
+    onSetBlockAiContentEnabled: (Boolean) -> Unit,
+    onSetAppThemeColor: (String) -> Unit,
     onSetPlayerGesturesEnabled: (Boolean) -> Unit,
     onSetSubtitleFontSize: (Float) -> Unit,
     onSetSubtitleBackgroundOpacity: (Float) -> Unit,
@@ -352,6 +370,14 @@ private fun SettingsContent(
                         onCheckedChange = onSetRecommendationsPaused
                     )
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    SettingsSwitchItem(
+                        title = "Block AI Content",
+                        subtitle = "Hide AI-generated channels and videos from home feed",
+                        icon = Icons.Default.Block,
+                        checked = isBlockAiContentEnabled,
+                        onCheckedChange = onSetBlockAiContentEnabled
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                     SettingsItem(
                         title = stringResource(R.string.settings_clear_learned_data),
                         subtitle = stringResource(R.string.settings_clear_learned_data_desc_item),
@@ -362,9 +388,14 @@ private fun SettingsContent(
                 }
             }
 
-            // Content Category
+            // Appearance & Playback Category
             item {
                 SettingsGroup(title = stringResource(R.string.settings_group_appearance_playback)) {
+                    ThemeColorPicker(
+                        selectedColorName = appThemeColor,
+                        onColorSelected = onSetAppThemeColor
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                     SettingsSwitchItem(
                         title = stringResource(R.string.settings_player_gestures),
                         subtitle = stringResource(R.string.settings_player_gestures_desc),
@@ -647,6 +678,77 @@ fun SettingsSwitchItem(
             checked = checked,
             onCheckedChange = onCheckedChange
         )
+    }
+}
+
+@Composable
+fun ThemeColorPicker(
+    selectedColorName: String,
+    onColorSelected: (String) -> Unit
+) {
+    Column(modifier = Modifier.padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Palette,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Column {
+                Text(
+                    text = stringResource(R.string.theme_accent_color),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = stringResource(R.string.theme_accent_color_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            AppThemePalettes.forEach { palette ->
+                val isSelected = palette.name.equals(selectedColorName, ignoreCase = true)
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(palette.primary)
+                        .border(
+                            width = if (isSelected) 3.dp else 0.dp,
+                            color = if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent,
+                            shape = CircleShape
+                        )
+                        .clickable { onColorSelected(palette.name) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = palette.displayName,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

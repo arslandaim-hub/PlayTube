@@ -165,6 +165,8 @@
     <string name="settings_player_gestures_desc">Włącz gesty przesunięcia dla głośności i jasności</string>
     <string name="settings_material_you">Material You</string>
     <string name="settings_material_you_desc">Dostosowuje kolory do motywu urządzenia</string>
+    <string name="theme_accent_color">Kolor akcentu motywu</string>
+    <string name="theme_accent_color_desc">Wybierz własny schemat kolorów akcentu</string>
     <string name="system_default">Domyślny systemowy</string>
     <string name="settings_subtitle_styles">Style napisów</string>
     <string name="settings_subtitle_styles_desc">Dostosuj rozmiar czcionki i tła</string>
@@ -201,4 +203,6 @@
     <string name="connection_lost_waiting">Połączenie utracone. Czekam na wznowienie...</string>
     <string name="no_previous_video">Brak poprzedniego filmu w sesji</string>
     <string name="skipped_segment">Pominięto %s</string>
+    <string name="audio_track">Ścieżka dźwiękowa</string>
+    <string name="select_audio_track">Wybierz ścieżkę dźwiękową</string>
 </resources>

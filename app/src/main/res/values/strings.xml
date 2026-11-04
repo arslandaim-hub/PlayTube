@@ -117,6 +117,8 @@
     <string name="video_quality">Video Quality</string>
     <string name="video">Video</string>
     <string name="audio">Audio</string>
+    <string name="audio_track">Audio Track</string>
+    <string name="select_audio_track">Select Audio Track</string>
     <string name="high_quality">High Quality</string>
     <string name="download_quality">Download Quality</string>
     <string name="playlist_download_quality">Playlist Download Quality</string>
@@ -167,6 +169,8 @@
     <string name="settings_player_gestures_desc">Enable swipe gestures for volume and brightness</string>
     <string name="settings_material_you">Material You</string>
     <string name="settings_material_you_desc">Adapts device theme color</string>
+    <string name="theme_accent_color">Theme Accent Color</string>
+    <string name="theme_accent_color_desc">Choose custom accent color scheme</string>
     <string name="system_default">System Default</string>
     <string name="settings_subtitle_styles">Subtitle Styles</string>
     <string name="settings_subtitle_styles_desc">Customize font size and background</string>

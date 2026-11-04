@@ -22,7 +22,9 @@ interface DownloadRepository {
         format: String?,
         audioUrl: String? = null,
         playlistId: String? = null,
-        playlistTitle: String? = null
+        playlistTitle: String? = null,
+        subtitleUrl: String? = null,
+        subtitleLanguage: String? = null
     )
     suspend fun cancelDownload(videoId: String)
     suspend fun pauseDownload(videoId: String)

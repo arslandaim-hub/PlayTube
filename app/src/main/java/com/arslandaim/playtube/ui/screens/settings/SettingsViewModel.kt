@@ -52,6 +52,12 @@ class SettingsViewModel @Inject constructor(
     val isDynamicColorEnabled: StateFlow<Boolean> = preferencesManager.isDynamicColorEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    val isBlockAiContentEnabled: StateFlow<Boolean> = preferencesManager.isBlockAiContentEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val appThemeColor: StateFlow<String> = preferencesManager.appThemeColor
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "RED")
+
     val isPlayerGesturesEnabled: StateFlow<Boolean> = preferencesManager.isPlayerGesturesEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
@@ -102,6 +108,18 @@ class SettingsViewModel @Inject constructor(
     fun setDynamicColorEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesManager.setDynamicColorEnabled(enabled)
+        }
+    }
+
+    fun setBlockAiContentEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesManager.setBlockAiContentEnabled(enabled)
+        }
+    }
+
+    fun setAppThemeColor(colorName: String) {
+        viewModelScope.launch {
+            preferencesManager.setAppThemeColor(colorName)
         }
     }
 

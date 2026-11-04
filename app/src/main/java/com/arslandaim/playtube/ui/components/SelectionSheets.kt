@@ -19,7 +19,7 @@ import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -171,9 +171,25 @@ fun PitchSelectionSheet(
 @Composable
 fun DownloadSelectionSheet(
     videoStreams: List<StreamItem>,
+    subtitles: List<SubtitleItem> = emptyList(),
+    preferredLanguage: String? = null,
     onDismiss: () -> Unit,
-    onDownload: (StreamItem) -> Unit
+    onDownload: (StreamItem, downloadSubtitles: Boolean) -> Unit
 ) {
+    val hasSubtitles = subtitles.isNotEmpty()
+    var downloadSubtitles by remember { mutableStateOf(hasSubtitles) }
+
+    val targetLangName = remember(subtitles, preferredLanguage) {
+        if (!hasSubtitles) null else {
+            val matched = if (!preferredLanguage.isNullOrBlank()) {
+                subtitles.find { it.languageTag.equals(preferredLanguage, ignoreCase = true) || it.languageTag.startsWith(preferredLanguage, ignoreCase = true) }
+            } else null
+            val sub = matched ?: subtitles.find { it.languageTag.startsWith("en", ignoreCase = true) } ?: subtitles.first()
+            val locale = java.util.Locale.forLanguageTag(sub.languageTag)
+            locale.displayLanguage.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() }
+        }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         dragHandle = { BottomSheetDefaults.DragHandle() }
@@ -191,13 +207,39 @@ fun DownloadSelectionSheet(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
             }
+
+            item {
+                ListItem(
+                    headlineContent = {
+                        Text(
+                            text = if (hasSubtitles) {
+                                if (targetLangName != null) "Download Subtitles ($targetLangName)" else "Download Subtitles"
+                            } else {
+                                "Subtitles (None available)"
+                            },
+                            fontWeight = FontWeight.Medium
+                        )
+                    },
+                    leadingContent = {
+                        Checkbox(
+                            checked = downloadSubtitles && hasSubtitles,
+                            onCheckedChange = { if (hasSubtitles) downloadSubtitles = it },
+                            enabled = hasSubtitles
+                        )
+                    },
+                    modifier = Modifier.clickable(enabled = hasSubtitles) {
+                        downloadSubtitles = !downloadSubtitles
+                    }
+                )
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            }
             
             if (videoStreams.isNotEmpty()) {
                 item {
                     SectionHeader(title = stringResource(R.string.video), icon = Icons.Default.VideoFile)
                 }
                 items(videoStreams) { stream ->
-                    StreamListItem(stream = stream, onDownload = onDownload)
+                    StreamListItem(stream = stream, onDownload = { onDownload(stream, downloadSubtitles && hasSubtitles) })
                 }
             }
         }
@@ -254,6 +296,47 @@ fun SubtitleSelectionSheet(
                             ) 
                         },
                         modifier = Modifier.clickable { onLanguageSelected(subtitle.languageTag) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AudioTrackSelectionSheet(
+    audioStreams: List<StreamItem>,
+    currentAudioStream: StreamItem?,
+    onDismiss: () -> Unit,
+    onAudioStreamSelected: (StreamItem) -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(modifier = Modifier.padding(bottom = 32.dp)) {
+            Text(
+                text = stringResource(R.string.audio_track),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+            
+            LazyColumn {
+                items(audioStreams) { stream ->
+                    val isSelected = currentAudioStream?.url == stream.url ||
+                        (currentAudioStream == null && stream == audioStreams.firstOrNull())
+                    ListItem(
+                        headlineContent = { Text(text = stream.quality) },
+                        supportingContent = { Text(text = stream.format.uppercase()) },
+                        leadingContent = { 
+                            RadioButton(
+                                selected = isSelected,
+                                onClick = null 
+                            ) 
+                        },
+                        modifier = Modifier.clickable { onAudioStreamSelected(stream) }
                     )
                 }
             }
@@ -329,8 +412,9 @@ fun AddToPlaylistSheet(
 @Composable
 fun PlaylistDownloadSelectionSheet(
     onDismiss: () -> Unit,
-    onDownload: (String) -> Unit
+    onDownload: (quality: String, downloadSubtitles: Boolean) -> Unit
 ) {
+    var downloadSubtitles by remember { mutableStateOf(true) }
     val options = listOf("4K", "1080p", "720p", "480p", "360p")
     
     ModalBottomSheet(
@@ -344,6 +428,18 @@ fun PlaylistDownloadSelectionSheet(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
+
+            ListItem(
+                headlineContent = { Text("Download Subtitles", fontWeight = FontWeight.Medium) },
+                leadingContent = {
+                    Checkbox(
+                        checked = downloadSubtitles,
+                        onCheckedChange = { downloadSubtitles = it }
+                    )
+                },
+                modifier = Modifier.clickable { downloadSubtitles = !downloadSubtitles }
+            )
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
             
             LazyColumn {
                 items(options) { quality ->
@@ -356,7 +452,7 @@ fun PlaylistDownloadSelectionSheet(
                                 tint = if (quality == "1080p" || quality == "4K") MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
-                        modifier = Modifier.clickable { onDownload(quality) }
+                        modifier = Modifier.clickable { onDownload(quality, downloadSubtitles) }
                     )
                 }
             }

@@ -305,9 +305,43 @@ class VideoDownloadService : Service() {
         videoFile.delete()
         audioFile.delete()
 
+        // 4. Download Subtitles if present
+        if (!mission.subtitleUrl.isNullOrBlank() && !mission.subtitlePath.isNullOrBlank()) {
+            try {
+                updateNotification(missionId, "Downloading subtitles...", 98)
+                downloadSubtitleFile(mission.subtitleUrl, File(mission.subtitlePath))
+                downloadDao.updateSubtitlePath(mission.videoId, mission.subtitlePath, mission.subtitleLanguage ?: "en")
+            } catch (e: Exception) {
+                PTLog.e("VideoDownloadService", "Failed to download subtitle for ${mission.videoId}", e)
+            }
+        }
+
         missionDao.updateMission(mission.copy(totalBytes = finalTotal, status = MissionStatus.COMPLETED))
         downloadDao.updateProgress(mission.videoId, DownloadStatus.COMPLETED, finalTotal, finalTotal)
         updateNotification(missionId, "Download complete", 100, true)
+    }
+
+    private suspend fun downloadSubtitleFile(url: String, outputFile: File) = withContext(Dispatchers.IO) {
+        // Enforce VTT format for YouTube timedtext URLs since we save as .vtt
+        val finalUrl = if (url.contains("youtube.com/api/timedtext")) {
+            if (url.contains("fmt=")) {
+                url.replace(Regex("fmt=[^&]*"), "fmt=vtt")
+            } else {
+                "$url&fmt=vtt"
+            }
+        } else url
+
+        val request = okhttp3.Request.Builder().url(finalUrl).build()
+        val response = okHttpClient.newCall(request).execute()
+        if (response.isSuccessful) {
+            response.body.byteStream().use { input ->
+                outputFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+        } else {
+            PTLog.e("VideoDownloadService", "Subtitle download failed with HTTP ${response.code}")
+        }
     }
 
     private data class StreamMetadata(val videoUrl: String, val audioUrl: String?, val format: String, val quality: String)
