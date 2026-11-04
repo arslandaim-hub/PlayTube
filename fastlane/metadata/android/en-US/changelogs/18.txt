@@ -1,0 +1,4 @@
+Added Repeat Mode (OFF, REPEAT_ONE, PLAY_NEXT). And a dedicated button in video player as well, useful in landscape mode.
+Added a Downloaded videos stack in player screen for direct access to downloaded videos.
+Language Independent IMPORT worker.
+Refined the action tabs in player screen for cleaner looks.
