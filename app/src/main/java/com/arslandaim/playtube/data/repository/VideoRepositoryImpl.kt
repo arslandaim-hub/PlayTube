@@ -139,7 +139,40 @@ class VideoRepositoryImpl @Inject constructor(
     }
 
     private fun extractAudioStreams(streamInfo: StreamInfo): List<StreamItem> {
-        return streamInfo.audioStreams?.map {
+        val streams = streamInfo.audioStreams ?: return emptyList()
+
+        val distinctLocales = streams.mapNotNull { it.audioLocale?.language }.filter { it.isNotBlank() }.distinct()
+        val hasDubbedOrDescriptive = streams.any {
+            it.audioTrackType == AudioTrackType.DUBBED ||
+            it.audioTrackType == AudioTrackType.DESCRIPTIVE ||
+            (it.audioTrackName?.contains("dubbed", ignoreCase = true) == true || it.audioTrackName?.contains("descriptive", ignoreCase = true) == true)
+        }
+        val hasMultipleLanguages = distinctLocales.size > 1
+
+        if (!hasDubbedOrDescriptive && !hasMultipleLanguages) {
+            // Video has no alternative language tracks or dubs.
+            // Return empty list so technical bitrate variations (48kbps, 128kbps, etc.) are not listed in the Audio Track UI.
+            return emptyList()
+        }
+
+        // Group streams by distinct track identity (locale + trackType/trackName) and select the highest bitrate stream for each track
+        val distinctTracks = streams.groupBy {
+            val lang = it.audioLocale?.toLanguageTag() ?: it.audioLocale?.language ?: "default"
+            val type = it.audioTrackType?.name ?: it.audioTrackName ?: "default"
+            "$lang:$type"
+        }.values.mapNotNull { trackGroup ->
+            trackGroup.maxByOrNull { it.averageBitrate }
+        }
+
+        // Sort distinct tracks: ORIGINAL first, non-dubbed second, English/system locale third, others
+        val sortedTracks = distinctTracks.sortedWith(
+            compareByDescending<AudioStream> { it.audioTrackType == AudioTrackType.ORIGINAL }
+                .thenByDescending { it.audioTrackType != AudioTrackType.DUBBED }
+                .thenByDescending { it.audioLocale?.language == "en" }
+                .thenBy { it.audioLocale?.displayName ?: it.audioTrackName ?: "" }
+        )
+
+        return sortedTracks.map {
             val langName = it.audioLocale?.displayName?.replaceFirstChar { c -> c.uppercase() }
                 ?: it.audioLocale?.displayLanguage?.replaceFirstChar { c -> c.uppercase() }
             val trackType = when (it.audioTrackType?.name) {
@@ -150,11 +183,9 @@ class VideoRepositoryImpl @Inject constructor(
             }
             val labelParts = mutableListOf<String>()
             if (!langName.isNullOrBlank()) labelParts.add(langName)
-            if (!trackType.isNullOrBlank()) labelParts.add("($trackType)")
-            val bitrate = if (it.averageBitrate > 0) "${it.averageBitrate}kbps" else ""
-            if (bitrate.isNotBlank()) labelParts.add("- $bitrate")
+            if (!trackType.isNullOrBlank() && !labelParts.contains(trackType)) labelParts.add("($trackType)")
 
-            val displayQuality = if (labelParts.isNotEmpty()) labelParts.joinToString(" ") else "${it.averageBitrate}kbps"
+            val displayQuality = if (labelParts.isNotEmpty()) labelParts.joinToString(" ") else "Default"
 
             StreamItem(
                 url = it.url ?: "",
@@ -163,7 +194,7 @@ class VideoRepositoryImpl @Inject constructor(
                 languageTag = it.audioLocale?.toLanguageTag() ?: it.audioLocale?.language,
                 trackType = it.audioTrackType?.name ?: it.audioTrackName
             )
-        } ?: emptyList()
+        }
     }
 
     private fun extractSubtitles(streamInfo: StreamInfo): List<SubtitleItem> {
@@ -191,8 +222,18 @@ class VideoRepositoryImpl @Inject constructor(
     private fun selectBestAudioStream(streamInfo: StreamInfo): AudioStream? {
         val streams = streamInfo.audioStreams ?: return null
         val originals = streams.filter { it.audioTrackType == AudioTrackType.ORIGINAL }
-        return if (originals.isNotEmpty()) originals.maxByOrNull { it.averageBitrate }
-        else streams.filter { it.audioLocale?.language == "en" }.maxByOrNull { it.averageBitrate } ?: streams.maxByOrNull { it.averageBitrate }
+        if (originals.isNotEmpty()) {
+            return originals.maxByOrNull { it.averageBitrate }
+        }
+        val nonDubbed = streams.filter {
+            it.audioTrackType != AudioTrackType.DUBBED &&
+            it.audioTrackType != AudioTrackType.DESCRIPTIVE &&
+            (it.audioTrackName == null || it.audioTrackName?.contains("dubbed", ignoreCase = true) == false)
+        }
+        val candidatePool = if (nonDubbed.isNotEmpty()) nonDubbed else streams
+
+        return candidatePool.filter { it.audioLocale?.language == "en" }.maxByOrNull { it.averageBitrate }
+            ?: candidatePool.maxByOrNull { it.averageBitrate }
     }
 
     override suspend fun getCachedStreamBundle(videoId: String): StreamBundle? {

@@ -5,6 +5,11 @@
 */
 package com.arslandaim.playtube.ui.screens.settings
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,10 +19,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Leaderboard
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Recommend
 import androidx.compose.material.icons.filled.Timeline
+import androidx.compose.material.icons.filled.Topic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -46,6 +55,9 @@ fun RecommendationSettingsScreen(
     val totalVideosWatched by viewModel.totalVideosWatched.collectAsStateWithLifecycle()
     val topWatchedChannel by viewModel.topWatchedChannel.collectAsStateWithLifecycle()
     val topChannelsList by viewModel.topChannelsList.collectAsStateWithLifecycle()
+
+    var isTopicsExpanded by remember { mutableStateOf(false) }
+    var isCreatorsExpanded by remember { mutableStateOf(false) }
     var showClearInterestsDialog by remember { mutableStateOf(false) }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -141,9 +153,15 @@ fun RecommendationSettingsScreen(
                 }
             }
 
-            // Learned Topic Profile Section
+            // Collapsible Boxy Learned Topic Profile Section
             item {
-                SettingsGroup(title = "Learned Topic Profile") {
+                CollapsibleSettingsGroup(
+                    title = "Learned Topic Profile",
+                    subtitle = if (userInterests.isNotEmpty()) "${userInterests.size} topics tracked" else "No topics tracked",
+                    icon = Icons.Default.Topic,
+                    isExpanded = isTopicsExpanded,
+                    onToggleExpand = { isTopicsExpanded = !isTopicsExpanded }
+                ) {
                     if (userInterests.isEmpty()) {
                         Box(
                             modifier = Modifier
@@ -175,10 +193,16 @@ fun RecommendationSettingsScreen(
                 }
             }
 
-            // Top Creators Breakdown Section
+            // Collapsible Boxy Top Creators Breakdown Section
             if (topChannelsList.isNotEmpty()) {
                 item {
-                    SettingsGroup(title = "Top Creators Affinity") {
+                    CollapsibleSettingsGroup(
+                        title = "Top Creators Affinity",
+                        subtitle = "Top ${topChannelsList.size} channels watched",
+                        icon = Icons.Default.Leaderboard,
+                        isExpanded = isCreatorsExpanded,
+                        onToggleExpand = { isCreatorsExpanded = !isCreatorsExpanded }
+                    ) {
                         Column(
                             modifier = Modifier.padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -226,6 +250,111 @@ fun RecommendationSettingsScreen(
 }
 
 @Composable
+private fun CollapsibleSettingsGroup(
+    title: String,
+    subtitle: String? = null,
+    icon: ImageVector? = null,
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp)
+    ) {
+        Column {
+            Surface(
+                onClick = onToggleExpand,
+                color = Color.Transparent
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        if (icon != null) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                        }
+                        Column {
+                            Text(
+                                text = title,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (subtitle != null) {
+                                Text(
+                                    text = subtitle,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isExpanded) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceContainerHigh
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = null,
+                            tint = if (isExpanded) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+                    content()
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun TopicStrengthRow(
     keyword: String,
     weight: Float,
@@ -245,7 +374,7 @@ private fun TopicStrengthRow(
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = String.format(java.util.Locale.getDefault(), "%.1f", weight),
+                text = String.format(java.util.Locale.US, "%.1f", weight),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold

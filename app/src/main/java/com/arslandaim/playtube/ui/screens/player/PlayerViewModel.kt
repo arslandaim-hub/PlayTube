@@ -395,6 +395,7 @@ class PlayerViewModel @Inject constructor(
                     _uiState.value = PlayerUiState.Success(bundle.title, bundle.uploaderName, bundle)
                     miniPlayerManager.updateMetadata(currentVideoItem)
                     syncSubtitles(bundle)
+                    syncAudioTrack(bundle)
                     updatePlaylistIndex()
                     
                     val uploaderId = VideoUtils.extractChannelId(bundle.uploaderUrl) ?: bundle.uploaderUrl
@@ -479,6 +480,7 @@ class PlayerViewModel @Inject constructor(
                 nextRelatedPage = bundle.nextRelatedVideosPage
                 _uiState.value = PlayerUiState.Success(bundle.title, bundle.uploaderName, bundle)
                 syncSubtitles(bundle)
+                syncAudioTrack(bundle)
                 
                 val preferred = preferredQuality.value
                 val stream = selectBestMatchingQuality(bundle.videoStreams, preferred)
@@ -751,6 +753,7 @@ class PlayerViewModel @Inject constructor(
                 currentBundle = bundle
                 _uiState.value = PlayerUiState.Success(bundle.title, bundle.uploaderName, bundle)
                 syncSubtitles(bundle)
+                syncAudioTrack(bundle)
                 
                 val preferred = preferredQuality.value
                 val stream = selectBestMatchingQuality(bundle.videoStreams, preferred)
@@ -1089,6 +1092,12 @@ class PlayerViewModel @Inject constructor(
 
     fun clearABLoop() {
         playbackManager.clearABLoop()
+    }
+
+    private fun syncAudioTrack(bundle: StreamBundle) {
+        val defaultAudio = bundle.audioStreams.firstOrNull { it.url == bundle.bestAudioStreamUrl }
+            ?: bundle.audioStreams.firstOrNull()
+        _selectedAudioStream.value = defaultAudio
     }
 
     private fun syncSubtitles(bundle: StreamBundle) {
