@@ -108,10 +108,12 @@ class PlayTubeApp : Application(), Configuration.Provider, SingletonImageLoader.
             // 1. Clear Feed Cache (Crucial for avoiding VideoItem serialization crashes)
             database.feedCacheDao().clearAll()
             
-            // 2. Clear technical library caches (OkHttp, Coil, ExoPlayer)
+            // 2. Clear technical library caches (OkHttp, Coil, ExoPlayer), preserving download staging files
             val cacheDir = applicationContext.cacheDir
             cacheDir.listFiles()?.forEach { file ->
-                deleteRecursively(file)
+                if (!file.name.endsWith(".tmp") && !file.name.endsWith(".part") && !file.name.startsWith(".staging")) {
+                    deleteRecursively(file)
+                }
             }
             
             PTLog.i("PlayTubeApp", "Update cleanup completed successfully")

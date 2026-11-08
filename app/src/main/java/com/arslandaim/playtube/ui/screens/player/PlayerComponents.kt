@@ -76,6 +76,7 @@ fun UnifiedMetadataHub(
     subscriberCount: Long?,
     isSubscribed: Boolean,
     isFavorite: Boolean,
+    likeCount: Long = -1L,
     isSaved: Boolean,
     isDownloaded: Boolean,
     repeatMode: RepeatMode,
@@ -121,6 +122,7 @@ fun UnifiedMetadataHub(
         // 3. Action Row
         PlayerActionRow(
             isFavorite = isFavorite,
+            likeCount = likeCount,
             isSaved = isSaved,
             isDownloaded = isDownloaded,
             repeatMode = repeatMode,
@@ -382,6 +384,7 @@ fun ChannelInfoSection(
 @Composable
 fun PlayerActionRow(
     isFavorite: Boolean,
+    likeCount: Long = -1L,
     isSaved: Boolean,
     isDownloaded: Boolean,
     repeatMode: RepeatMode,
@@ -391,6 +394,9 @@ fun PlayerActionRow(
     onShareClick: () -> Unit,
     onRepeatClick: () -> Unit
 ) {
+    val defaultLikeText = if (isFavorite) stringResource(R.string.liked) else stringResource(R.string.like)
+    val likeLabel = if (likeCount > 0) VideoUtils.formatNumber(likeCount) else defaultLikeText
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -400,7 +406,7 @@ fun PlayerActionRow(
     ) {
         PlayerActionPill(
             icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-            label = if (isFavorite) stringResource(R.string.liked) else stringResource(R.string.like),
+            label = likeLabel,
             active = isFavorite,
             onClick = onToggleFavorite
         )
@@ -462,6 +468,15 @@ fun PlayerActionPill(
         label = "PillContent"
     )
 
+    val iconScale by animateFloatAsState(
+        targetValue = if (active) 1.25f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "PillIconScale"
+    )
+
     Surface(
         onClick = {
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -479,7 +494,9 @@ fun PlayerActionPill(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier
+                    .size(18.dp)
+                    .scale(iconScale),
                 tint = contentColor
             )
             Spacer(modifier = Modifier.width(8.dp))
@@ -602,7 +619,7 @@ fun PlaylistStack(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.PlaylistAdd,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
+                                tint = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.size(24.dp)
                             )
                         }

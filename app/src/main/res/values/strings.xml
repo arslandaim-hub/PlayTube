@@ -164,7 +164,29 @@
     <string name="settings_pause_recommendations_desc">Stop learning your interests temporarily</string>
     <string name="settings_clear_learned_data">Clear learned data</string>
     <string name="settings_clear_learned_data_desc_item">Reset recommendation engine profile</string>
+    <string name="recommendation_algorithm">PlayTube Engine</string>
+    <string name="recommendation_algorithm_desc">Statistical insights, top channel &amp; engine controls</string>
+    <string name="playtube_engine">PlayTube Engine</string>
+    <string name="playtube_engine_desc">Statistical insights, top channel &amp; engine controls</string>
+    <string name="tracked_topics">Tracked Topics</string>
+    <string name="top_interest">Top Channel</string>
+    <string name="top_channel">Top Channel</string>
+    <string name="algorithm_status">Algorithm Status</string>
+    <string name="status_active">Active</string>
+    <string name="status_paused">Paused</string>
+    <string name="no_interests_learned">No recommendation profile data learned yet.</string>
+    <string name="learned_topic_profile">Learned Topic Profile</string>
+    <string name="learned_topic_profile_desc">Key topics and relative weights used to score recommendations</string>
     <string name="settings_group_appearance_playback">Appearance &amp; Playback</string>
+    <string name="appearance_customization">Appearance &amp; Customization</string>
+    <string name="appearance_customization_desc">Theme accent, Material You, gestures &amp; AI content block</string>
+    <string name="theme_mode">Theme Mode</string>
+    <string name="theme_mode_system">Follow System</string>
+    <string name="theme_mode_system_desc">Matches device system theme settings</string>
+    <string name="theme_mode_light">Light</string>
+    <string name="theme_mode_light_desc">Bright &amp; clean appearance</string>
+    <string name="theme_mode_dark">Dark</string>
+    <string name="theme_mode_dark_desc">OLED deep dark theme</string>
     <string name="settings_player_gestures">Player Gestures</string>
     <string name="settings_player_gestures_desc">Enable swipe gestures for volume and brightness</string>
     <string name="settings_material_you">Material You</string>
@@ -207,4 +229,44 @@
     <string name="connection_lost_waiting">Connection lost. Waiting to resume...</string>
     <string name="no_previous_video">No previous video in session</string>
     <string name="skipped_segment">Skipped %s</string>
+
+    <!-- Data & Backup -->
+    <string name="data_and_backup">Data &amp; Backup</string>
+    <string name="youtube_takeout_import">YouTube Takeout Import</string>
+    <string name="import_watch_history">Import Watch History</string>
+    <string name="import_watch_history_desc">Select your watch-history.json or Takeout ZIP</string>
+    <string name="import_subscriptions">Import Subscriptions</string>
+    <string name="import_subscriptions_desc">Select your subscriptions.csv or Takeout ZIP</string>
+    <string name="playtube_native_backup">PlayTube Native Backup</string>
+    <string name="create_backup">Create Backup</string>
+    <string name="create_backup_desc">Save all your PlayTube data to a file</string>
+    <string name="restore_backup">Restore Backup</string>
+    <string name="restore_backup_desc">Restore your data from a previous backup</string>
+    <string name="import_background_hint">You can safely leave this page. The import will continue in the background.</string>
+    <string name="import_complete">Import Complete!</string>
+    <string name="dismiss">Dismiss</string>
+    <string name="import_failed">Import Failed</string>
+    <string name="processing">Processing...</string>
+
+    <!-- Subscriptions Screen -->
+    <string name="unsubscribe_confirm_title">Unsubscribe?</string>
+    <string name="unsubscribe_confirm_message">Are you sure you want to unsubscribe from %s?</string>
+    <string name="unsubscribe">Unsubscribe</string>
+    <string name="search_subscriptions">Search subscriptions</string>
+    <string name="no_matching_channels">No matching channels</string>
+    <string name="try_different_search">Try a different search term</string>
+
+    <!-- Appearance & Customization -->
+    <string name="live_theme_preview">Live Theme Preview</string>
+    <string name="content_controls">Content Controls</string>
+    <string name="block_ai_content">Block AI Content</string>
+    <string name="block_ai_content_desc">Hide AI-generated channels and videos from home feed</string>
+    <string name="theme_mode_oled">OLED Black</string>
+    <string name="sample_action">Sample Action</string>
+    <string name="selected_chip">Selected Chip</string>
+
+    <!-- Dialogs -->
+    <string name="create_new_playlist">Create New Playlist</string>
+    <string name="playlist_name">Playlist name</string>
+    <string name="create">Create</string>
 </resources>

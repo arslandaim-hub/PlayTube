@@ -160,6 +160,19 @@
     <string name="clear_all_downloads_desc">Tüm indirilmiş videoları silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.</string>
     <string name="clear_learned_data_title">Öğrenilen veriler temizlensin mi?</string>
     <string name="clear_learned_data_desc">Bu, öğrenilen tüm kullanıcı ilgi alanlarını silecek ve öneri motorunu sıfırlayacaktır. Bu işlem geri alınamaz.</string>
+    <string name="recommendation_algorithm">PlayTube Motoru</string>
+    <string name="recommendation_algorithm_desc">İstatistikler, en çok izlenen kanal ve motor kontrolleri</string>
+    <string name="playtube_engine">PlayTube Motoru</string>
+    <string name="playtube_engine_desc">İstatistikler, en çok izlenen kanal ve motor kontrolleri</string>
+    <string name="tracked_topics">Takip Edilen Konular</string>
+    <string name="top_interest">En Çok İzlenen Kanal</string>
+    <string name="top_channel">En Çok İzlenen Kanal</string>
+    <string name="algorithm_status">Algoritma Durumu</string>
+    <string name="status_active">Aktif</string>
+    <string name="status_paused">Duraklatıldı</string>
+    <string name="no_interests_learned">Henüz öğrenilmiş öneri profili verisi yok.</string>
+    <string name="learned_topic_profile">Öğrenilen Konu Profili</string>
+    <string name="learned_topic_profile_desc">Önerileri puanlamak için kullanılan ana konular ve ağırlıklar</string>
     <string name="settings_group_update">Uygulama Güncellemesi</string>
     <string name="settings_auto_update">GitHub Sürümlerini Otomatik Kontrol Et</string>
     <string name="settings_auto_update_desc">GitHub\'da yeni bir sürüm mevcut olduğunda bildir</string>
@@ -179,6 +192,15 @@
     <string name="settings_clear_learned_data">Öğrenilen verileri temizle</string>
     <string name="settings_clear_learned_data_desc_item">Öneri motoru profilini sıfırla</string>
     <string name="settings_group_appearance_playback">Görünüm ve Oynatma</string>
+    <string name="appearance_customization">Görünüm ve Özelleştirme</string>
+    <string name="appearance_customization_desc">Tema vurgusu, Material You, jestler ve AI içerik engelleme</string>
+    <string name="theme_mode">Tema Modu</string>
+    <string name="theme_mode_system">Sistemi Takip Et</string>
+    <string name="theme_mode_system_desc">Cihaz sistem ayarlarıyla eşleşir</string>
+    <string name="theme_mode_light">Açık</string>
+    <string name="theme_mode_light_desc">Aydınlık ve temiz görünüm</string>
+    <string name="theme_mode_dark">Karanlık</string>
+    <string name="theme_mode_dark_desc">OLED için optimize edilmiş koyu tema</string>
     <string name="settings_player_gestures">Oynatıcı Hareketleri</string>
     <string name="settings_player_gestures_desc">Ses ve parlaklık için kaydırma hareketlerini etkinleştir</string>
     <string name="settings_material_you">Material You</string>
@@ -209,4 +231,44 @@
     <string name="importing_items">%d öğe içe aktarıldı...</string>
     <string name="audio_track">Ses parçası</string>
     <string name="select_audio_track">Ses parçası seçin</string>
+
+    <!-- Data & Backup -->
+    <string name="data_and_backup">Veri ve Yedekleme</string>
+    <string name="youtube_takeout_import">YouTube Takeout İçe Aktarımı</string>
+    <string name="import_watch_history">İzleme Geçmişini İçe Aktar</string>
+    <string name="import_watch_history_desc">watch-history.json veya Takeout ZIP dosyanızı seçin</string>
+    <string name="import_subscriptions">Abonelikleri İçe Aktar</string>
+    <string name="import_subscriptions_desc">subscriptions.csv veya Takeout ZIP dosyanızı seçin</string>
+    <string name="playtube_native_backup">PlayTube Yerel Yedekleme</string>
+    <string name="create_backup">Yedek Oluştur</string>
+    <string name="create_backup_desc">Tüm PlayTube verilerinizi bir dosyaya kaydedin</string>
+    <string name="restore_backup">Yedeği Geri Yükle</string>
+    <string name="restore_backup_desc">Verilerinizi önceki bir yedekten geri yükleyin</string>
+    <string name="import_background_hint">Bu sayfadan güvenle ayrılabilirsiniz. İçe aktarma arka planda devam edecektir.</string>
+    <string name="import_complete">İçe Aktarma Tamamlandı!</string>
+    <string name="dismiss">Kapat</string>
+    <string name="import_failed">İçe Aktarma Başarısız</string>
+    <string name="processing">İşleniyor...</string>
+
+    <!-- Subscriptions Screen -->
+    <string name="unsubscribe_confirm_title">Abonelikten çıkılsın mı?</string>
+    <string name="unsubscribe_confirm_message">%s kanalının aboneliğinden çıkmak istediğinizden emin misiniz?</string>
+    <string name="unsubscribe">Abonelikten Çık</string>
+    <string name="search_subscriptions">Aboneliklerde ara</string>
+    <string name="no_matching_channels">Eşleşen kanal bulunamadı</string>
+    <string name="try_different_search">Farklı bir arama terimi deneyin</string>
+
+    <!-- Appearance & Customization -->
+    <string name="live_theme_preview">Canlı Tema Önizlemesi</string>
+    <string name="content_controls">İçerik Kontrolleri</string>
+    <string name="block_ai_content">Yapay Zeka İçeriğini Engelle</string>
+    <string name="block_ai_content_desc">Ana akıştan yapay zeka kanallarını ve videolarını gizle</string>
+    <string name="theme_mode_oled">OLED Siyahı</string>
+    <string name="sample_action">Örnek Eylem</string>
+    <string name="selected_chip">Seçili Etiket</string>
+
+    <!-- Dialogs -->
+    <string name="create_new_playlist">Yeni Oynatma Listesi Oluştur</string>
+    <string name="playlist_name">Oynatma listesi adı</string>
+    <string name="create">Oluştur</string>
 </resources>

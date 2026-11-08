@@ -242,4 +242,22 @@ object VideoUtils {
         if (multiplier == 0L) return 0L
         return now - (amount * multiplier)
     }
+
+    fun isShort(item: org.schabi.newpipe.extractor.stream.StreamInfoItem): Boolean {
+        if (item.isShortFormContent) return true
+        val url = item.url ?: ""
+        if (url.contains("/shorts/", ignoreCase = true)) return true
+        val name = item.name ?: ""
+        if (name.contains("#shorts", ignoreCase = true) || name.contains("#short", ignoreCase = true) || name.contains("#ytshorts", ignoreCase = true)) return true
+        if (item.duration in 1..60 && (name.contains("shorts", ignoreCase = true) || name.contains("short", ignoreCase = true) || url.contains("shorts", ignoreCase = true))) return true
+        return false
+    }
+
+    fun isShort(video: com.arslandaim.playtube.domain.model.VideoItem): Boolean {
+        if (video.isShort) return true
+        val title = video.title
+        if (title.contains("#shorts", ignoreCase = true) || title.contains("#short", ignoreCase = true) || title.contains("#ytshorts", ignoreCase = true)) return true
+        if (video.duration in 1..60 && (title.contains("shorts", ignoreCase = true) || title.contains("short", ignoreCase = true))) return true
+        return false
+    }
 }

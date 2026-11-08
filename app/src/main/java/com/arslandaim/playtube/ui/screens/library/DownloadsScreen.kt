@@ -65,7 +65,7 @@ fun DownloadsScreen(
     if (showCleanupConfirm) {
         AlertDialog(
             onDismissRequest = { showCleanupConfirm = false },
-            icon = { Icon(Icons.Default.CleaningServices, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            icon = { Icon(Icons.Default.CleaningServices, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) },
             title = { Text(stringResource(R.string.smart_cleanup_title)) },
             text = { Text(stringResource(R.string.smart_cleanup_desc)) },
             confirmButton = {
@@ -188,7 +188,7 @@ fun DownloadsScreen(
                             imageVector = Icons.Default.CleaningServices,
                             contentDescription = null,
                             modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         

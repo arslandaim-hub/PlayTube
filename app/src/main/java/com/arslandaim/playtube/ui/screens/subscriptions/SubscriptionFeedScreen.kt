@@ -84,7 +84,6 @@ fun SubscriptionFeedScreen(
 
     var isReady by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(300) // Wait for transition
         viewModel.loadSubscriptionsFeed()
         isReady = true
     }

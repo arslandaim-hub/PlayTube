@@ -82,6 +82,10 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.SwitchColors
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.filled.ClosedCaption
@@ -99,35 +103,22 @@ fun SettingsScreen(
     updateViewModel: UpdateViewModel,
     onViewHistory: () -> Unit,
     onDataManagement: () -> Unit,
+    onAppearanceCustomization: () -> Unit,
+    onRecommendationSettings: () -> Unit,
     onBack: () -> Unit
 ) {
     val isSearchHistoryPaused by viewModel.isSearchHistoryPaused.collectAsStateWithLifecycle()
     val isPipEnabled by viewModel.isPipEnabled.collectAsStateWithLifecycle()
     val isBackgroundPlayEnabled by viewModel.isBackgroundPlayEnabled.collectAsStateWithLifecycle()
-    val isRecommendationsPaused by viewModel.isRecommendationsPaused.collectAsStateWithLifecycle()
-    val isDynamicColorEnabled by viewModel.isDynamicColorEnabled.collectAsStateWithLifecycle()
-    val isPlayerGesturesEnabled by viewModel.isPlayerGesturesEnabled.collectAsStateWithLifecycle()
-    val subtitleFontSize by viewModel.subtitleFontSize.collectAsStateWithLifecycle()
-    val subtitleBackgroundOpacity by viewModel.subtitleBackgroundOpacity.collectAsStateWithLifecycle()
     val appLanguage by viewModel.appLanguage.collectAsStateWithLifecycle()
     val availableLocales = viewModel.availableLocales
     val isAutoUpdateEnabled by updateViewModel.isAutoUpdateEnabled.collectAsStateWithLifecycle()
     val updateInfo by updateViewModel.updateInfo.collectAsStateWithLifecycle()
 
-    val isBlockAiContentEnabled by viewModel.isBlockAiContentEnabled.collectAsStateWithLifecycle()
-    val appThemeColor by viewModel.appThemeColor.collectAsStateWithLifecycle()
-
     SettingsContent(
         isSearchHistoryPaused = isSearchHistoryPaused,
         isPipEnabled = isPipEnabled,
         isBackgroundPlayEnabled = isBackgroundPlayEnabled,
-        isRecommendationsPaused = isRecommendationsPaused,
-        isDynamicColorEnabled = isDynamicColorEnabled,
-        isBlockAiContentEnabled = isBlockAiContentEnabled,
-        appThemeColor = appThemeColor,
-        isPlayerGesturesEnabled = isPlayerGesturesEnabled,
-        subtitleFontSize = subtitleFontSize,
-        subtitleBackgroundOpacity = subtitleBackgroundOpacity,
         appLanguage = appLanguage,
         availableLocales = availableLocales,
         isAutoUpdateEnabled = isAutoUpdateEnabled,
@@ -135,19 +126,13 @@ fun SettingsScreen(
         onSetSearchHistoryPaused = viewModel::setSearchHistoryPaused,
         onSetPipEnabled = viewModel::setPipEnabled,
         onSetBackgroundPlayEnabled = viewModel::setBackgroundPlayEnabled,
-        onSetRecommendationsPaused = viewModel::setRecommendationsPaused,
-        onSetDynamicColorEnabled = viewModel::setDynamicColorEnabled,
-        onSetBlockAiContentEnabled = viewModel::setBlockAiContentEnabled,
-        onSetAppThemeColor = viewModel::setAppThemeColor,
-        onSetPlayerGesturesEnabled = viewModel::setPlayerGesturesEnabled,
-        onSetSubtitleFontSize = viewModel::setSubtitleFontSize,
-        onSetSubtitleBackgroundOpacity = viewModel::setSubtitleBackgroundOpacity,
         onSetAppLanguage = viewModel::setAppLanguage,
-        onClearLearnedInterests = viewModel::clearLearnedInterests,
         onSetAutoUpdateEnabled = updateViewModel::setAutoUpdateEnabled,
         onClearAllDownloads = viewModel::clearAllDownloads,
         onViewHistory = onViewHistory,
         onDataManagement = onDataManagement,
+        onAppearanceCustomization = onAppearanceCustomization,
+        onRecommendationSettings = onRecommendationSettings,
         onBack = onBack
     )
 }
@@ -158,13 +143,6 @@ private fun SettingsContent(
     isSearchHistoryPaused: Boolean,
     isPipEnabled: Boolean,
     isBackgroundPlayEnabled: Boolean,
-    isRecommendationsPaused: Boolean,
-    isDynamicColorEnabled: Boolean,
-    isBlockAiContentEnabled: Boolean,
-    appThemeColor: String,
-    isPlayerGesturesEnabled: Boolean,
-    subtitleFontSize: Float,
-    subtitleBackgroundOpacity: Float,
     appLanguage: String?,
     availableLocales: List<java.util.Locale>,
     isAutoUpdateEnabled: Boolean,
@@ -172,23 +150,16 @@ private fun SettingsContent(
     onSetSearchHistoryPaused: (Boolean) -> Unit,
     onSetPipEnabled: (Boolean) -> Unit,
     onSetBackgroundPlayEnabled: (Boolean) -> Unit,
-    onSetRecommendationsPaused: (Boolean) -> Unit,
-    onSetDynamicColorEnabled: (Boolean) -> Unit,
-    onSetBlockAiContentEnabled: (Boolean) -> Unit,
-    onSetAppThemeColor: (String) -> Unit,
-    onSetPlayerGesturesEnabled: (Boolean) -> Unit,
-    onSetSubtitleFontSize: (Float) -> Unit,
-    onSetSubtitleBackgroundOpacity: (Float) -> Unit,
     onSetAppLanguage: (String?) -> Unit,
-    onClearLearnedInterests: () -> Unit,
     onSetAutoUpdateEnabled: (Boolean) -> Unit,
     onClearAllDownloads: () -> Unit,
     onViewHistory: () -> Unit,
     onDataManagement: () -> Unit,
+    onAppearanceCustomization: () -> Unit,
+    onRecommendationSettings: () -> Unit,
     onBack: () -> Unit
 ) {
     var showClearDownloadsDialog by remember { mutableStateOf(false) }
-    var showClearInterestsDialog by remember { mutableStateOf(false) }
     var showDeveloperDialog by remember { mutableStateOf(false) }
     var showLanguageSheet by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -220,18 +191,6 @@ private fun SettingsContent(
             onConfirm = {
                 onClearAllDownloads()
                 showClearDownloadsDialog = false
-            }
-        )
-    }
-
-    if (showClearInterestsDialog) {
-        ConfirmationDialog(
-            title = stringResource(R.string.clear_learned_data_title),
-            message = stringResource(R.string.clear_learned_data_desc),
-            onDismiss = { showClearInterestsDialog = false },
-            onConfirm = {
-                onClearLearnedInterests()
-                showClearInterestsDialog = false
             }
         )
     }
@@ -362,28 +321,12 @@ private fun SettingsContent(
                         trailingIcon = Icons.AutoMirrored.Filled.KeyboardArrowRight
                     )
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                    SettingsSwitchItem(
-                        title = stringResource(R.string.settings_pause_recommendations),
-                        subtitle = stringResource(R.string.settings_pause_recommendations_desc),
-                        icon = Icons.Default.Recommend,
-                        checked = isRecommendationsPaused,
-                        onCheckedChange = onSetRecommendationsPaused
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                    SettingsSwitchItem(
-                        title = "Block AI Content",
-                        subtitle = "Hide AI-generated channels and videos from home feed",
-                        icon = Icons.Default.Block,
-                        checked = isBlockAiContentEnabled,
-                        onCheckedChange = onSetBlockAiContentEnabled
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                     SettingsItem(
-                        title = stringResource(R.string.settings_clear_learned_data),
-                        subtitle = stringResource(R.string.settings_clear_learned_data_desc_item),
+                        title = stringResource(R.string.playtube_engine),
+                        subtitle = stringResource(R.string.playtube_engine_desc),
                         icon = Icons.Default.AutoAwesome,
-                        onClick = { showClearInterestsDialog = true },
-                        titleColor = MaterialTheme.colorScheme.error
+                        onClick = onRecommendationSettings,
+                        trailingIcon = Icons.AutoMirrored.Filled.KeyboardArrowRight
                     )
                 }
             }
@@ -391,29 +334,14 @@ private fun SettingsContent(
             // Appearance & Playback Category
             item {
                 SettingsGroup(title = stringResource(R.string.settings_group_appearance_playback)) {
-                    ThemeColorPicker(
-                        selectedColorName = appThemeColor,
-                        onColorSelected = onSetAppThemeColor
+                    SettingsItem(
+                        title = stringResource(R.string.appearance_customization),
+                        subtitle = stringResource(R.string.appearance_customization_desc),
+                        icon = Icons.Default.Palette,
+                        onClick = onAppearanceCustomization,
+                        trailingIcon = Icons.AutoMirrored.Filled.KeyboardArrowRight
                     )
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                    SettingsSwitchItem(
-                        title = stringResource(R.string.settings_player_gestures),
-                        subtitle = stringResource(R.string.settings_player_gestures_desc),
-                        icon = Icons.Default.TouchApp,
-                        checked = isPlayerGesturesEnabled,
-                        onCheckedChange = onSetPlayerGesturesEnabled
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        SettingsSwitchItem(
-                            title = stringResource(R.string.settings_material_you),
-                            subtitle = stringResource(R.string.settings_material_you_desc),
-                            icon = Icons.Default.AutoAwesome,
-                            checked = isDynamicColorEnabled,
-                            onCheckedChange = onSetDynamicColorEnabled
-                        )
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                    }
                     SettingsItem(
                         title = stringResource(R.string.app_language),
                         subtitle = appLanguage?.let { tag ->
@@ -423,63 +351,6 @@ private fun SettingsContent(
                         icon = Icons.Default.Language,
                         onClick = { showLanguageSheet = true }
                     )
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                    SettingsItem(
-                        title = stringResource(R.string.settings_subtitle_styles),
-                        subtitle = stringResource(R.string.settings_subtitle_styles_desc),
-                        icon = Icons.Default.ClosedCaption
-                    )
-                    
-                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        Text(
-                            text = stringResource(R.string.subtitle_font_size, subtitleFontSize.toInt()),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Slider(
-                            value = subtitleFontSize,
-                            onValueChange = onSetSubtitleFontSize,
-                            valueRange = 12f..32f,
-                            steps = 10,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        Text(
-                            text = stringResource(R.string.subtitle_background_opacity, (subtitleBackgroundOpacity * 100).toInt()),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Slider(
-                            value = subtitleBackgroundOpacity,
-                            onValueChange = onSetSubtitleBackgroundOpacity,
-                            valueRange = 0f..1f,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        // Preview Box
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(60.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Surface(
-                                color = Color.Black.copy(alpha = subtitleBackgroundOpacity),
-                                shape = RoundedCornerShape(4.dp)
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.subtitle_preview),
-                                    color = Color.White,
-                                    fontSize = subtitleFontSize.sp,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                    }
                 }
             }
 
@@ -572,6 +443,8 @@ fun SettingsItem(
         Modifier
     }
 
+    val isError = titleColor == MaterialTheme.colorScheme.error
+
     Surface(
         modifier = modifier,
         color = Color.Transparent
@@ -586,13 +459,16 @@ fun SettingsItem(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
+                    .background(
+                        if (isError) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f)
+                        else MaterialTheme.colorScheme.surfaceContainerHigh
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = if (titleColor == MaterialTheme.colorScheme.error) titleColor else MaterialTheme.colorScheme.primary,
+                    tint = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -628,6 +504,9 @@ fun SettingsItem(
 }
 
 @Composable
+fun settingsSwitchColors(): SwitchColors = com.arslandaim.playtube.ui.theme.settingsSwitchColors()
+
+@Composable
 fun SettingsSwitchItem(
     title: String,
     subtitle: String? = null,
@@ -646,13 +525,13 @@ fun SettingsSwitchItem(
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.size(20.dp)
             )
         }
@@ -676,79 +555,9 @@ fun SettingsSwitchItem(
         
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange
+            onCheckedChange = onCheckedChange,
+            colors = settingsSwitchColors()
         )
-    }
-}
-
-@Composable
-fun ThemeColorPicker(
-    selectedColorName: String,
-    onColorSelected: (String) -> Unit
-) {
-    Column(modifier = Modifier.padding(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Palette,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(16.dp))
-            Column {
-                Text(
-                    text = stringResource(R.string.theme_accent_color),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = stringResource(R.string.theme_accent_color_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        Spacer(modifier = Modifier.height(12.dp))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            AppThemePalettes.forEach { palette ->
-                val isSelected = palette.name.equals(selectedColorName, ignoreCase = true)
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .background(palette.primary)
-                        .border(
-                            width = if (isSelected) 3.dp else 0.dp,
-                            color = if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent,
-                            shape = CircleShape
-                        )
-                        .clickable { onColorSelected(palette.name) },
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isSelected) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = palette.displayName,
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -761,18 +570,27 @@ fun ConfirmationDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
+        title = { Text(title, fontWeight = FontWeight.Bold) },
         text = { Text(message) },
         confirmButton = {
-            TextButton(
+            androidx.compose.material3.Button(
                 onClick = onConfirm,
-                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError
+                ),
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Text(stringResource(R.string.confirm))
+                Text(stringResource(R.string.confirm), fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                onClick = onDismiss,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            ) {
                 Text(stringResource(R.string.cancel))
             }
         }

@@ -36,9 +36,9 @@ class UpdateUserInterestsUseCaseTest {
         updateUserInterestsUseCase(title, baseWeight, watchRatio)
 
         // Expected alpha = 0.98, learningRate = 1 - 0.98 = 0.02
-        // finalWeight = 1.0 * 0.02 = 0.02
-        val weight = fakeRepository.interests["cool"] ?: 0f
-        assertEquals(0.02f, weight, 0.001f)
+        // Technology primary domain mapped -> 1.5 * 0.02 = 0.030
+        val weight = fakeRepository.interests["Technology"] ?: 0f
+        assertEquals(0.03f, weight, 0.001f)
     }
 
     @Test
@@ -50,9 +50,9 @@ class UpdateUserInterestsUseCaseTest {
         updateUserInterestsUseCase(title, baseWeight, watchRatio)
 
         // Expected alpha = 0.80, learningRate = 1 - 0.80 = 0.20
-        // finalWeight = 1.0 * 0.20 = 0.20
-        val weight = fakeRepository.interests["awesome"] ?: 0f
-        assertEquals(0.20f, weight, 0.001f)
+        // Science primary domain mapped -> 1.5 * 0.20 = 0.30
+        val weight = fakeRepository.interests["Science"] ?: 0f
+        assertEquals(0.30f, weight, 0.001f)
     }
 
     @Test
@@ -64,6 +64,17 @@ class UpdateUserInterestsUseCaseTest {
         assertTrue(!fakeRepository.interests.containsKey("the"))
         assertTrue(!fakeRepository.interests.containsKey("official"))
         assertTrue(!fakeRepository.interests.containsKey("video"))
+        assertTrue(!fakeRepository.interests.containsKey("The"))
+        assertTrue(!fakeRepository.interests.containsKey("Video"))
+    }
+
+    @Test
+    fun test2CharHighSignalKeywordScoring() = runBlocking {
+        updateUserInterestsUseCase("AI", 1.0f, 1.0f)
+        updateUserInterestsUseCase("4k", 1.0f, 1.0f)
+
+        assertTrue(fakeRepository.interests.containsKey("Ai"))
+        assertTrue(fakeRepository.interests.containsKey("4k"))
     }
 
     class FakeLibraryRepository : LibraryRepository {

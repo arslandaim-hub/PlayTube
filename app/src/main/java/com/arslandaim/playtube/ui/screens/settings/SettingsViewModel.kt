@@ -22,9 +22,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+data class ChannelStat(
+    val channelName: String,
+    val count: Int,
+    val percentage: Float
+)
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
@@ -58,11 +65,62 @@ class SettingsViewModel @Inject constructor(
     val appThemeColor: StateFlow<String> = preferencesManager.appThemeColor
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "RED")
 
+    val appThemeMode: StateFlow<String> = preferencesManager.appThemeMode
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "SYSTEM")
+
     val isPlayerGesturesEnabled: StateFlow<Boolean> = preferencesManager.isPlayerGesturesEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     val isRecommendationsPaused: StateFlow<Boolean> = preferencesManager.isRecommendationsPaused
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val userInterests: StateFlow<List<com.arslandaim.playtube.data.local.UserInterestEntity>> = libraryRepository.getInterestsFlow()
+        .map { list -> list.sortedByDescending { it.weight } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val totalWatchTimeFormatted: StateFlow<String> = libraryRepository.getHistory()
+        .map { history ->
+            val totalMs = history.sumOf { if (it.progressMs > 0) it.progressMs else 0L }
+            val totalSec = totalMs / 1000
+            val hours = totalSec / 3600
+            val mins = (totalSec % 3600) / 60
+            if (hours > 0) "${hours}h ${mins}m" else "${mins}m"
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "0m")
+
+    val totalVideosWatched: StateFlow<Int> = libraryRepository.getHistory()
+        .map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val topWatchedChannel: StateFlow<String?> = libraryRepository.getHistory()
+        .map { history ->
+            history.groupingBy { it.uploaderName }
+                .eachCount()
+                .maxByOrNull { it.value }
+                ?.key
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val topChannelsList: StateFlow<List<ChannelStat>> = libraryRepository.getHistory()
+        .map { history ->
+            val total = history.size
+            if (total == 0) emptyList()
+            else {
+                history.groupingBy { it.uploaderName }
+                    .eachCount()
+                    .entries
+                    .sortedByDescending { it.value }
+                    .take(5)
+                    .map { (channel, count) ->
+                        ChannelStat(
+                            channelName = channel,
+                            count = count,
+                            percentage = count.toFloat() / total
+                        )
+                    }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val subtitleFontSize: StateFlow<Float> = preferencesManager.subtitleFontSize
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 16f)
@@ -120,6 +178,12 @@ class SettingsViewModel @Inject constructor(
     fun setAppThemeColor(colorName: String) {
         viewModelScope.launch {
             preferencesManager.setAppThemeColor(colorName)
+        }
+    }
+
+    fun setAppThemeMode(mode: String) {
+        viewModelScope.launch {
+            preferencesManager.setAppThemeMode(mode)
         }
     }
 

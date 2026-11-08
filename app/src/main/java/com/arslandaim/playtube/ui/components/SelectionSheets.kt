@@ -171,6 +171,7 @@ fun PitchSelectionSheet(
 @Composable
 fun DownloadSelectionSheet(
     videoStreams: List<StreamItem>,
+    audioStreams: List<StreamItem> = emptyList(),
     subtitles: List<SubtitleItem> = emptyList(),
     preferredLanguage: String? = null,
     onDismiss: () -> Unit,
@@ -239,6 +240,15 @@ fun DownloadSelectionSheet(
                     SectionHeader(title = stringResource(R.string.video), icon = Icons.Default.VideoFile)
                 }
                 items(videoStreams) { stream ->
+                    StreamListItem(stream = stream, onDownload = { onDownload(stream, downloadSubtitles && hasSubtitles) })
+                }
+            }
+
+            if (audioStreams.isNotEmpty()) {
+                item {
+                    SectionHeader(title = "Audio Only", icon = Icons.Default.AudioFile)
+                }
+                items(audioStreams) { stream ->
                     StreamListItem(stream = stream, onDownload = { onDownload(stream, downloadSubtitles && hasSubtitles) })
                 }
             }
@@ -580,7 +590,7 @@ private fun SectionHeader(title: String, icon: ImageVector) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(20.dp)
         )
         Spacer(modifier = Modifier.width(12.dp))

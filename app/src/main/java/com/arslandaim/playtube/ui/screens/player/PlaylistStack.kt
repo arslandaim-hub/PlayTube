@@ -99,7 +99,7 @@ private fun PlaylistStackHeader(
         Icon(
             imageVector = Icons.AutoMirrored.Filled.PlaylistPlay,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary
+            tint = MaterialTheme.colorScheme.onSurface
         )
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {

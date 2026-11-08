@@ -119,6 +119,8 @@ class LibraryRepositoryImpl @Inject constructor(
         searchHistoryDao.clearAllSearchHistory()
     }
 
+    override fun getInterestsFlow(): Flow<List<UserInterestEntity>> = userInterestDao.getAllInterestsFlow()
+
     override suspend fun getTopInterests(limit: Int): List<UserInterestEntity> = 
         userInterestDao.getTopInterests(limit)
 

@@ -197,7 +197,7 @@ private fun LibraryDashboard(
                             Icon(
                                 Icons.AutoMirrored.Filled.PlaylistPlay, 
                                 null, 
-                                tint = MaterialTheme.colorScheme.primary,
+                                tint = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.size(22.dp)
                             )
                             Spacer(modifier = Modifier.width(14.dp))

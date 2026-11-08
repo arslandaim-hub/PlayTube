@@ -26,16 +26,22 @@ class YouTubeDownloader(private val client: OkHttpClient) : Downloader() {
         val okHttpRequestBuilder = OkHttpRequest.Builder()
             .url(url)
             .method(method, data?.toRequestBody())
-            .addHeader("Accept-Language", "en-US,en;q=0.9")
-            .addHeader("User-Agent", Constants.DEFAULT_USER_AGENT)
 
         val mergedHeaders = headers.toMutableMap()
+
+        if (mergedHeaders.keys.none { it.equals("Accept-Language", ignoreCase = true) }) {
+            mergedHeaders["Accept-Language"] = listOf("en-US,en;q=0.9")
+        }
+
+        if (mergedHeaders.keys.none { it.equals("User-Agent", ignoreCase = true) }) {
+            mergedHeaders["User-Agent"] = listOf(Constants.DEFAULT_USER_AGENT)
+        }
 
         // Bypass YouTube Consent/GDPR redirection in Europe
         // Merge with existing cookies if present
         if (url.contains("youtube.com") || url.contains("googlevideo.com")) {
             val existingCookies = mergedHeaders["Cookie"] ?: emptyList()
-            if (existingCookies.none { it.contains("CONSENT=YES") }) {
+            if (existingCookies.none { it.contains("CONSENT=YES") || it.contains("SOCS=") }) {
                 val newCookies = existingCookies.toMutableList().apply { 
                     add(Constants.YouTube.CONSENT_COOKIE) 
                 }

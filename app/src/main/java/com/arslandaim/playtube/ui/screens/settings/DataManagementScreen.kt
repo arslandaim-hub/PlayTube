@@ -81,10 +81,10 @@ fun DataManagementScreen(
                 tonalElevation = 0.dp
             ) {
                 TopAppBar(
-                    title = { Text("Data & Backup", fontWeight = FontWeight.Bold) },
+                    title = { Text(stringResource(R.string.data_and_backup), fontWeight = FontWeight.Bold) },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -101,17 +101,17 @@ fun DataManagementScreen(
         ) {
             // YouTube Takeout Section
             item {
-                SettingsGroup(title = "YouTube Takeout Import") {
+                SettingsGroup(title = stringResource(R.string.youtube_takeout_import)) {
                     SettingsItem(
-                        title = "Import Watch History",
-                        subtitle = "Select your watch-history.json or Takeout ZIP",
+                        title = stringResource(R.string.import_watch_history),
+                        subtitle = stringResource(R.string.import_watch_history_desc),
                         icon = Icons.Default.History,
                         onClick = { historyPicker.launch(arrayOf("application/json", "application/zip")) }
                     )
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp)
                     SettingsItem(
-                        title = "Import Subscriptions",
-                        subtitle = "Select your subscriptions.csv or Takeout ZIP",
+                        title = stringResource(R.string.import_subscriptions),
+                        subtitle = stringResource(R.string.import_subscriptions_desc),
                         icon = Icons.Default.Subscriptions,
                         onClick = { subscriptionsPicker.launch(arrayOf("text/comma-separated-values", "text/csv", "application/zip")) }
                     )
@@ -120,17 +120,17 @@ fun DataManagementScreen(
 
             // Native Backup Section
             item {
-                SettingsGroup(title = "PlayTube Native Backup") {
+                SettingsGroup(title = stringResource(R.string.playtube_native_backup)) {
                     SettingsItem(
-                        title = "Create Backup",
-                        subtitle = "Save all your PlayTube data to a file",
+                        title = stringResource(R.string.create_backup),
+                        subtitle = stringResource(R.string.create_backup_desc),
                         icon = Icons.Default.Backup,
                         onClick = { backupCreator.launch("PlayTubeBackup_${System.currentTimeMillis()}.zip") }
                     )
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp)
                     SettingsItem(
-                        title = "Restore Backup",
-                        subtitle = "Restore your data from a previous backup",
+                        title = stringResource(R.string.restore_backup),
+                        subtitle = stringResource(R.string.restore_backup_desc),
                         icon = Icons.Default.Restore,
                         onClick = { backupPicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream", "application/json", "*/*")) }
                     )
@@ -156,7 +156,7 @@ fun DataManagementScreen(
                                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text(
-                                        text = "You can safely leave this page. The import will continue in the background.",
+                                        text = stringResource(R.string.import_background_hint),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.primary,
                                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -164,23 +164,29 @@ fun DataManagementScreen(
                                 }
                                 is ImportProgress.Success -> {
                                     Icon(Icons.Default.CheckCircle, "Success", tint = Color.Green)
-                                    Text("Import Complete!", fontWeight = FontWeight.Bold)
+                                    Text(stringResource(R.string.import_complete), fontWeight = FontWeight.Bold)
                                     Text("${progress.importedCount} items processed")
-                                    TextButton(onClick = { viewModel.clearProgress() }) {
-                                        Text("Dismiss")
+                                    TextButton(
+                                        onClick = { viewModel.clearProgress() },
+                                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+                                    ) {
+                                        Text(stringResource(R.string.dismiss), fontWeight = FontWeight.Bold)
                                     }
                                 }
                                 is ImportProgress.Error -> {
                                     Icon(Icons.Default.Error, "Error", tint = MaterialTheme.colorScheme.error)
-                                    Text("Import Failed", fontWeight = FontWeight.Bold)
+                                    Text(stringResource(R.string.import_failed), fontWeight = FontWeight.Bold)
                                     Text(progress.message, color = MaterialTheme.colorScheme.error)
-                                    TextButton(onClick = { viewModel.clearProgress() }) {
-                                        Text("Dismiss")
+                                    TextButton(
+                                        onClick = { viewModel.clearProgress() },
+                                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+                                    ) {
+                                        Text(stringResource(R.string.dismiss), fontWeight = FontWeight.Bold)
                                     }
                                 }
                                 else -> {
                                     if (isProcessing) {
-                                        Text("Processing...")
+                                        Text(stringResource(R.string.processing))
                                         Spacer(modifier = Modifier.height(8.dp))
                                         CircularProgressIndicator()
                                     }

@@ -48,6 +48,8 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
@@ -103,6 +105,7 @@ fun HomeScreen(
         onDismissDownload = viewModel::dismissDownloadDialog,
         onAddToPlaylistClick = onAddToPlaylistClick,
         onPersonalizedNotifyShown = viewModel::onPersonalizedNotifyShown,
+        onCategorySelected = viewModel::selectCategory,
         onBarsVisibilityChange = onBarsVisibilityChange,
         onVideoClick = onVideoClick,
         onChannelClick = onChannelClick,
@@ -228,6 +231,55 @@ private fun ContinueWatchingCard(
     }
 }
 
+@Composable
+private fun CategoryChipsBar(
+    categories: List<String>,
+    selectedCategory: String,
+    onCategorySelected: (String) -> Unit
+) {
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(categories, key = { it }) { category ->
+            val isSelected = category == selectedCategory
+            val containerColor by animateColorAsState(
+                targetValue = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+                animationSpec = tween(durationMillis = 250),
+                label = "chipBg"
+            )
+            val contentColor by animateColorAsState(
+                targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                animationSpec = tween(durationMillis = 250),
+                label = "chipFg"
+            )
+
+            Surface(
+                onClick = { onCategorySelected(category) },
+                shape = CircleShape,
+                color = containerColor,
+                contentColor = contentColor,
+                border = if (!isSelected) BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)) else null,
+                modifier = Modifier.height(34.dp)
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.padding(horizontal = 14.dp)
+                ) {
+                    Text(
+                        text = category,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                    )
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HomeContent(
@@ -248,6 +300,7 @@ private fun HomeContent(
     onDismissDownload: () -> Unit,
     onAddToPlaylistClick: (VideoItem) -> Unit,
     onPersonalizedNotifyShown: () -> Unit,
+    onCategorySelected: (String) -> Unit,
     onBarsVisibilityChange: (Boolean) -> Unit,
     onVideoClick: (VideoItem) -> Unit,
     onChannelClick: (String) -> Unit,
@@ -302,11 +355,9 @@ private fun HomeContent(
         onBarsVisibilityChange(true)
     }
 
-    LaunchedEffect(Unit) {
-        onBarsVisibilityChange(true)
-    }
-
     val pullToRefreshState = rememberPullToRefreshState()
+    val haptic = LocalHapticFeedback.current
+    val categories = remember { listOf("All", "Trending", "Music", "Gaming", "Tech", "News", "Learning") }
 
     // Floating Notification State
     var showPersonalizedNotify by remember { mutableStateOf(false) }
@@ -323,70 +374,85 @@ private fun HomeContent(
     Box(modifier = Modifier.fillMaxSize()) {
         PullToRefreshBox(
             isRefreshing = isRefreshing,
-            onRefresh = { onRefresh() },
+            onRefresh = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onRefresh()
+            },
             state = pullToRefreshState,
             modifier = Modifier
                 .fillMaxSize()
                 .nestedScroll(connection)
         ) {
-            val videos = state.trendingVideos
-            val isLoading = state.isTrendingLoading
+            Column(modifier = Modifier.fillMaxSize()) {
+                CategoryChipsBar(
+                    categories = categories,
+                    selectedCategory = state.selectedCategory,
+                    onCategorySelected = { category ->
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onCategorySelected(category)
+                    }
+                )
 
-            AnimatedContent(
-                targetState = isLoading && videos.isEmpty(),
-                transitionSpec = {
-                    fadeIn(animationSpec = tween(500)) togetherWith fadeOut(animationSpec = tween(500))
-                },
-                label = "HomeContentTransition"
-            ) { loading ->
-                if (loading) {
-                    VideoListSkeleton()
-                } else if (state.error != null && videos.isEmpty()) {
-                    val isNetworkError = state.error is PlayTubeError.Network
-                    
-                    EmptyState(
-                        icon = if (isNetworkError) Icons.Default.WifiOff else Icons.Default.ErrorOutline,
-                        title = if (isNetworkError) stringResource(R.string.no_internet) else "Something went wrong",
-                        description = if (isNetworkError) "Your downloads are still available offline." else state.error.getMessage(),
-                        actionText = if (isNetworkError) "Checkout Downloads" else stringResource(R.string.retry),
-                        onActionClick = { 
-                            if (isNetworkError) onNavigateToDownloads() else onRefresh()
-                        }
-                    )
-                } else if (!isLoading && videos.isEmpty() && state.error == null) {
-                    EmptyState(
-                        icon = Icons.Default.ErrorOutline,
-                        title = stringResource(R.string.no_videos_found),
-                        description = "Couldn't find any videos right now. Try refreshing later.",
-                        actionText = stringResource(R.string.retry),
-                        onActionClick = { onRefresh() }
-                    )
-                } else {
-                    VideoList(
-                        videos = videos,
-                        downloadedIds = downloadedIds,
-                        favoriteIds = favoriteIds,
-                        savedVideoIds = savedVideoIds,
-                        onVideoClick = onVideoClick,
-                        onChannelClick = onChannelClick,
-                        onFavoriteClick = onFavoriteClick,
-                        onNotInterestedClick = onNotInterestedClick,
-                        onBlockChannelClick = onBlockChannelClick,
-                        onDownloadClick = onDownloadClick,
-                        onAddToPlaylistClick = onAddToPlaylistClick,
-                        onLoadMore = onLoadMore,
-                        isLoadingMore = state.isLoadingMore,
-                        header = {
-                            ContinuePlayingSection(
-                                videos = state.continuePlayingVideos,
-                                onVideoClick = onVideoClick
-                            )
-                        },
-                        contentPadding = PaddingValues(
-                            top = with(density) { headerHeightPx.toDp() },
-                            bottom = 100.dp
+                AnimatedContent(
+                    targetState = state.selectedCategory,
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(250)) togetherWith fadeOut(animationSpec = tween(250))
+                    },
+                    label = "HomeCategoryTransition",
+                    modifier = Modifier.weight(1f)
+                ) { currentCategory ->
+                    val videos = if (currentCategory == state.selectedCategory) state.trendingVideos else emptyList()
+                    val isLoading = state.isTrendingLoading
+
+                    if (isLoading && videos.isEmpty()) {
+                        VideoListSkeleton()
+                    } else if (state.error != null && videos.isEmpty()) {
+                        val isNetworkError = state.error is PlayTubeError.Network
+                        
+                        EmptyState(
+                            icon = if (isNetworkError) Icons.Default.WifiOff else Icons.Default.ErrorOutline,
+                            title = if (isNetworkError) stringResource(R.string.no_internet) else "Something went wrong",
+                            description = if (isNetworkError) "Your downloads are still available offline." else state.error.getMessage(),
+                            actionText = if (isNetworkError) "Checkout Downloads" else stringResource(R.string.retry),
+                            onActionClick = { 
+                                if (isNetworkError) onNavigateToDownloads() else onRefresh()
+                            }
                         )
-                    )
+                    } else if (!isLoading && videos.isEmpty() && state.error == null) {
+                        EmptyState(
+                            icon = Icons.Default.ErrorOutline,
+                            title = stringResource(R.string.no_videos_found),
+                            description = "Couldn't find any videos right now. Try refreshing later.",
+                            actionText = stringResource(R.string.retry),
+                            onActionClick = { onRefresh() }
+                        )
+                    } else {
+                        VideoList(
+                            videos = videos,
+                            downloadedIds = downloadedIds,
+                            favoriteIds = favoriteIds,
+                            savedVideoIds = savedVideoIds,
+                            onVideoClick = onVideoClick,
+                            onChannelClick = onChannelClick,
+                            onFavoriteClick = onFavoriteClick,
+                            onNotInterestedClick = onNotInterestedClick,
+                            onBlockChannelClick = onBlockChannelClick,
+                            onDownloadClick = onDownloadClick,
+                            onAddToPlaylistClick = onAddToPlaylistClick,
+                            onLoadMore = onLoadMore,
+                            isLoadingMore = state.isLoadingMore,
+                            header = {
+                                ContinuePlayingSection(
+                                    videos = state.continuePlayingVideos,
+                                    onVideoClick = onVideoClick
+                                )
+                            },
+                            contentPadding = PaddingValues(
+                                top = with(density) { headerHeightPx.toDp() },
+                                bottom = 100.dp
+                            )
+                        )
+                    }
                 }
             }
         }
@@ -474,7 +540,7 @@ private fun HomeContent(
                         Icon(
                             imageVector = Icons.Default.AutoAwesome,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))

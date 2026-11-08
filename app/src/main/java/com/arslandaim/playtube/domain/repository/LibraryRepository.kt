@@ -50,6 +50,7 @@ interface LibraryRepository {
     suspend fun clearSearchHistory()
 
     // User Interests
+    fun getInterestsFlow(): Flow<List<UserInterestEntity>> = kotlinx.coroutines.flow.flowOf(emptyList())
     suspend fun getTopInterests(limit: Int): List<UserInterestEntity>
     suspend fun updateInterest(keyword: String, weightDelta: Float)
     suspend fun applyInterestDecay(decayFactor: Float)

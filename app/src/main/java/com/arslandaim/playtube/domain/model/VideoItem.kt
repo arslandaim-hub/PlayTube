@@ -22,5 +22,6 @@ data class VideoItem(
     val uploadDate: String?,
     val rawUploadDate: Long? = null, // Epoch milliseconds for precise sorting
     val duration: Long, // in seconds
-    val watchProgress: Float? = null // 0.0 to 1.0
+    val watchProgress: Float? = null, // 0.0 to 1.0
+    val isShort: Boolean = false
 )

@@ -5,6 +5,7 @@
 */
 package com.arslandaim.playtube.ui.components.main
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -15,6 +16,8 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
@@ -45,47 +48,68 @@ fun PlayTubeTopAppBar(
         windowInsets = WindowInsets(0, 0, 0, 0),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(28.dp)
+                // Gradient Play Badge Logo
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primary,
+                                    MaterialTheme.colorScheme.secondary
+                                )
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
-                Spacer(modifier = Modifier.width(8.dp))
+
+                Spacer(modifier = Modifier.width(10.dp))
+
                 Text(
                     text = buildAnnotatedString {
-                        withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                        withStyle(
+                            style = SpanStyle(
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.Bold
+                            )
+                        ) {
                             append("Play")
                         }
-                        append("Tube")
+                        withStyle(
+                            style = SpanStyle(
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        ) {
+                            append("Tube")
+                        }
                     },
                     style = MaterialTheme.typography.titleLarge.copy(
                         letterSpacing = (-0.5).sp
-                    ),
-                    fontWeight = FontWeight.ExtraBold
+                    )
                 )
 
                 if (isIncognitoMode) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Surface(
-                        color = IncognitoPurple.copy(alpha = 0.8f),
-                        shape = RoundedCornerShape(8.dp)
+                        color = IncognitoPurple.copy(alpha = 0.9f),
+                        shape = RoundedCornerShape(10.dp)
                     ) {
                         Text(
                             text = stringResource(R.string.incognito_label),
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontSize = 9.sp,
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 1.sp
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.8.sp
                             ),
                             color = Color.White
                         )
@@ -100,11 +124,11 @@ fun PlayTubeTopAppBar(
                         imageVector = Icons.Default.Search,
                         contentDescription = stringResource(R.string.search),
                         tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }
-            
+
             val updateInfo by updateViewModel.updateInfo.collectAsStateWithLifecycle()
             val isAutoUpdateEnabled by updateViewModel.isAutoUpdateEnabled.collectAsStateWithLifecycle()
 
@@ -112,8 +136,8 @@ fun PlayTubeTopAppBar(
                 Icon(
                     imageVector = if (isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                     contentDescription = stringResource(R.string.incognito_label),
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.size(24.dp)
+                    tint = if (isIncognitoMode) IncognitoPurple else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(22.dp)
                 )
             }
 
@@ -134,7 +158,7 @@ fun PlayTubeTopAppBar(
                         imageVector = Icons.Default.Settings,
                         contentDescription = stringResource(R.string.settings),
                         tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }

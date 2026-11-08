@@ -19,6 +19,7 @@ data class StreamBundle(
     val uploaderSubscriberCount: Long? = null,
     val description: String?,
     val viewCount: Long,
+    val likeCount: Long = -1L,
     val uploadDate: String?,
     val thumbnailUrl: String?,
     val isLive: Boolean = false,
@@ -28,6 +29,7 @@ data class StreamBundle(
     val nextRelatedVideosPage: Page? = null,
     val bestAudioStreamUrl: String? = null,
     val subtitles: List<SubtitleItem> = emptyList(),
+    val clientUserAgent: String? = null,
     val extractedAt: Long = System.currentTimeMillis()
 ) {
     fun isExpired(): Boolean {

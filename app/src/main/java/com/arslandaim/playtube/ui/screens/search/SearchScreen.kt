@@ -298,7 +298,7 @@ private fun SearchContent(
                                             imageVector = if (isGridView) Icons.Default.ViewStream else Icons.Default.GridView,
                                             contentDescription = "Toggle Layout",
                                             modifier = Modifier.size(18.dp), // Smaller icon
-                                            tint = MaterialTheme.colorScheme.primary
+                                            tint = MaterialTheme.colorScheme.onSurface
                                         )
                                     }
                                 }
@@ -388,11 +388,16 @@ private fun SearchContent(
                                 }
                             }
                             is SearchUiState.Loading -> {
+                                val configuration = LocalConfiguration.current
+                                val screenWidth = configuration.screenWidthDp
+                                val gridColumns = Constants.calculateGridColumns(screenWidth)
                                 Box(
-                                    modifier = Modifier.fillMaxSize().padding(top = topPadding), 
-                                    contentAlignment = Alignment.Center
+                                    modifier = Modifier.fillMaxSize().padding(top = topPadding)
                                 ) {
-                                    CircularProgressIndicator()
+                                    SearchSkeleton(
+                                        isGridView = isGridView,
+                                        gridColumns = if (isGridView) gridColumns else 1
+                                    )
                                 }
                             }
                             is SearchUiState.Success -> {
@@ -745,7 +750,7 @@ fun ModernSearchBar(
                         imageVector = if (!isFocused && query.isEmpty()) Icons.Default.Search 
                                       else Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = stringResource(R.string.back),
-                        tint = if (isFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -915,7 +920,7 @@ fun InitialSearchState() {
                     imageVector = Icons.Default.Search,
                     contentDescription = null,
                     modifier = Modifier.size(56.dp),
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
                 )
             }
         }

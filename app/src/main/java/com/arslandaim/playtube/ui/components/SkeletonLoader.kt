@@ -8,6 +8,8 @@ package com.arslandaim.playtube.ui.components
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -605,6 +607,39 @@ fun LibraryDashboardSkeleton() {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun SearchSkeleton(
+    isGridView: Boolean,
+    modifier: Modifier = Modifier,
+    gridColumns: Int = 2
+) {
+    val transition = rememberSyncShimmerTransition()
+    if (isGridView) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(gridColumns),
+            modifier = modifier.fillMaxSize(),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 100.dp, start = 8.dp, end = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            userScrollEnabled = false
+        ) {
+            items(6) {
+                VideoCardSkeleton(transition)
+            }
+        }
+    } else {
+        LazyColumn(
+            modifier = modifier.fillMaxSize(),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 100.dp),
+            userScrollEnabled = false
+        ) {
+            items(8) {
+                VideoRowSkeleton(transition)
             }
         }
     }

@@ -92,16 +92,17 @@ class SearchViewModel @Inject constructor(
 
         if (state is SearchUiState.Success) {
             // Step 1: Filter out AI content if enabled
-            val filteredItems = if (isBlockAiEnabled) {
-                state.items.filter { item ->
-                    when (item) {
-                        is SearchItem.Video -> !AiContentDetector.isAiContent(item.video)
-                        is SearchItem.Channel -> !AiContentDetector.isAiChannel(item.name)
-                        is SearchItem.Playlist -> true
+            val filteredItems = state.items.filter { item ->
+                when (item) {
+                    is SearchItem.Video -> {
+                        val video = item.video
+                        val isAiAllowed = if (isBlockAiEnabled) !AiContentDetector.isAiContent(video) else true
+                        val isShort = com.arslandaim.playtube.utils.VideoUtils.isShort(video)
+                        isAiAllowed && !isShort
                     }
+                    is SearchItem.Channel -> if (isBlockAiEnabled) !AiContentDetector.isAiChannel(item.name) else true
+                    is SearchItem.Playlist -> true
                 }
-            } else {
-                state.items
             }
 
             // Step 2: Extract videos and apply history

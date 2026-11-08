@@ -81,14 +81,14 @@ private fun SubscriptionsContent(
             onDismissRequest = { channelToUnsubscribe = null },
             title = {
                 Text(
-                    text = "Unsubscribe?",
+                    text = stringResource(R.string.unsubscribe_confirm_title),
                     modifier = Modifier.fillMaxWidth(),
                     textAlign = TextAlign.Center
                 )
             },
             text = {
                 Text(
-                    text = "Are you sure you want to unsubscribe from ${channelToUnsubscribe?.name}?",
+                    text = stringResource(R.string.unsubscribe_confirm_message, channelToUnsubscribe?.name ?: ""),
                     modifier = Modifier.fillMaxWidth(),
                     textAlign = TextAlign.Center
                 )
@@ -100,12 +100,12 @@ private fun SubscriptionsContent(
                         channelToUnsubscribe = null
                     }
                 ) {
-                    Text("Unsubscribe", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.unsubscribe), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { channelToUnsubscribe = null }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -123,7 +123,7 @@ private fun SubscriptionsContent(
                                     value = searchQuery,
                                     onValueChange = onSearchQueryChange,
                                     modifier = Modifier.fillMaxWidth(),
-                                    placeholder = { Text("Search subscriptions") },
+                                    placeholder = { Text(stringResource(R.string.search_subscriptions)) },
                                     singleLine = true,
                                     colors = TextFieldDefaults.colors(
                                         focusedContainerColor = Color.Transparent,
@@ -135,7 +135,7 @@ private fun SubscriptionsContent(
                                     keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() })
                                 )
                             } else {
-                                Text(text = "Subscriptions", fontWeight = FontWeight.Bold)
+                                Text(text = stringResource(R.string.subscriptions), fontWeight = FontWeight.Bold)
                             }
                         },
                         navigationIcon = {
@@ -148,17 +148,17 @@ private fun SubscriptionsContent(
                                     onBackClick()
                                 }
                             }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                             }
                         },
                         actions = {
                             if (!isSearchActive) {
                                 IconButton(onClick = { isSearchActive = true }) {
-                                    Icon(Icons.Default.Search, contentDescription = "Search")
+                                    Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search))
                                 }
                             } else if (searchQuery.isNotEmpty()) {
                                 IconButton(onClick = { onSearchQueryChange("") }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Clear")
+                                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.clear))
                                 }
                             }
                         },
@@ -178,8 +178,8 @@ private fun SubscriptionsContent(
             if (subscriptions.isEmpty()) {
                 EmptyState(
                     icon = Icons.Default.People,
-                    title = if (searchQuery.isEmpty()) stringResource(R.string.no_subscriptions) else "No matching channels",
-                    description = if (searchQuery.isEmpty()) stringResource(R.string.no_subscriptions_desc) else "Try a different search term"
+                    title = if (searchQuery.isEmpty()) stringResource(R.string.no_subscriptions) else stringResource(R.string.no_matching_channels),
+                    description = if (searchQuery.isEmpty()) stringResource(R.string.no_subscriptions_desc) else stringResource(R.string.try_different_search)
                 )
             } else {
                 LazyColumn(

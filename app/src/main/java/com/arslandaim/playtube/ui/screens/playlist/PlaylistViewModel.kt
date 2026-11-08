@@ -133,7 +133,8 @@ class PlaylistViewModel @Inject constructor(
         viewCount = 0,
         uploadDate = null,
         rawUploadDate = null,
-        duration = duration
+        duration = duration,
+        isShort = false
     )
 
     fun downloadPlaylist(quality: String, downloadSubtitles: Boolean = false) {

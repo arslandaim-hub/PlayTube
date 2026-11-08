@@ -83,6 +83,7 @@ import com.arslandaim.playtube.ui.components.DownloadSelectionSheet
 import com.arslandaim.playtube.ui.components.PlaybackSpeedSelectionSheet
 import com.arslandaim.playtube.ui.components.PitchSelectionSheet
 import com.arslandaim.playtube.ui.components.QualitySelectionSheet
+import com.arslandaim.playtube.ui.components.Media3SubtitleOverlay
 import com.arslandaim.playtube.ui.components.SubtitleSelectionSheet
 import com.arslandaim.playtube.ui.components.AudioTrackSelectionSheet
 import androidx.compose.material.icons.filled.GraphicEq
@@ -107,6 +108,7 @@ import android.content.res.Configuration
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.SkipNext
+import com.arslandaim.playtube.ui.theme.settingsSwitchColors
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -180,43 +182,13 @@ fun PlayerScreen(
     val playlistIndex by viewModel.playlistIndex.collectAsStateWithLifecycle()
     val syncTransition = rememberSyncShimmerTransition()
 
-    var activeCues by remember { mutableStateOf<List<Cue>>(emptyList()) }
-
-    DisposableEffect(viewModel.player) {
-        val listener = object : Player.Listener {
-            @androidx.annotation.OptIn(UnstableApi::class)
-            override fun onCues(cueGroup: CueGroup) {
-                // Intercept and sanitize cues to prevent stacking (roll-up)
-                activeCues = if (cueGroup.cues.isEmpty()) {
-                    emptyList()
-                } else {
-                    // 1. Only take the most recent cue object
-                    val lastCue = cueGroup.cues.last()
-                    val originalText = lastCue.text?.toString() ?: ""
-                    
-                    if (originalText.isNotBlank()) {
-                        // 2. Extract only the last line if multiple lines exist
-                        val singleLineText = if (originalText.contains("\n")) {
-                            originalText.substringAfterLast("\n").trim()
-                        } else {
-                            originalText
-                        }
-                        
-                        // 3. Rebuild the cue with sanitized text
-                        listOf(lastCue.buildUpon().setText(singleLineText).build())
-                    } else {
-                        emptyList()
-                    }
-                }
-            }
-        }
-        viewModel.player.addListener(listener)
-        onDispose { viewModel.player.removeListener(listener) }
-    }
+    val activeCues by viewModel.currentCues.collectAsStateWithLifecycle()
 
     val favoriteIds = remember(favorites) {
         favorites.map { it.videoId }.toSet()
     }
+    
+    val sponsorSegments by viewModel.sponsorSegments.collectAsStateWithLifecycle()
     
     // Memoize subtitle list to prevent redundant recompositions when other states change
     val memoizedSubtitles = remember(availableSubtitles) { availableSubtitles }
@@ -247,6 +219,7 @@ fun PlayerScreen(
             selectedSubtitleLanguage = selectedSubtitleLanguage,
             availableAudioStreams = availableAudioStreams,
             selectedAudioStream = selectedAudioStream,
+            sponsorSegments = sponsorSegments,
             currentPosition = { currentPosition },
             bufferedPosition = { bufferedPosition },
             duration = { duration },
@@ -343,6 +316,7 @@ private fun PlayerContent(
     selectedSubtitleLanguage: String?,
     availableAudioStreams: List<com.arslandaim.playtube.domain.model.StreamItem>,
     selectedAudioStream: com.arslandaim.playtube.domain.model.StreamItem?,
+    sponsorSegments: List<com.arslandaim.playtube.domain.model.SponsorSegment> = emptyList(),
     currentPosition: () -> Long,
     bufferedPosition: () -> Long,
     duration: () -> Long,
@@ -708,7 +682,8 @@ private fun PlayerContent(
                     trailingContent = {
                         Switch(
                             checked = showStatsForNerds,
-                            onCheckedChange = { onToggleStats() }
+                            onCheckedChange = { onToggleStats() },
+                            colors = settingsSwitchColors()
                         )
                     },
                     leadingContent = { Icon(Icons.Default.Info, null) },
@@ -761,7 +736,8 @@ private fun PlayerContent(
                     trailingContent = {
                         Switch(
                             checked = isEndOfVideo,
-                            onCheckedChange = { if (it) onSetEndOfVideoSleepTimer() else onCancelSleepTimer() }
+                            onCheckedChange = { if (it) onSetEndOfVideoSleepTimer() else onCancelSleepTimer() },
+                            colors = settingsSwitchColors()
                         )
                     }
                 )
@@ -772,7 +748,8 @@ private fun PlayerContent(
                     trailingContent = {
                         Switch(
                             checked = shouldCloseAppOnTimerFinish,
-                            onCheckedChange = onSetShouldCloseApp
+                            onCheckedChange = onSetShouldCloseApp,
+                            colors = settingsSwitchColors()
                         )
                     }
                 )
@@ -1006,27 +983,17 @@ private fun PlayerContent(
                                         }
                                     }
 
-                                    // Manual Subtitle Overlay
-                                    if (isCcEnabled && activeCues.isNotEmpty()) {
-                                        val subtitlePaddingBottom by animateDpAsState(
-                                            targetValue = if (controlsVisible) 84.dp else 24.dp,
-                                            animationSpec = tween(durationMillis = 200),
-                                            label = "SubtitlePaddingAnimation"
+                                    // Subtitle Overlay
+                                    if (isCcEnabled) {
+                                        val isAutoGen = availableSubtitles.find { it.languageTag == selectedSubtitleLanguage }?.isAutoGenerated == true
+                                        Media3SubtitleOverlay(
+                                            player = player,
+                                            enabled = isCcEnabled,
+                                            isAutoGenerated = isAutoGen,
+                                            fontSizeSp = subtitleFontSize,
+                                            backgroundOpacity = subtitleBackgroundOpacity,
+                                            bottomPaddingDp = if (controlsVisible) 84f else 24f
                                         )
-
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .padding(bottom = subtitlePaddingBottom),
-                                            contentAlignment = Alignment.BottomCenter
-                                        ) {
-                                            ManualSubtitleView(
-                                                cues = activeCues,
-                                                fontSize = subtitleFontSize,
-                                                backgroundOpacity = subtitleBackgroundOpacity,
-                                                modifier = Modifier.fillMaxWidth().wrapContentHeight()
-                                            )
-                                        }
                                     }
                                 }
                             }
@@ -1096,6 +1063,7 @@ private fun PlayerContent(
                                 },
                                 isInteractive = controlsVisible && !isLive,
                                 chapters = chapters,
+                                sponsorSegments = sponsorSegments,
                                 durationMs = duration(),
                                 onSeek = { percentage: Float ->
                                     val totalDuration = duration()
@@ -1208,6 +1176,7 @@ private fun PlayerContent(
                                         subscriberCount = uiState.bundle.uploaderSubscriberCount,
                                         isSubscribed = isSubscribed,
                                         isFavorite = isFavorite,
+                                        likeCount = uiState.bundle.likeCount,
                                         isSaved = isSaved,
                                         isDownloaded = downloadedIds.contains(videoId),
                                         repeatMode = repeatMode,
@@ -1226,7 +1195,8 @@ private fun PlayerContent(
                                                         uploaderUrl = bundle.uploaderUrl,
                                                         viewCount = bundle.viewCount,
                                                         uploadDate = bundle.uploadDate,
-                                                        duration = duration() / 1000
+                                                        duration = duration() / 1000,
+                                                        isShort = false // Safely assume not short when building manual item
                                                     )
                                                 )
                                             }
@@ -1280,7 +1250,8 @@ private fun PlayerContent(
                                                     uploaderUrl = null,
                                                     viewCount = -1L,
                                                     uploadDate = uiState.scheduledTime,
-                                                    duration = 0L
+                                                    duration = 0L,
+                                                    isShort = false
                                                 )
                                             )
                                         },

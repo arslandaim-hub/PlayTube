@@ -81,7 +81,9 @@ class DownloadRepositoryImpl @Inject constructor(
         val filePath = File(context.getExternalFilesDir(null), "$videoId.$extension").absolutePath
         val subtitlePath = if (!subtitleUrl.isNullOrBlank()) {
             val lang = subtitleLanguage ?: "en"
-            File(context.getExternalFilesDir(null), "${videoId}_$lang.vtt").absolutePath
+            val (_, mimeType) = com.arslandaim.playtube.utils.CaptionTrackResolver.normalizeSubtitleUrl(subtitleUrl)
+            val subExt = if (mimeType == androidx.media3.common.MimeTypes.APPLICATION_TTML) "ttml" else "vtt"
+            File(context.getExternalFilesDir(null), "${videoId}_$lang.$subExt").absolutePath
         } else null
 
         val entity = DownloadEntity(

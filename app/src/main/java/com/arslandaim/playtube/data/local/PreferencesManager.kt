@@ -136,6 +136,14 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
             preferences[APP_THEME_COLOR] ?: "RED"
         }
 
+    open val appThemeMode: Flow<String> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) emit(emptyPreferences())
+            else throw exception
+        }.map { preferences ->
+            preferences[APP_THEME_MODE] ?: "SYSTEM"
+        }
+
     open val isRecommendationsPaused: Flow<Boolean> = dataStore.data
         .catch { exception ->
             if (exception is IOException) {
@@ -244,7 +252,7 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
     open val isProxyEnabled: Flow<Boolean> = dataStore.data.map { it[PROXY_ENABLED] ?: false }
     open val proxyHost: Flow<String> = dataStore.data.map { it[PROXY_HOST] ?: "" }
     open val proxyPort: Flow<Int> = dataStore.data.map { it[PROXY_PORT] ?: 8080 }
-    open val repeatMode: Flow<String> = dataStore.data.map { it[REPEAT_MODE] ?: "PLAY_NEXT" }
+    open val repeatMode: Flow<String> = dataStore.data.map { it[REPEAT_MODE] ?: "OFF" }
 
     suspend fun setHistoryEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
@@ -309,6 +317,12 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
     suspend fun setAppThemeColor(colorName: String) {
         dataStore.edit { preferences ->
             preferences[APP_THEME_COLOR] = colorName
+        }
+    }
+
+    suspend fun setAppThemeMode(mode: String) {
+        dataStore.edit { preferences ->
+            preferences[APP_THEME_MODE] = mode
         }
     }
 
@@ -420,6 +434,7 @@ open class PreferencesManager @Inject constructor(@ApplicationContext context: C
         val DYNAMIC_COLOR_ENABLED = booleanPreferencesKey("dynamic_color_enabled")
         val BLOCK_AI_CONTENT_ENABLED = booleanPreferencesKey("block_ai_content_enabled")
         val APP_THEME_COLOR = stringPreferencesKey("app_theme_color")
+        val APP_THEME_MODE = stringPreferencesKey("app_theme_mode")
         val RECOMMENDATIONS_PAUSED = booleanPreferencesKey("recommendations_paused")
         val AUTOPLAY_ENABLED = booleanPreferencesKey("autoplay_enabled")
         val INCOGNITO_MODE = booleanPreferencesKey("incognito_mode")

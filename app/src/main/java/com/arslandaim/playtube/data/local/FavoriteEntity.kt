@@ -31,6 +31,7 @@ data class FavoriteEntity(
         viewCount = 0,
         uploadDate = null,
         rawUploadDate = null,
-        duration = 0
+        duration = 0,
+        isShort = false
     )
 }

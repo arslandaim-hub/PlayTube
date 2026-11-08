@@ -160,7 +160,29 @@
     <string name="settings_pause_recommendations_desc">Tymczasowo przestań uczyć się Twoich zainteresowań</string>
     <string name="settings_clear_learned_data">Wyczyść wyuczone dane</string>
     <string name="settings_clear_learned_data_desc_item">Zresetuj profil silnika rekomendacji</string>
+    <string name="recommendation_algorithm">Silnik PlayTube</string>
+    <string name="recommendation_algorithm_desc">Statystyki, główny kanał i sterowanie silnikiem</string>
+    <string name="playtube_engine">Silnik PlayTube</string>
+    <string name="playtube_engine_desc">Statystyki, główny kanał i sterowanie silnikiem</string>
+    <string name="tracked_topics">Śledzone tematy</string>
+    <string name="top_interest">Główny kanał</string>
+    <string name="top_channel">Główny kanał</string>
+    <string name="algorithm_status">Stan algorytmu</string>
+    <string name="status_active">Aktywny</string>
+    <string name="status_paused">Wstrzymany</string>
+    <string name="no_interests_learned">Brak wyuczonych danych profilu rekomendacji.</string>
+    <string name="learned_topic_profile">Profil wyuczonych tematów</string>
+    <string name="learned_topic_profile_desc">Kluczowe tematy i wagi używane do oceny rekomendacji</string>
     <string name="settings_group_appearance_playback">Wygląd i odtwarzanie</string>
+    <string name="appearance_customization">Wygląd i personalizacja</string>
+    <string name="appearance_customization_desc">Akcent motywu, Material You, gesty i blokowanie treści AI</string>
+    <string name="theme_mode">Tryb motywu</string>
+    <string name="theme_mode_system">Zgodnie z systemem</string>
+    <string name="theme_mode_system_desc">Zgodnie z ustawieniami urządzenia</string>
+    <string name="theme_mode_light">Jasny</string>
+    <string name="theme_mode_light_desc">Jasny i przejrzysty wygląd</string>
+    <string name="theme_mode_dark">Ciemny</string>
+    <string name="theme_mode_dark_desc">Głęboka ciemność zoptymalizowana dla OLED</string>
     <string name="settings_player_gestures">Gesty odtwarzacza</string>
     <string name="settings_player_gestures_desc">Włącz gesty przesunięcia dla głośności i jasności</string>
     <string name="settings_material_you">Material You</string>
@@ -205,4 +227,44 @@
     <string name="skipped_segment">Pominięto %s</string>
     <string name="audio_track">Ścieżka dźwiękowa</string>
     <string name="select_audio_track">Wybierz ścieżkę dźwiękową</string>
+
+    <!-- Data & Backup -->
+    <string name="data_and_backup">Dane i kopia zapasowa</string>
+    <string name="youtube_takeout_import">Import z YouTube Takeout</string>
+    <string name="import_watch_history">Importuj historię oglądania</string>
+    <string name="import_watch_history_desc">Wybierz plik watch-history.json lub ZIP z Takeout</string>
+    <string name="import_subscriptions">Importuj subskrypcje</string>
+    <string name="import_subscriptions_desc">Wybierz plik subscriptions.csv lub ZIP z Takeout</string>
+    <string name="playtube_native_backup">Natywna kopia zapasowa PlayTube</string>
+    <string name="create_backup">Utwórz kopię zapasową</string>
+    <string name="create_backup_desc">Zapisz wszystkie dane PlayTube do pliku</string>
+    <string name="restore_backup">Przywróć kopię zapasową</string>
+    <string name="restore_backup_desc">Przywróć dane z wcześniejszej kopii zapasowej</string>
+    <string name="import_background_hint">Możesz bezpiecznie opuścić tę stronę. Import będzie kontynuowany w tle.</string>
+    <string name="import_complete">Import zakończony!</string>
+    <string name="dismiss">Odrzuć</string>
+    <string name="import_failed">Import nie powiódł się</string>
+    <string name="processing">Przetwarzanie...</string>
+
+    <!-- Subscriptions Screen -->
+    <string name="unsubscribe_confirm_title">Anulować subskrypcję?</string>
+    <string name="unsubscribe_confirm_message">Czy na pewno chcesz anulować subskrypcję %s?</string>
+    <string name="unsubscribe">Anuluj subskrypcję</string>
+    <string name="search_subscriptions">Szukaj subskrypcji</string>
+    <string name="no_matching_channels">Brak pasujących kanałów</string>
+    <string name="try_different_search">Spróbuj innego hasła</string>
+
+    <!-- Appearance & Customization -->
+    <string name="live_theme_preview">Podgląd motywu na żywo</string>
+    <string name="content_controls">Kontrola treści</string>
+    <string name="block_ai_content">Blokuj treści AI</string>
+    <string name="block_ai_content_desc">Ukryj kanały i filmy AI na stronie głównej</string>
+    <string name="theme_mode_oled">Czerń OLED</string>
+    <string name="sample_action">Przykładowa akcja</string>
+    <string name="selected_chip">Wybrany element</string>
+
+    <!-- Dialogs -->
+    <string name="create_new_playlist">Utwórz nową playlistę</string>
+    <string name="playlist_name">Nazwa playlisty</string>
+    <string name="create">Utwórz</string>
 </resources>

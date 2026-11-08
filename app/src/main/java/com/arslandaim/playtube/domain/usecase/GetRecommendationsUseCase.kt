@@ -15,6 +15,7 @@ import com.arslandaim.playtube.domain.repository.LibraryRepository
 import com.arslandaim.playtube.domain.repository.SearchRepository
 import com.arslandaim.playtube.domain.repository.VideoRepository
 import com.arslandaim.playtube.utils.AiContentDetector
+import com.arslandaim.playtube.utils.VideoUtils
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -114,6 +115,7 @@ class GetRecommendationsUseCase @Inject constructor(
                 if (video.uploaderName in blacklistedIds) return false
                 if (video.uploaderUrl != null && video.uploaderUrl in blacklistedIds) return false
                 if (isBlockAiEnabled && AiContentDetector.isAiContent(video)) return false
+                if (VideoUtils.isShort(video)) return false
                 return true
             }
             

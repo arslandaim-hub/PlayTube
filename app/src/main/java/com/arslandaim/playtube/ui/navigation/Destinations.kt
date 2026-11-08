@@ -24,6 +24,8 @@ sealed interface Destination {
         is Playlist -> "Playlist"
         is Onboarding -> "Onboarding"
         is DataManagement -> "DataManagement"
+        is AppearanceCustomization -> "AppearanceCustomization"
+        is RecommendationSettings -> "RecommendationSettings"
     }
 
     @Serializable data object Home : Destination {
@@ -53,6 +55,8 @@ sealed interface Destination {
     @Serializable data class Playlist(val playlistId: String) : Destination
     @Serializable data object Onboarding : Destination
     @Serializable data object DataManagement : Destination
+    @Serializable data object AppearanceCustomization : Destination
+    @Serializable data object RecommendationSettings : Destination
 }
 
 fun String?.toDestination(): Destination? {
@@ -74,6 +78,8 @@ fun String?.toDestination(): Destination? {
         route.contains("Downloads") -> Destination.Downloads
         route.contains("Onboarding") -> Destination.Onboarding
         route.contains("DataManagement") -> Destination.DataManagement
+        route.contains("AppearanceCustomization") -> Destination.AppearanceCustomization
+        route.contains("RecommendationSettings") -> Destination.RecommendationSettings
         else -> null
     }
 }

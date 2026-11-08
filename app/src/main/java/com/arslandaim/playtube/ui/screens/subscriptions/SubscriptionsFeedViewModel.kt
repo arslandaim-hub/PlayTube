@@ -21,10 +21,14 @@ import com.arslandaim.playtube.domain.usecase.ToggleFavoriteUseCase
 import com.arslandaim.playtube.ui.components.DownloadDialogState
 import com.arslandaim.playtube.utils.PlayTubeError
 import com.arslandaim.playtube.utils.HistoryUtils.applyHistory
+import com.arslandaim.playtube.data.network.ChannelRssParser
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import org.schabi.newpipe.extractor.Page
 
@@ -32,6 +36,7 @@ import org.schabi.newpipe.extractor.Page
 class SubscriptionsFeedViewModel @Inject constructor(
     private val libraryRepository: LibraryRepository,
     private val videoRepository: VideoRepository,
+    private val channelRssParser: ChannelRssParser,
     private val toggleFavoriteUseCase: ToggleFavoriteUseCase,
     private val getVideoStreamsUseCase: GetVideoStreamsUseCase,
     private val downloadVideoUseCase: DownloadVideoUseCase,
@@ -39,7 +44,9 @@ class SubscriptionsFeedViewModel @Inject constructor(
 ) : ViewModel() {
 
     companion object {
-        private var isThoroughSearchDone = false
+        private var lastSyncTimeMs: Long = 0L
+        private var lastSyncedSubCount: Int = 0
+        private const val SYNC_TTL_MS = 15 * 60 * 1000L // 15 minutes
     }
 
     // Isolated States
@@ -105,12 +112,17 @@ class SubscriptionsFeedViewModel @Inject constructor(
     private var fetchedChannelsIndex = 0
     private val CHUNK_SIZE = 10
 
+    private fun isSyncNeeded(subCount: Int): Boolean {
+        if (subCount != lastSyncedSubCount) return true
+        return System.currentTimeMillis() - lastSyncTimeMs > SYNC_TTL_MS
+    }
+
     init {
         viewModelScope.launch {
             libraryRepository.getSubscriptions().collect { subs ->
                 _subscriptions.value = subs
                 
-                if (!isThoroughSearchDone && subs.isNotEmpty() && _selectedChannelId.value == null) {
+                if (isSyncNeeded(subs.size) && subs.isNotEmpty() && _selectedChannelId.value == null) {
                     runThoroughSearch(subs)
                 }
             }
@@ -190,10 +202,9 @@ class SubscriptionsFeedViewModel @Inject constructor(
             if (_isThoroughSearching.value && thoroughSearchJob?.isActive == true) return
             
             val subs = _subscriptions.value
-            if (!isThoroughSearchDone && subs.isNotEmpty()) {
+            if (isSyncNeeded(subs.size) && subs.isNotEmpty()) {
                 runThoroughSearch(subs)
-            } else if (isThoroughSearchDone && _allFeedState.value.videos.isEmpty()) {
-                // Rare case where session says done but list is empty, re-trigger
+            } else if (_allFeedState.value.videos.isEmpty() && subs.isNotEmpty()) {
                 runThoroughSearch(subs, force = true)
             }
         } else {
@@ -211,52 +222,52 @@ class SubscriptionsFeedViewModel @Inject constructor(
     }
 
     private fun runThoroughSearch(allSubscriptions: List<SubscriptionEntity>, force: Boolean = false) {
-        if (isThoroughSearchDone && !force) return
-        
+        if (!force && !isSyncNeeded(allSubscriptions.size) && _allFeedState.value.videos.isNotEmpty()) return
+
         thoroughSearchJob?.cancel()
         thoroughSearchJob = viewModelScope.launch {
             _isThoroughSearching.value = true
             _thoroughSearchProgress.value = 0f
-            
-            try {
-                val limit = allSubscriptions.take(if (force) 50 else 1000) 
-                
-                limit.chunked(5).forEachIndexed { chunkIndex, chunk ->
-                    ensureActive()
 
-                    val chunkVideos = coroutineScope {
-                        val deferred = chunk.map { sub ->
-                            async(Dispatchers.IO) {
+            try {
+                val limit = allSubscriptions.take(if (force) 100 else 1000)
+                val semaphore = Semaphore(12)
+                val completedCount = AtomicInteger(0)
+
+                val allVideos = coroutineScope {
+                    limit.map { sub ->
+                        async(Dispatchers.IO) {
+                            semaphore.withPermit {
                                 try {
-                                    videoRepository.getChannelDetails(sub.channelId).videos.take(10)
+                                    val rssVideos = channelRssParser.fetchChannelFeed(sub.channelId)
+                                    val result = if (rssVideos.isNotEmpty()) {
+                                        rssVideos.take(10)
+                                    } else {
+                                        videoRepository.getChannelDetails(sub.channelId).videos.take(10)
+                                    }
+                                    val current = completedCount.incrementAndGet()
+                                    _thoroughSearchProgress.value = (current.toFloat() / limit.size).coerceAtMost(1f)
+                                    result
                                 } catch (e: Exception) {
                                     emptyList()
                                 }
                             }
                         }
-                        deferred.awaitAll().flatten()
-                    }
-                    
-                    _allFeedState.update { state ->
-                        val updated = (state.videos + chunkVideos)
-                            .distinctBy { it.id }
-                            .sortedByDescending { it.rawUploadDate ?: 0L }
-                        
-                        state.copy(videos = updated.take(1000))
-                    }
-
-                    // Phase 1: Silent Cache Update
-                    libraryRepository.updateCachedFeed("subs_all", _allFeedState.value.videos)
-
-                    val progress = ((chunkIndex + 1) * 5).toFloat() / limit.size
-                    _thoroughSearchProgress.value = progress.coerceAtMost(1f)
-                    fetchedChannelsIndex = (chunkIndex + 1) * 5
-                    
-                    delay(50) 
+                    }.awaitAll().flatten()
                 }
 
+                _allFeedState.update { state ->
+                    val updated = (state.videos + allVideos)
+                        .distinctBy { it.id }
+                        .sortedByDescending { it.rawUploadDate ?: 0L }
+
+                    state.copy(videos = updated.take(1000))
+                }
+
+                libraryRepository.updateCachedFeed("subs_all", _allFeedState.value.videos)
+                lastSyncTimeMs = System.currentTimeMillis()
+                lastSyncedSubCount = allSubscriptions.size
                 _isThoroughSearching.value = false
-                if (!force) isThoroughSearchDone = true
                 fetchedChannelsIndex = limit.size
             } catch (e: CancellationException) {
                 _isThoroughSearching.value = false

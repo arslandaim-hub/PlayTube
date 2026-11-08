@@ -189,7 +189,7 @@ fun CommentsPreviewCard(
                     Text(
                         text = topComment.commentText,
                         style = MaterialTheme.typography.bodySmall,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                         lineHeight = 15.sp

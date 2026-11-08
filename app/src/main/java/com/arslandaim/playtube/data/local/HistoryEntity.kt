@@ -34,6 +34,7 @@ data class HistoryEntity(
         uploadDate = null,
         rawUploadDate = null,
         duration = durationMs / 1000,
-        watchProgress = if (durationMs > 0) progressMs.toFloat() / durationMs else null
+        watchProgress = if (durationMs > 0) progressMs.toFloat() / durationMs else null,
+        isShort = false
     )
 }

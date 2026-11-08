@@ -163,7 +163,29 @@
     <string name="settings_pause_recommendations_desc">Dejar de aprender tus intereses temporalmente</string>
     <string name="settings_clear_learned_data">Borrar datos aprendidos</string>
     <string name="settings_clear_learned_data_desc_item">Restablecer el perfil del motor de recomendaciones</string>
+    <string name="recommendation_algorithm">Motor PlayTube</string>
+    <string name="recommendation_algorithm_desc">Estadísticas, canal principal y controles del motor</string>
+    <string name="playtube_engine">Motor PlayTube</string>
+    <string name="playtube_engine_desc">Estadísticas, canal principal y controles del motor</string>
+    <string name="tracked_topics">Temas rastreados</string>
+    <string name="top_interest">Canal principal</string>
+    <string name="top_channel">Canal principal</string>
+    <string name="algorithm_status">Estado del algoritmo</string>
+    <string name="status_active">Activo</string>
+    <string name="status_paused">Pausado</string>
+    <string name="no_interests_learned">Aún no se han aprendido datos de intereses.</string>
+    <string name="learned_topic_profile">Perfil de temas aprendidos</string>
+    <string name="learned_topic_profile_desc">Temas clave y ponderaciones usadas para calificar recomendaciones</string>
     <string name="settings_group_appearance_playback">Apariencia y reproducción</string>
+    <string name="appearance_customization">Apariencia y personalización</string>
+    <string name="appearance_customization_desc">Acento del tema, Material You, gestos y bloqueo de contenido IA</string>
+    <string name="theme_mode">Modo del tema</string>
+    <string name="theme_mode_system">Siguiendo al sistema</string>
+    <string name="theme_mode_system_desc">Coincide con la configuración del dispositivo</string>
+    <string name="theme_mode_light">Claro</string>
+    <string name="theme_mode_light_desc">Apariencia brillante y clara</string>
+    <string name="theme_mode_dark">Oscuro</string>
+    <string name="theme_mode_dark_desc">Tema oscuro optimizado para OLED</string>
     <string name="settings_player_gestures">Gestos del reproductor</string>
     <string name="settings_player_gestures_desc">Activar gestos de deslizar para volumen y brillo</string>
     <string name="settings_material_you">Material You</string>
@@ -208,4 +230,44 @@
     <string name="skipped_segment">Se omitió %s</string>
     <string name="audio_track">Pista de audio</string>
     <string name="select_audio_track">Seleccionar pista de audio</string>
+
+    <!-- Data & Backup -->
+    <string name="data_and_backup">Datos y copia de seguridad</string>
+    <string name="youtube_takeout_import">Importación de YouTube Takeout</string>
+    <string name="import_watch_history">Importar historial de reproducción</string>
+    <string name="import_watch_history_desc">Selecciona tu watch-history.json o ZIP de Takeout</string>
+    <string name="import_subscriptions">Importar suscripciones</string>
+    <string name="import_subscriptions_desc">Selecciona tu subscriptions.csv o ZIP de Takeout</string>
+    <string name="playtube_native_backup">Copia de seguridad nativa de PlayTube</string>
+    <string name="create_backup">Crear copia de seguridad</string>
+    <string name="create_backup_desc">Guarda todos tus datos de PlayTube en un archivo</string>
+    <string name="restore_backup">Restaurar copia de seguridad</string>
+    <string name="restore_backup_desc">Restaura tus datos desde una copia anterior</string>
+    <string name="import_background_hint">Puedes salir de esta página de forma segura. La importación continuará en segundo plano.</string>
+    <string name="import_complete">¡Importación completada!</string>
+    <string name="dismiss">Descartar</string>
+    <string name="import_failed">Error en la importación</string>
+    <string name="processing">Procesando...</string>
+
+    <!-- Subscriptions Screen -->
+    <string name="unsubscribe_confirm_title">¿Cancelar suscripción?</string>
+    <string name="unsubscribe_confirm_message">¿Estás seguro de que quieres cancelar la suscripción a %s?</string>
+    <string name="unsubscribe">Cancelar suscripción</string>
+    <string name="search_subscriptions">Buscar suscripciones</string>
+    <string name="no_matching_channels">No hay canales coincidentes</string>
+    <string name="try_different_search">Prueba con otro término de búsqueda</string>
+
+    <!-- Appearance & Customization -->
+    <string name="live_theme_preview">Vista previa del tema</string>
+    <string name="content_controls">Controles de contenido</string>
+    <string name="block_ai_content">Bloquear contenido IA</string>
+    <string name="block_ai_content_desc">Ocultar canales y videos generados por IA del inicio</string>
+    <string name="theme_mode_oled">Negro OLED</string>
+    <string name="sample_action">Acción de ejemplo</string>
+    <string name="selected_chip">Etiqueta seleccionada</string>
+
+    <!-- Dialogs -->
+    <string name="create_new_playlist">Crear nueva lista</string>
+    <string name="playlist_name">Nombre de la lista</string>
+    <string name="create">Crear</string>
 </resources>

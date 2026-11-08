@@ -6,6 +6,10 @@
 package com.arslandaim.playtube.ui.screens.player
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -17,10 +21,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,10 +40,27 @@ fun SeekGestureOverlay(
     isForward: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
+
+    LaunchedEffect(visible, amount) {
+        if (visible) {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+    }
+
+    val scale by animateFloatAsState(
+        targetValue = if (visible) 1.0f else 0.7f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "SeekScale"
+    )
+
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(),
-        exit = fadeOut(),
+        enter = fadeIn(tween(150)) + scaleIn(initialScale = 0.8f),
+        exit = fadeOut(tween(200)) + scaleOut(targetScale = 0.8f),
         modifier = modifier.fillMaxSize()
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -44,14 +69,18 @@ fun SeekGestureOverlay(
             Column(
                 modifier = Modifier
                     .align(alignment)
-                    .padding(horizontal = 64.dp),
+                    .padding(horizontal = 64.dp)
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                    },
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Box(
                     modifier = Modifier
                         .size(76.dp)
-                        .background(Color.Black.copy(alpha = 0.45f), CircleShape)
-                        .border(1.5.dp, Color.White.copy(alpha = 0.15f), CircleShape),
+                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                        .border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(

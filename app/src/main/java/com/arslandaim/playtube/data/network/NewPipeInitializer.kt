@@ -15,12 +15,15 @@ import okhttp3.OkHttpClient
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.localization.ContentCountry
 import org.schabi.newpipe.extractor.localization.Localization
+import org.schabi.newpipe.extractor.services.youtube.PoTokenResult
+import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeStreamExtractor
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class NewPipeInitializer @Inject constructor(
-    private val okHttpClient: OkHttpClient
+    private val okHttpClient: OkHttpClient,
+    private val poTokenProvider: PoTokenProvider
 ) {
     private val initializationDeferred = CompletableDeferred<Unit>()
     private val mutex = Mutex()
@@ -39,14 +42,29 @@ class NewPipeInitializer @Inject constructor(
                         Localization.DEFAULT,
                         ContentCountry("US")
                     )
+
+                    val poTokenImpl = object : org.schabi.newpipe.extractor.services.youtube.PoTokenProvider {
+                        override fun getWebClientPoToken(s: String): PoTokenResult? {
+                            val vData = poTokenProvider.getVisitorData()
+                            val token = poTokenProvider.generatePoToken(s)
+                            if (vData.isNullOrBlank() || token.isNullOrBlank()) {
+                                return null
+                            }
+                            return PoTokenResult(vData, token, token)
+                        }
+
+                        override fun getWebEmbedClientPoToken(s: String): PoTokenResult? = getWebClientPoToken(s)
+                        override fun getAndroidClientPoToken(s: String): PoTokenResult? = null
+                        override fun getIosClientPoToken(s: String): PoTokenResult? = null
+                    }
+                    
+                    YoutubeStreamExtractor.setPoTokenProvider(poTokenImpl)
                 }
                 isInitialized = true
                 initializationDeferred.complete(Unit)
                 PTLog.d("NewPipeInitializer", "NewPipe initialized successfully")
             } catch (e: Exception) {
                 PTLog.e("NewPipeInitializer", "NewPipe initialization failed", e)
-                // We don't completeExceptionally here to allow retries if needed, 
-                // or we could, depending on the error type.
                 throw e
             }
         }

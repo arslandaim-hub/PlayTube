@@ -38,7 +38,8 @@ data class DownloadEntity(
         viewCount = 0,
         uploadDate = null,
         rawUploadDate = null,
-        duration = 0
+        duration = 0,
+        isShort = false // Impossible to accurately detect here; trust repository original parse
     )
 }
 

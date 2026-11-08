@@ -78,7 +78,10 @@ object NetworkModule {
                 if (chain.request().url.host.contains("googlevideo.com")) {
                     val videoId = chain.request().url.queryParameter("id") 
                         ?: chain.request().url.queryParameter("v")
-                    requestBuilder.header("X-Goog-Po-Token", poTokenProvider.generatePoToken(videoId))
+                    val poToken = poTokenProvider.generatePoToken(videoId)
+                    if (poToken.isNotBlank()) {
+                        requestBuilder.header("X-Goog-Po-Token", poToken)
+                    }
                 }
 
                 chain.proceed(requestBuilder.build())

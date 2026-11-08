@@ -118,7 +118,8 @@ private fun HistoryContent(
                     checked = !isHistoryEnabled,
                     onCheckedChange = { paused ->
                         onSetHistoryEnabled(!paused)
-                    }
+                    },
+                    colors = com.arslandaim.playtube.ui.screens.settings.settingsSwitchColors()
                 )
             }
             

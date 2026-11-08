@@ -51,4 +51,29 @@ class VideoUtilsTest {
         assertEquals("UC1234567890123456789012", VideoUtils.extractChannelId("https://www.youtube.com/channel/UC1234567890123456789012"))
         assertNull(VideoUtils.extractChannelId("https://www.youtube.com/@handle"))
     }
+
+    @Test
+    fun `isShort correctly identifies shorts from VideoItem`() {
+        val normalVideo = com.arslandaim.playtube.domain.model.VideoItem(
+            id = "abc12345678",
+            title = "Full Length Documentary",
+            thumbnailUrl = "https://i.ytimg.com/vi/abc12345678/hqdefault.jpg",
+            uploaderName = "Test Channel",
+            uploaderUrl = "https://youtube.com/channel/test",
+            viewCount = 1000,
+            uploadDate = "1 day ago",
+            duration = 600,
+            isShort = false
+        )
+        assertFalse(VideoUtils.isShort(normalVideo))
+
+        val explicitShort = normalVideo.copy(isShort = true)
+        assertTrue(VideoUtils.isShort(explicitShort))
+
+        val titleHashtagShort = normalVideo.copy(title = "Funny Dog Video #shorts", duration = 30)
+        assertTrue(VideoUtils.isShort(titleHashtagShort))
+
+        val shortTitleAndDuration = normalVideo.copy(title = "Cute Cat Short", duration = 45)
+        assertTrue(VideoUtils.isShort(shortTitleAndDuration))
+    }
 }

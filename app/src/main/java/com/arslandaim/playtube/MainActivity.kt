@@ -150,7 +150,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         setContent {
-            val darkTheme = isSystemInDarkTheme()
+            val systemInDark = isSystemInDarkTheme()
+            val appThemeMode by mainViewModel.appThemeMode.collectAsStateWithLifecycle()
+            val isOled = appThemeMode.equals("OLED", ignoreCase = true)
+            val darkTheme = when {
+                appThemeMode.equals("LIGHT", ignoreCase = true) -> false
+                appThemeMode.equals("DARK", ignoreCase = true) -> true
+                isOled -> true
+                else -> systemInDark
+            }
             val isBackgroundPlayEnabled by mainViewModel.isBackgroundPlayEnabled.collectAsStateWithLifecycle()
             val isOnboardingCompleted by mainViewModel.isOnboardingCompleted.collectAsStateWithLifecycle()
 
@@ -158,34 +166,33 @@ class MainActivity : AppCompatActivity() {
             
             val startDestination = if (isOnboardingCompleted == true) Destination.Home else Destination.Onboarding
 
-            // Background Play MediaSession Connection
-            if (isBackgroundPlayEnabled) {
-                LaunchedEffect(Unit) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        if (ContextCompat.checkSelfPermission(
-                                this@MainActivity,
-                                Manifest.permission.POST_NOTIFICATIONS
-                            ) != PackageManager.PERMISSION_GRANTED
-                        ) {
-                            requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        }
+            // Always-On MediaSession Connection
+            LaunchedEffect(Unit) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    if (ContextCompat.checkSelfPermission(
+                            this@MainActivity,
+                            Manifest.permission.POST_NOTIFICATIONS
+                        ) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                     }
                 }
+            }
 
-                DisposableEffect(Unit) {
-                    val sessionToken = SessionToken(this@MainActivity, android.content.ComponentName(this@MainActivity, PlaybackService::class.java))
-                    val controllerFuture = MediaController.Builder(this@MainActivity, sessionToken).buildAsync()
-                    controllerFuture.addListener({}, MoreExecutors.directExecutor())
-                    onDispose {
-                        MediaController.releaseFuture(controllerFuture)
-                    }
+            DisposableEffect(Unit) {
+                val sessionToken = SessionToken(this@MainActivity, android.content.ComponentName(this@MainActivity, PlaybackService::class.java))
+                val controllerFuture = MediaController.Builder(this@MainActivity, sessionToken).buildAsync()
+                controllerFuture.addListener({}, MoreExecutors.directExecutor())
+                onDispose {
+                    MediaController.releaseFuture(controllerFuture)
                 }
             }
 
             PlayTubeTheme(
                 darkTheme = darkTheme,
                 isDynamicColorEnabled = mainViewModel.isDynamicColorEnabled.collectAsStateWithLifecycle().value,
-                appThemeColor = mainViewModel.appThemeColor.collectAsStateWithLifecycle().value
+                appThemeColor = mainViewModel.appThemeColor.collectAsStateWithLifecycle().value,
+                isOledTheme = isOled
             ) {
                 val navController = rememberNavController()
                 val uiState by mainViewModel.uiState.collectAsStateWithLifecycle()
@@ -278,9 +285,15 @@ class MainActivity : AppCompatActivity() {
                             } else {
                                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                             }
+                            updatePipParams()
+                        }
+
+                        override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                            updatePipParams()
                         }
                     }
                     playerViewModel.player.addListener(listener)
+                    updatePipParams()
                     if (playerViewModel.player.isPlaying && isExpanded) {
                         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     } else {
@@ -359,19 +372,27 @@ class MainActivity : AppCompatActivity() {
                         )
 
                         if (showBars || barsVisibilityProgress > 0f) {
+                            var bottomBarHeightPx by remember { mutableFloatStateOf(0f) }
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
+                                    .onSizeChanged { bottomBarHeightPx = it.height.toFloat() }
                                     .graphicsLayer {
-                                        translationY = 150.dp.toPx() * (1f - barsVisibilityProgress)
+                                        translationY = if (bottomBarHeightPx > 0f) {
+                                            bottomBarHeightPx * (1f - barsVisibilityProgress)
+                                        } else {
+                                            150.dp.toPx() * (1f - barsVisibilityProgress)
+                                        }
                                         alpha = barsVisibilityProgress
                                     }
                             ) {
-                                Surface(
+                                GlassSurface(
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = androidx.compose.ui.graphics.RectangleShape,
-                                    shadowElevation = 16.dp,
-                                    color = MaterialTheme.colorScheme.surface
+                                    tonalElevation = 3.dp,
+                                    shadowElevation = 0.dp,
+                                    border = null,
+                                    containerColor = MaterialTheme.colorScheme.surface
                                 ) {
                                     Box(
                                         modifier = Modifier
@@ -474,12 +495,12 @@ class MainActivity : AppCompatActivity() {
                         var name by remember { mutableStateOf("") }
                         AlertDialog(
                             onDismissRequest = { showCreateDialog = false },
-                            title = { Text("Create New Playlist") },
+                            title = { Text(stringResource(R.string.create_new_playlist)) },
                             text = {
                                 TextField(
                                     value = name,
                                     onValueChange = { name = it },
-                                    placeholder = { Text("Playlist name") },
+                                    placeholder = { Text(stringResource(R.string.playlist_name)) },
                                     singleLine = true
                                 )
                             },
@@ -489,15 +510,48 @@ class MainActivity : AppCompatActivity() {
                                         if (name.isNotBlank()) mainViewModel.createLocalPlaylist(name)
                                         showCreateDialog = false
                                     }
-                                ) { Text("Create") }
+                                ) { Text(stringResource(R.string.create)) }
                             },
                             dismissButton = {
-                                TextButton(onClick = { showCreateDialog = false }) { Text("Cancel") }
+                                TextButton(onClick = { showCreateDialog = false }) { Text(stringResource(R.string.cancel)) }
                             }
                         )
                     }
                 }
             }
+        }
+    }
+
+    fun updatePipParams(surfaceBounds: android.graphics.Rect? = null) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        try {
+            val videoSize = playerViewModel.player.videoSize
+            val rational = if (videoSize.width > 0 && videoSize.height > 0) {
+                val aspect = videoSize.width.toFloat() / videoSize.height.toFloat()
+                val clampedAspect = aspect.coerceIn(100f / 239f, 239f / 100f)
+                Rational((clampedAspect * 1000).toInt(), 1000)
+            } else {
+                Rational(16, 9)
+            }
+
+            val builder = PictureInPictureParams.Builder()
+                .setAspectRatio(rational)
+
+            if (surfaceBounds != null && !surfaceBounds.isEmpty) {
+                builder.setSourceRectHint(surfaceBounds)
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val isPipEnabled = mainViewModel.isPipEnabled.value
+                val isPlaying = playerViewModel.player.isPlaying
+                val isExpanded = miniPlayerManager.visibilityState.value == com.arslandaim.playtube.ui.screens.player.MiniPlayerVisibility.Expanded
+                builder.setAutoEnterEnabled(isPipEnabled && isPlaying && isExpanded)
+                builder.setSeamlessResizeEnabled(true)
+            }
+
+            setPictureInPictureParams(builder.build())
+        } catch (e: Exception) {
+            PTLog.w("MainActivity", "Failed to set PictureInPictureParams: ${e.message}")
         }
     }
 
@@ -530,9 +584,22 @@ class MainActivity : AppCompatActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (mainViewModel.isPipEnabled.value && playerViewModel.player.isPlaying) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build())
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            if (mainViewModel.isPipEnabled.value && playerViewModel.player.isPlaying) {
+                updatePipParams()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    try {
+                        val videoSize = playerViewModel.player.videoSize
+                        val rational = if (videoSize.width > 0 && videoSize.height > 0) {
+                            val aspect = videoSize.width.toFloat() / videoSize.height.toFloat()
+                            val clampedAspect = aspect.coerceIn(100f / 239f, 239f / 100f)
+                            Rational((clampedAspect * 1000).toInt(), 1000)
+                        } else Rational(16, 9)
+                        enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(rational).build())
+                    } catch (e: Exception) {
+                        PTLog.w("MainActivity", "Failed to enter PiP: ${e.message}")
+                    }
+                }
             }
         }
     }
@@ -565,7 +632,7 @@ class MainActivity : AppCompatActivity() {
                 val query = data.getQueryParameter("search_query") ?: data.getQueryParameter("q")
                 if (!query.isNullOrBlank()) navController.navigate(Destination.Search(query)) { launchSingleTop = true }
             }
-            videoId.isNotBlank() -> playerViewModel.loadVideo(VideoItem(id = videoId, title = "Loading...", thumbnailUrl = "", uploaderName = "", uploaderUrl = null, viewCount = 0, uploadDate = null, duration = 0))
+            videoId.isNotBlank() -> playerViewModel.loadVideo(VideoItem(id = videoId, title = "Loading...", thumbnailUrl = "", uploaderName = "", uploaderUrl = null, viewCount = 0, uploadDate = null, duration = 0, isShort = false))
         }
         intent.action = null
     }
@@ -606,7 +673,7 @@ fun PlayTubeBottomBar(navController: androidx.navigation.NavHostController) {
                     Text(
                         text = label, 
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                     ) 
                 },
                 selected = isSelected,
@@ -615,7 +682,7 @@ fun PlayTubeBottomBar(navController: androidx.navigation.NavHostController) {
                     selectedTextColor = MaterialTheme.colorScheme.primary,
                     unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    indicatorColor = Color.Transparent // Modern transparent indicator
+                    indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
                 ),
                 onClick = {
                     if (!isSelected) {

@@ -322,23 +322,18 @@ class VideoDownloadService : Service() {
     }
 
     private suspend fun downloadSubtitleFile(url: String, outputFile: File) = withContext(Dispatchers.IO) {
-        // Enforce VTT format for YouTube timedtext URLs since we save as .vtt
-        val finalUrl = if (url.contains("youtube.com/api/timedtext")) {
-            if (url.contains("fmt=")) {
-                url.replace(Regex("fmt=[^&]*"), "fmt=vtt")
-            } else {
-                "$url&fmt=vtt"
-            }
-        } else url
-
-        val request = okhttp3.Request.Builder().url(finalUrl).build()
+        val (finalUrl, _) = com.arslandaim.playtube.utils.CaptionTrackResolver.normalizeSubtitleUrl(url)
+        val request = okhttp3.Request.Builder()
+            .url(finalUrl)
+            .header("User-Agent", com.arslandaim.playtube.utils.Constants.DEFAULT_USER_AGENT)
+            .build()
         val response = okHttpClient.newCall(request).execute()
         if (response.isSuccessful) {
-            response.body.byteStream().use { input ->
-                outputFile.outputStream().use { output ->
-                    input.copyTo(output)
-                }
-            }
+            val rawBody = response.body.string()
+            val cleanBody = if (rawBody.isNotBlank()) {
+                com.arslandaim.playtube.utils.SubtitleSanitizer.sanitizeWebVtt(rawBody)
+            } else "WEBVTT\n\n"
+            outputFile.writeText(cleanBody, Charsets.UTF_8)
         } else {
             PTLog.e("VideoDownloadService", "Subtitle download failed with HTTP ${response.code}")
         }

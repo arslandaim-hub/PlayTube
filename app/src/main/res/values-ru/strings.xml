@@ -162,7 +162,29 @@
     <string name="settings_pause_recommendations_desc">Временно прекратить анализ ваших интересов</string>
     <string name="settings_clear_learned_data">Сбросить данные рекомендаций</string>
     <string name="settings_clear_learned_data_desc_item">Сбросить профиль рекомендательной системы</string>
+    <string name="recommendation_algorithm">Движок PlayTube</string>
+    <string name="recommendation_algorithm_desc">Статистика, главный канал и управление движком</string>
+    <string name="playtube_engine">Движок PlayTube</string>
+    <string name="playtube_engine_desc">Статистика, главный канал и управление движком</string>
+    <string name="tracked_topics">Отслеживаемые темы</string>
+    <string name="top_interest">Главный канал</string>
+    <string name="top_channel">Главный канал</string>
+    <string name="algorithm_status">Статус алгоритма</string>
+    <string name="status_active">Активен</string>
+    <string name="status_paused">На паузе</string>
+    <string name="no_interests_learned">Данные профиля рекомендаций еще не сформированы.</string>
+    <string name="learned_topic_profile">Профиль изученных тем</string>
+    <string name="learned_topic_profile_desc">Ключевые темы и весовые коэффициенты рекомендаций</string>
     <string name="settings_group_appearance_playback">Внешний вид и воспроизведение</string>
+    <string name="appearance_customization">Внешний вид и персонализация</string>
+    <string name="appearance_customization_desc">Акцент темы, Material You, жесты и блокировка ИИ контента</string>
+    <string name="theme_mode">Режим темы</string>
+    <string name="theme_mode_system">Системная тема</string>
+    <string name="theme_mode_system_desc">Соответствует настройкам устройства</string>
+    <string name="theme_mode_light">Светлая</string>
+    <string name="theme_mode_light_desc">Светлое оформление</string>
+    <string name="theme_mode_dark">Тёмная</string>
+    <string name="theme_mode_dark_desc">Тёмная тема с оптимизацией для OLED</string>
     <string name="settings_player_gestures">Жесты плеера</string>
     <string name="settings_player_gestures_desc">Включить жесты свайпа для громкости и яркости</string>
     <string name="settings_material_you">Material You</string>
@@ -207,4 +229,44 @@
     <string name="skipped_segment">Пропущено %s</string>
     <string name="audio_track">Аудиодорожка</string>
     <string name="select_audio_track">Выбрать аудиодорожку</string>
+
+    <!-- Data & Backup -->
+    <string name="data_and_backup">Данные и резервное копирование</string>
+    <string name="youtube_takeout_import">Импорт из YouTube Takeout</string>
+    <string name="import_watch_history">Импорт истории просмотров</string>
+    <string name="import_watch_history_desc">Выберите watch-history.json или ZIP из Takeout</string>
+    <string name="import_subscriptions">Импорт подписок</string>
+    <string name="import_subscriptions_desc">Выберите subscriptions.csv или ZIP из Takeout</string>
+    <string name="playtube_native_backup">Локальная резервная копия PlayTube</string>
+    <string name="create_backup">Создать резервную копию</string>
+    <string name="create_backup_desc">Сохранить все данные PlayTube в файл</string>
+    <string name="restore_backup">Восстановить из копии</string>
+    <string name="restore_backup_desc">Восстановить данные из ранее созданного файла</string>
+    <string name="import_background_hint">Вы можете покинуть эту страницу. Импорт продолжится в фоновом режиме.</string>
+    <string name="import_complete">Импорт завершен!</string>
+    <string name="dismiss">Закрыть</string>
+    <string name="import_failed">Ошибка импорта</string>
+    <string name="processing">Обработка...</string>
+
+    <!-- Subscriptions Screen -->
+    <string name="unsubscribe_confirm_title">Отписаться?</string>
+    <string name="unsubscribe_confirm_message">Вы уверены, что хотите отписаться от %s?</string>
+    <string name="unsubscribe">Отписаться</string>
+    <string name="search_subscriptions">Поиск в подписках</string>
+    <string name="no_matching_channels">Каналы не найдены</string>
+    <string name="try_different_search">Попробуйте другой запрос</string>
+
+    <!-- Appearance & Customization -->
+    <string name="live_theme_preview">Предпросмотр темы</string>
+    <string name="content_controls">Управление контентом</string>
+    <string name="block_ai_content">Блокировать контент ИИ</string>
+    <string name="block_ai_content_desc">Скрывать ИИ-видео и каналы из главной ленты</string>
+    <string name="theme_mode_oled">OLED черный</string>
+    <string name="sample_action">Пример действия</string>
+    <string name="selected_chip">Выбранный чип</string>
+
+    <!-- Dialogs -->
+    <string name="create_new_playlist">Создать плейлист</string>
+    <string name="playlist_name">Название плейлиста</string>
+    <string name="create">Создать</string>
 </resources>

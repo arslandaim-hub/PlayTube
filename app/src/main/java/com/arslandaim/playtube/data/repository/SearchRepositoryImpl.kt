@@ -178,6 +178,7 @@ class SearchRepositoryImpl @Inject constructor(
         val videoId = VideoUtils.extractVideoId(item.url)
         val uploadDate = item.textualUploadDate ?: item.uploadDate?.offsetDateTime()?.toLocalDate()?.toString() ?: ""
         val rawUploadDate = item.uploadDate?.instant?.toEpochMilli() ?: VideoUtils.parseTextualUploadDate(item.textualUploadDate)
+        val isShort = VideoUtils.isShort(item)
         
         return VideoItem(
             id = videoId,
@@ -190,7 +191,8 @@ class SearchRepositoryImpl @Inject constructor(
             subscriberCount = null,
             duration = item.duration,
             uploadDate = uploadDate,
-            rawUploadDate = rawUploadDate
+            rawUploadDate = rawUploadDate,
+            isShort = isShort
         )
     }
 

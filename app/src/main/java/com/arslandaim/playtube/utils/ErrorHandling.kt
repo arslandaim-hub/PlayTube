@@ -31,6 +31,7 @@ sealed class PlayTubeError {
 
     companion object {
         fun fromThrowable(t: Throwable): PlayTubeError {
+            if (t is kotlinx.coroutines.CancellationException) throw t
             return when (t) {
                 is UnknownHostException, is IOException -> Network
                 is java.lang.SecurityException -> AuthError

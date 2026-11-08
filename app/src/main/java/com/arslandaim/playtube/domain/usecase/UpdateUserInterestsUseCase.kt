@@ -31,7 +31,7 @@ class UpdateUserInterestsUseCase @Inject constructor(
         val learningRate = 1f - alpha
         val finalWeight = baseWeight * learningRate
         
-        val keywordVectors = NeuroTokenizer.tokenize(text)
+        val keywordVectors = NeuroTokenizer.tokenizeTopics(text)
         keywordVectors.forEach { (kw, frequency) ->
             libraryRepository.updateInterest(kw, finalWeight * frequency)
         }

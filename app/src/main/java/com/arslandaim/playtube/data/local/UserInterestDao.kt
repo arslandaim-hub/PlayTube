@@ -6,11 +6,15 @@
 package com.arslandaim.playtube.data.local
 
 import androidx.room.*
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface UserInterestDao {
     @Query("SELECT * FROM user_interests ORDER BY weight DESC LIMIT :limit")
     suspend fun getTopInterests(limit: Int): List<UserInterestEntity>
+
+    @Query("SELECT * FROM user_interests ORDER BY weight DESC")
+    fun getAllInterestsFlow(): Flow<List<UserInterestEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(interest: UserInterestEntity)

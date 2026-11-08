@@ -61,6 +61,9 @@ class MainViewModel @Inject constructor(
     val appThemeColor: StateFlow<String> = preferencesManager.appThemeColor
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "RED")
 
+    val appThemeMode: StateFlow<String> = preferencesManager.appThemeMode
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "SYSTEM")
+
     val isOnboardingCompleted: StateFlow<Boolean?> = preferencesManager.isOnboardingCompleted
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 

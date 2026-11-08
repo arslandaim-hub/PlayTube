@@ -14,13 +14,14 @@ class PoTokenProvider @Inject constructor() {
     private var visitorData: String? = null
 
     /**
-     * Returns a stable VisitorData ID for the session.
+     * Returns a stable VisitorData ID for the session, or empty if not set.
      */
     fun getVisitorData(): String {
-        if (visitorData == null) {
-            visitorData = "visitor_data_${System.currentTimeMillis()}"
-        }
-        return visitorData!!
+        return visitorData ?: ""
+    }
+
+    fun setVisitorData(data: String) {
+        visitorData = data
     }
 
     /**
@@ -31,15 +32,13 @@ class PoTokenProvider @Inject constructor() {
         if (sessionId != null) {
             tokenCache[sessionId]?.let { return it }
         }
-        
-        val newToken = "po_token_${System.currentTimeMillis()}"
-        if (sessionId != null) {
-            // Keep cache small (last 5 sessions)
-            if (tokenCache.size >= 5) {
-                tokenCache.keys.firstOrNull()?.let { tokenCache.remove(it) }
-            }
-            tokenCache[sessionId] = newToken
+        return ""
+    }
+
+    fun setPoToken(sessionId: String, token: String) {
+        if (tokenCache.size >= 5) {
+            tokenCache.keys.firstOrNull()?.let { tokenCache.remove(it) }
         }
-        return newToken
+        tokenCache[sessionId] = token
     }
 }

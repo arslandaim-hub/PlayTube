@@ -36,6 +36,8 @@ import com.arslandaim.playtube.ui.screens.settings.SettingsViewModel
 import com.arslandaim.playtube.ui.screens.settings.UpdateViewModel
 import com.arslandaim.playtube.ui.screens.settings.DataManagementScreen
 import com.arslandaim.playtube.ui.screens.settings.DataManagementViewModel
+import com.arslandaim.playtube.ui.screens.settings.AppearanceCustomizationScreen
+import com.arslandaim.playtube.ui.screens.settings.RecommendationSettingsScreen
 import com.arslandaim.playtube.ui.screens.subscriptions.SubscriptionsScreen
 import com.arslandaim.playtube.ui.screens.subscriptions.SubscriptionFeedScreen
 import com.arslandaim.playtube.ui.screens.subscriptions.SubscriptionsFeedViewModel
@@ -211,6 +213,22 @@ fun NavGraph(
                 updateViewModel = updateViewModel,
                 onViewHistory = { navController.navigate(Destination.History) { launchSingleTop = true } },
                 onDataManagement = { navController.navigate(Destination.DataManagement) },
+                onAppearanceCustomization = { navController.navigate(Destination.AppearanceCustomization) },
+                onRecommendationSettings = { navController.navigate(Destination.RecommendationSettings) },
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable<Destination.AppearanceCustomization> {
+            val viewModel: SettingsViewModel = hiltViewModel()
+            AppearanceCustomizationScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable<Destination.RecommendationSettings> {
+            val viewModel: SettingsViewModel = hiltViewModel()
+            RecommendationSettingsScreen(
+                viewModel = viewModel,
                 onBack = { navController.popBackStack() }
             )
         }

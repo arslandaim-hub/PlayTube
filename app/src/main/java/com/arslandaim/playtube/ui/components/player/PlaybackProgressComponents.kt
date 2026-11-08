@@ -19,20 +19,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.arslandaim.playtube.domain.model.SponsorSegment
 import com.arslandaim.playtube.utils.VideoChapter
-
-/**
- * Interactive progress bar that sits at the bottom of the player.
- * Animates its height when [isInteractive] is true.
- * Renders chapter section gaps and active chapter pill when [chapters] are present.
- */
-import androidx.compose.ui.graphics.StrokeCap
 
 /**
  * Interactive progress bar that sits at the bottom of the player with horizontal margins,
@@ -46,6 +41,7 @@ fun PersistentProgressBar(
     onSeek: (Float) -> Unit,
     modifier: Modifier = Modifier,
     chapters: List<VideoChapter> = emptyList(),
+    sponsorSegments: List<SponsorSegment> = emptyList(),
     durationMs: Long = 0L,
     activeColor: Color = Color.Red,
     bufferedColor: Color = Color.White.copy(alpha = 0.3f),
@@ -59,6 +55,7 @@ fun PersistentProgressBar(
     val haptic = LocalHapticFeedback.current
 
     val hasChapters = chapters.size >= 2 && durationMs > 0L
+    var lastChapterIndex by remember { mutableIntStateOf(-1) }
 
     val segments = remember(chapters, durationMs) {
         if (!hasChapters) {
@@ -113,8 +110,6 @@ fun PersistentProgressBar(
             }
         }
 
-
-
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
@@ -128,11 +123,19 @@ fun PersistentProgressBar(
                                     onSeek((offset.x / size.width).coerceIn(0f, 1f))
                                 }
                             }
-                            .pointerInput(Unit) {
+                            .pointerInput(hasChapters, durationMs) {
                                 detectDragGestures { change, _ ->
                                     change.consume()
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    onSeek((change.position.x / size.width).coerceIn(0f, 1f))
+                                    val frac = (change.position.x / size.width).coerceIn(0f, 1f)
+                                    if (hasChapters && durationMs > 0) {
+                                        val currentMs = (frac * durationMs).toLong()
+                                        val currentIdx = chapters.indexOfLast { currentMs >= it.startMs }
+                                        if (currentIdx != -1 && currentIdx != lastChapterIndex) {
+                                            lastChapterIndex = currentIdx
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        }
+                                    }
+                                    onSeek(frac)
                                 }
                             }
                     } else Modifier
@@ -197,6 +200,32 @@ fun PersistentProgressBar(
                             strokeWidth = strokeWidth,
                             cap = StrokeCap.Round
                         )
+                    }
+                }
+
+                // SponsorBlock Segment Markers
+                if (durationMs > 0L) {
+                    for (sponsor in sponsorSegments) {
+                        val startFrac = (sponsor.startMs.toFloat() / durationMs).coerceIn(0f, 1f)
+                        val endFrac = (sponsor.endMs.toFloat() / durationMs).coerceIn(0f, 1f)
+                        val sPx = startFrac * width
+                        val ePx = endFrac * width
+                        if (ePx > sPx) {
+                            val segmentColor = when (sponsor.category.lowercase()) {
+                                "sponsor" -> Color(0xFFFFD700)
+                                "intro", "outro" -> Color(0xFF00E5FF)
+                                "selfpromo", "interaction" -> Color(0xFF00E676)
+                                "music_offtopic" -> Color(0xFFFF4081)
+                                else -> Color(0xFFFFA000)
+                            }
+                            drawLine(
+                                color = segmentColor,
+                                start = Offset(sPx, centerY),
+                                end = Offset(ePx, centerY),
+                                strokeWidth = strokeWidth,
+                                cap = StrokeCap.Round
+                            )
+                        }
                     }
                 }
             }

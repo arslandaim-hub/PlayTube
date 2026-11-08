@@ -67,6 +67,8 @@ class DownloadWorker @AssistedInject constructor(
         val title = inputData.getString("title") ?: "video"
         var format = inputData.getString("format") ?: "mp4"
         val preferredQuality = inputData.getString("quality")
+        val subtitleUrl = inputData.getString("subtitleUrl")
+        val subtitleLang = inputData.getString("subtitleLanguage") ?: "en"
 
         // Phase 1: Status check and metadata preparation (Sequential)
         val initialData = downloadMutex.withLock {
@@ -109,7 +111,7 @@ class DownloadWorker @AssistedInject constructor(
 
         // Phase 2: Actual Download (Parallel)
         return@withContext try {
-            doDownload(videoId, currentVideoUrl, currentAudioUrl, title, currentFormat)
+            doDownload(videoId, currentVideoUrl, currentAudioUrl, title, currentFormat, subtitleUrl, subtitleLang)
         } catch (e: ExpiredUrlException) {
             PTLog.w("DownloadWorker", "URL expired for $videoId, re-fetching metadata...")
             val retryData = downloadMutex.withLock {
@@ -133,7 +135,7 @@ class DownloadWorker @AssistedInject constructor(
             } ?: return@withContext Result.failure()
 
             try {
-                doDownload(videoId, retryData.first, retryData.second, title, retryData.third)
+                doDownload(videoId, retryData.first, retryData.second, title, retryData.third, subtitleUrl, subtitleLang)
             } catch (ex: Exception) {
                 if (ex is CancellationException) throw ex
                 PTLog.e("DownloadWorker", "Retry failed for $videoId", ex)
@@ -216,7 +218,9 @@ class DownloadWorker @AssistedInject constructor(
         videoUrl: String,
         audioUrl: String?,
         title: String,
-        format: String
+        format: String,
+        subtitleUrl: String? = null,
+        subtitleLang: String = "en"
     ): Result {
         setForeground(createForegroundInfo(title, 0, videoId))
 
@@ -285,8 +289,10 @@ class DownloadWorker @AssistedInject constructor(
                 
                 // Task: Sequential Muxing to prevent disk thrashing
                 muxingMutex.withLock {
-                    muxVideoAudio(videoFile, audioFile, finalFile, format)
+                    com.arslandaim.playtube.utils.NativeMediaMuxer().mux(videoFile, audioFile, finalFile)
                 }
+                if (videoFile.exists()) videoFile.delete()
+                if (audioFile.exists()) audioFile.delete()
             } else {
                 // Bypass Muxer for Standalone Streams
                 PTLog.d("DownloadWorker", "Bypassing muxer for standalone stream")
@@ -294,6 +300,22 @@ class DownloadWorker @AssistedInject constructor(
                 if (!videoFile.renameTo(finalFile)) {
                     videoFile.copyTo(finalFile, overwrite = true)
                     videoFile.delete()
+                }
+            }
+
+            // Download Subtitles if present
+            if (!subtitleUrl.isNullOrBlank()) {
+                try {
+                    val (normalizedSubUrl, mimeType) = com.arslandaim.playtube.utils.CaptionTrackResolver.normalizeSubtitleUrl(subtitleUrl)
+                    val subExt = if (mimeType == androidx.media3.common.MimeTypes.APPLICATION_TTML) "ttml" else "vtt"
+                    val subtitleFile = File(applicationContext.getExternalFilesDir(null), "${videoId}_$subtitleLang.$subExt")
+                    downloadSubtitleFile(normalizedSubUrl, subtitleFile)
+                    if (subtitleFile.exists() && subtitleFile.length() > 0) {
+                        downloadDao.updateSubtitlePath(videoId, subtitleFile.absolutePath, subtitleLang)
+                        PTLog.d("DownloadWorker", "Subtitle downloaded to ${subtitleFile.absolutePath}")
+                    }
+                } catch (e: Exception) {
+                    PTLog.e("DownloadWorker", "Failed to download subtitle for $videoId", e)
                 }
             }
 
@@ -321,7 +343,8 @@ class DownloadWorker @AssistedInject constructor(
         }
     }
 
-    private val userAgent = Constants.DEFAULT_USER_AGENT
+    private val userAgent: String
+        get() = inputData.getString("clientUserAgent") ?: Constants.DEFAULT_USER_AGENT
 
     private suspend fun downloadFile(
         url: String,
@@ -367,7 +390,6 @@ class DownloadWorker @AssistedInject constructor(
         isPart: Boolean,
         combinedTotalSize: Long
     ): Long = withContext(Dispatchers.IO) {
-        // Aggressive chunk scaling to bypass YouTube's per-connection speed limits
         val numChunks = when {
             totalSize < 512 * 1024 -> 1 
             totalSize < 5 * 1024 * 1024 -> 4 
@@ -380,7 +402,13 @@ class DownloadWorker @AssistedInject constructor(
         
         val chunkSize = totalSize / numChunks
         val downloadedBytes = AtomicLong(0L)
-        val partFiles = mutableListOf<File>()
+
+        // Pre-allocate target file for zero-copy parallel chunk writes
+        if (!file.exists() || file.length() != totalSize) {
+            java.io.RandomAccessFile(file, "rw").use { raf ->
+                raf.setLength(totalSize)
+            }
+        }
 
         // 1Hz Ticker Coroutine for stable progress updates
         val tickerJob = launch {
@@ -399,11 +427,9 @@ class DownloadWorker @AssistedInject constructor(
             val jobs = (0 until numChunks).map { i ->
                 val start = i * chunkSize
                 val end = if (i == numChunks - 1) totalSize - 1 else (i + 1) * chunkSize - 1
-                val partFile = File(applicationContext.cacheDir, "${file.name}.part$i")
-                partFiles.add(partFile)
                 
                 async {
-                    downloadChunkWithRetry(url, partFile, start, end, videoId, title, isPart, previousDownloaded, combinedTotalSize, downloadedBytes)
+                    downloadChunkWithRetry(url, file, start, end, videoId, title, isPart, previousDownloaded, combinedTotalSize, downloadedBytes)
                 }
             }
 
@@ -414,19 +440,6 @@ class DownloadWorker @AssistedInject constructor(
             val finalTotalDownloaded = previousDownloaded + downloadedBytes.get()
             val finalEffectiveSize = if (combinedTotalSize > 0) combinedTotalSize else (previousDownloaded + totalSize)
             downloadDao.updateProgress(videoId, DownloadStatus.DOWNLOADING, finalTotalDownloaded, finalEffectiveSize)
-            
-            // CLEAN TRUNCATE: Ensure the file is fresh before merging to avoid corruption
-            if (file.exists()) file.delete()
-
-            // Sequentially merge all part files into the final destination
-            file.outputStream().use { output ->
-                partFiles.forEach { part ->
-                    part.inputStream().use { input ->
-                        input.copyTo(output)
-                    }
-                    part.delete()
-                }
-            }
 
             downloadedBytes.get()
         } catch (e: Exception) {
@@ -526,7 +539,7 @@ class DownloadWorker @AssistedInject constructor(
 
     private suspend fun downloadChunkWithRetry(
         url: String,
-        partFile: File,
+        file: File,
         start: Long,
         end: Long,
         videoId: String,
@@ -540,7 +553,7 @@ class DownloadWorker @AssistedInject constructor(
         val maxRetries = 5
         while (attempt < maxRetries) {
             try {
-                downloadChunk(url, partFile, start, end, videoId, title, isPart, previousDownloaded, combinedTotalSize, downloadedBytes)
+                downloadChunk(url, file, start, end, videoId, title, isPart, previousDownloaded, combinedTotalSize, downloadedBytes)
                 return
             } catch (e: Exception) {
                 if (e is CancellationException || e is ExpiredUrlException) throw e
@@ -555,7 +568,7 @@ class DownloadWorker @AssistedInject constructor(
 
     private suspend fun downloadChunk(
         url: String,
-        partFile: File,
+        file: File,
         start: Long,
         end: Long,
         videoId: String,
@@ -565,18 +578,10 @@ class DownloadWorker @AssistedInject constructor(
         combinedTotalSize: Long,
         downloadedBytes: AtomicLong
     ) {
-        val existingSize = if (partFile.exists()) partFile.length() else 0L
-        if (existingSize >= (end - start + 1)) {
-            // Already fully downloaded this chunk
-            downloadedBytes.addAndGet(existingSize)
-            return
-        }
-
-        val actualStart = start + existingSize
         val request = Request.Builder()
             .url(url)
             .header("User-Agent", userAgent)
-            .addHeader("Range", "bytes=$actualStart-$end")
+            .addHeader("Range", "bytes=$start-$end")
             .build()
 
         var response: okhttp3.Response? = null
@@ -587,24 +592,22 @@ class DownloadWorker @AssistedInject constructor(
                 if (response!!.code == 403) throw ExpiredUrlException()
                 
                 if (response!!.code == 416) {
-                    PTLog.w("DownloadWorker", "Range not satisfiable for chunk of $videoId, restarting chunk")
-                    partFile.delete()
-                    return@withTimeoutOrNull downloadChunk(url, partFile, start, end, videoId, title, isPart, previousDownloaded, combinedTotalSize, downloadedBytes)
+                    PTLog.w("DownloadWorker", "Range not satisfiable for chunk of $videoId")
+                    return@withTimeoutOrNull downloadChunk(url, file, start, end, videoId, title, isPart, previousDownloaded, combinedTotalSize, downloadedBytes)
                 }
 
                 if (!response!!.isSuccessful) throw Exception("Chunk download failed: ${response!!.code}")
 
                 val body = response!!.body ?: throw Exception("Empty response body for chunk")
 
-                downloadedBytes.addAndGet(existingSize)
-
-                java.io.FileOutputStream(partFile, existingSize > 0).use { output ->
+                java.io.RandomAccessFile(file, "rw").use { raf ->
+                    raf.seek(start)
                     body.byteStream().use { input ->
                         val buffer = ByteArray(65536)
                         var bytesRead: Int
                         while (input.read(buffer).also { bytesRead = it } != -1) {
                             ensureActive()
-                            output.write(buffer, 0, bytesRead)
+                            raf.write(buffer, 0, bytesRead)
                             downloadedBytes.addAndGet(bytesRead.toLong())
                         }
                     }
@@ -616,7 +619,6 @@ class DownloadWorker @AssistedInject constructor(
     }
 
     private class ExpiredUrlException : Exception("URL expired")
-
 
     private fun getRemoteFileSize(url: String): Long {
         val clen = url.substringAfter("&clen=", "").substringBefore("&").toLongOrNull()
@@ -663,133 +665,23 @@ class DownloadWorker @AssistedInject constructor(
         }
     }
 
-    private fun muxVideoAudio(videoFile: File, audioFile: File, outputFile: File, videoFormat: String) {
-        PTLog.d("DownloadWorker", "Starting high-speed direct muxing for ${outputFile.name}")
-        
-        val tmpOutputFile = File("${outputFile.absolutePath}.tmp")
-        if (tmpOutputFile.exists()) tmpOutputFile.delete()
-        
-        val videoExtractor = MediaExtractor()
-        val audioExtractor = MediaExtractor()
-        var muxer: MediaMuxer? = null
-        
-        var videoFis: java.io.FileInputStream? = null
-        var audioFis: java.io.FileInputStream? = null
+    private suspend fun downloadSubtitleFile(url: String, outputFile: File) = withContext(Dispatchers.IO) {
+        val (finalUrl, _) = com.arslandaim.playtube.utils.CaptionTrackResolver.normalizeSubtitleUrl(url)
+        val request = Request.Builder()
+            .url(finalUrl)
+            .header("User-Agent", userAgent)
+            .build()
 
-        try {
-            videoFis = java.io.FileInputStream(videoFile)
-            audioFis = java.io.FileInputStream(audioFile)
-            videoExtractor.setDataSource(videoFis.fd)
-            audioExtractor.setDataSource(audioFis.fd)
-
-            val outputFormat = when {
-                videoFormat.contains("webm", ignoreCase = true) || outputFile.extension.equals("webm", true) -> 
-                    MediaMuxer.OutputFormat.MUXER_OUTPUT_WEBM
-                else -> MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
+        workerOkHttpClient.newCall(request).execute().use { response ->
+            if (response.isSuccessful) {
+                val rawBody = response.body?.string() ?: ""
+                val cleanBody = if (rawBody.isNotBlank()) {
+                    com.arslandaim.playtube.utils.SubtitleSanitizer.sanitizeWebVtt(rawBody)
+                } else "WEBVTT\n\n"
+                outputFile.writeText(cleanBody, Charsets.UTF_8)
+            } else {
+                PTLog.e("DownloadWorker", "Subtitle download failed with HTTP ${response.code}")
             }
-
-            muxer = MediaMuxer(tmpOutputFile.absolutePath, outputFormat)
-
-            var videoTrackIndex = -1
-            var audioTrackIndex = -1
-
-            // Setup Video Track
-            for (i in 0 until videoExtractor.trackCount) {
-                val format = videoExtractor.getTrackFormat(i)
-                if (format.getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true) {
-                    videoExtractor.selectTrack(i)
-                    videoTrackIndex = muxer.addTrack(format)
-                    break
-                }
-            }
-
-            // Setup Audio Track
-            for (i in 0 until audioExtractor.trackCount) {
-                val format = audioExtractor.getTrackFormat(i)
-                if (format.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true) {
-                    audioExtractor.selectTrack(i)
-                    audioTrackIndex = muxer.addTrack(format)
-                    break
-                }
-            }
-
-            if (videoTrackIndex == -1 || audioTrackIndex == -1) {
-                throw Exception("Required tracks missing: video=$videoTrackIndex, audio=$audioTrackIndex")
-            }
-
-            muxer.start()
-
-            // Seek to 0 immediately before the loop
-            videoExtractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
-            audioExtractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
-            val videoStartTime = videoExtractor.sampleTime
-            val audioStartTime = audioExtractor.sampleTime
-
-            val videoBuffer = ByteBuffer.allocateDirect(4 * 1024 * 1024)
-            val audioBuffer = ByteBuffer.allocateDirect(1 * 1024 * 1024)
-            val bufferInfo = MediaCodec.BufferInfo()
-
-            var videoDone = false
-            var audioDone = false
-
-            while (!videoDone || !audioDone) {
-                if (isStopped) throw CancellationException("Worker stopped during muxing")
-
-                val videoTime = if (!videoDone) videoExtractor.sampleTime else Long.MAX_VALUE
-                val audioTime = if (!audioDone) audioExtractor.sampleTime else Long.MAX_VALUE
-
-                if (!videoDone && videoTime <= audioTime) {
-                    bufferInfo.size = videoExtractor.readSampleData(videoBuffer, 0)
-                    if (bufferInfo.size < 0) {
-                        videoDone = true
-                    } else {
-                        bufferInfo.presentationTimeUs = videoExtractor.sampleTime - videoStartTime
-                        bufferInfo.offset = 0
-                        bufferInfo.flags = if ((videoExtractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
-                            MediaCodec.BUFFER_FLAG_KEY_FRAME
-                        } else 0
-                        muxer.writeSampleData(videoTrackIndex, videoBuffer, bufferInfo)
-                        videoExtractor.advance()
-                    }
-                } else {
-                    bufferInfo.size = audioExtractor.readSampleData(audioBuffer, 0)
-                    if (bufferInfo.size < 0) {
-                        audioDone = true
-                    } else {
-                        bufferInfo.presentationTimeUs = audioExtractor.sampleTime - audioStartTime
-                        bufferInfo.offset = 0
-                        bufferInfo.flags = if ((audioExtractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
-                            MediaCodec.BUFFER_FLAG_KEY_FRAME
-                        } else 0
-                        muxer.writeSampleData(audioTrackIndex, audioBuffer, bufferInfo)
-                        audioExtractor.advance()
-                    }
-                }
-            }
-
-            muxer.stop()
-            muxer.release()
-            muxer = null
-
-            if (outputFile.exists()) outputFile.delete()
-            if (!tmpOutputFile.renameTo(outputFile)) {
-                tmpOutputFile.copyTo(outputFile, overwrite = true)
-                tmpOutputFile.delete()
-            }
-            
-            PTLog.d("DownloadWorker", "Direct muxing successful: ${outputFile.length()} bytes")
-            if (videoFile.exists()) videoFile.delete()
-            if (audioFile.exists()) audioFile.delete()
-        } catch (e: Exception) {
-            PTLog.e("DownloadWorker", "Muxing failed: ${e.message}", e)
-            if (tmpOutputFile.exists()) tmpOutputFile.delete()
-            throw e
-        } finally {
-            try { muxer?.release() } catch (ex: Exception) {}
-            try { videoExtractor.release() } catch (ex: Exception) {}
-            try { audioExtractor.release() } catch (ex: Exception) {}
-            try { videoFis?.close() } catch (ex: Exception) {}
-            try { audioFis?.close() } catch (ex: Exception) {}
         }
     }
 

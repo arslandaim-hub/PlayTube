@@ -75,7 +75,7 @@ fun ProfileStatsHeader(
                     imageVector = Icons.Default.Person,
                     contentDescription = null,
                     modifier = Modifier.size(36.dp),
-                    tint = MaterialTheme.colorScheme.primary
+                    tint = MaterialTheme.colorScheme.onSurface
                 )
             }
         }
@@ -131,7 +131,7 @@ fun ModernSectionHeader(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.size(22.dp)
             )
             Spacer(modifier = Modifier.width(14.dp))
@@ -166,7 +166,7 @@ fun ModernSectionHeader(
                         Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         null,
                         modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
@@ -1112,7 +1112,7 @@ private fun VideoRowMenuContent(
                 Icon(
                     imageVector = Icons.Default.Refresh, 
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
+                    tint = MaterialTheme.colorScheme.onSurface
                 ) 
             },
             onClick = {

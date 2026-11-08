@@ -7,56 +7,78 @@ package com.arslandaim.playtube.ui.screens.player
 
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import com.arslandaim.playtube.domain.model.StreamBundle
-import java.util.Locale
+import com.arslandaim.playtube.domain.model.SubtitleItem
+import com.arslandaim.playtube.utils.CaptionTrackResolver
 import javax.inject.Inject
 
 @UnstableApi
 class PlayerTrackManager @Inject constructor() {
 
-    fun updateCcState(player: Player, enabled: Boolean, preferredLang: String?) {
+    fun updateCcState(
+        player: Player,
+        enabled: Boolean,
+        selectedSubtitle: SubtitleItem? = null,
+        preferredLang: String? = null
+    ) {
         val parametersBuilder = player.trackSelectionParameters.buildUpon()
-        
+
         if (enabled) {
             parametersBuilder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
             parametersBuilder.clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            parametersBuilder.setSelectUndeterminedTextLanguage(true)
+
+            val lang = selectedSubtitle?.languageTag ?: preferredLang
+            val targetId = selectedSubtitle?.id
+
+            if (!lang.isNullOrBlank()) {
+                parametersBuilder.setPreferredTextLanguage(lang)
+            }
 
             val currentTracks = player.currentTracks
+            val textGroups = currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT && it.isSupported }
+
             var selectedOverride: TrackSelectionOverride? = null
 
-            // 1. Try to find a track matching preferredLang
-            if (!preferredLang.isNullOrBlank()) {
-                for (group in currentTracks.groups) {
-                    if (group.type == C.TRACK_TYPE_TEXT && group.isSupported) {
-                        for (i in 0 until group.length) {
-                            val format = group.getTrackFormat(i)
-                            val lang = format.language ?: ""
-                            val label = format.label ?: ""
-                            if (lang.equals(preferredLang, ignoreCase = true) ||
-                                lang.startsWith(preferredLang, ignoreCase = true) ||
-                                preferredLang.startsWith(lang, ignoreCase = true) ||
-                                label.contains(preferredLang, ignoreCase = true)) {
-                                selectedOverride = TrackSelectionOverride(group.mediaTrackGroup, i)
-                                break
-                            }
+            // 1. First try matching exact group by format.id (e.g. "en:asr" or "en:manual")
+            if (!targetId.isNullOrBlank()) {
+                for (group in textGroups) {
+                    for (i in 0 until group.length) {
+                        val format = group.getTrackFormat(i)
+                        if (format.id == targetId) {
+                            selectedOverride = TrackSelectionOverride(group.mediaTrackGroup, i)
+                            break
                         }
                     }
                     if (selectedOverride != null) break
                 }
             }
 
-            // 2. If no preferred language match found, pick the first supported text track
-            if (selectedOverride == null) {
-                for (group in currentTracks.groups) {
-                    if (group.type == C.TRACK_TYPE_TEXT && group.isSupported) {
-                        selectedOverride = TrackSelectionOverride(group.mediaTrackGroup, 0)
-                        break
+            // 2. Try matching language tag if no ID match found
+            if (selectedOverride == null && !lang.isNullOrBlank()) {
+                for (group in textGroups) {
+                    for (i in 0 until group.length) {
+                        val format = group.getTrackFormat(i)
+                        val trackLang = format.language ?: ""
+                        val trackLabel = format.label ?: ""
+                        if (trackLang.equals(lang, ignoreCase = true) ||
+                            trackLang.startsWith(lang, ignoreCase = true) ||
+                            lang.startsWith(trackLang, ignoreCase = true) ||
+                            trackLabel.contains(lang, ignoreCase = true)) {
+                            selectedOverride = TrackSelectionOverride(group.mediaTrackGroup, i)
+                            break
+                        }
                     }
+                    if (selectedOverride != null) break
                 }
+            }
+
+            // 3. Fallback to first supported text track
+            if (selectedOverride == null && textGroups.isNotEmpty()) {
+                selectedOverride = TrackSelectionOverride(textGroups.first().mediaTrackGroup, 0)
             }
 
             if (selectedOverride != null) {
@@ -66,31 +88,27 @@ class PlayerTrackManager @Inject constructor() {
             parametersBuilder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
             parametersBuilder.clearOverridesOfType(C.TRACK_TYPE_TEXT)
         }
-        
+
         player.trackSelectionParameters = parametersBuilder.build()
+    }
+
+    fun updateCcState(player: Player, enabled: Boolean, preferredLang: String?) {
+        updateCcState(player = player, enabled = enabled, selectedSubtitle = null, preferredLang = preferredLang)
     }
 
     fun createSubtitleConfigs(bundle: StreamBundle): List<MediaItem.SubtitleConfiguration> {
         return bundle.subtitles.filter { it.url.isNotBlank() }.map { subtitle ->
-            val mimeType = when (subtitle.format.lowercase()) {
-                "vtt" -> MimeTypes.TEXT_VTT
-                "ttml" -> MimeTypes.APPLICATION_TTML
-                "srt" -> MimeTypes.APPLICATION_SUBRIP
-                else -> MimeTypes.TEXT_VTT
-            }
-            
-            val label = if (subtitle.isAutoGenerated) {
-                "${Locale.forLanguageTag(subtitle.languageTag).displayLanguage} (Auto-generated)"
-            } else {
-                Locale.forLanguageTag(subtitle.languageTag).displayLanguage
-            }
+            val (normalizedUrl, mimeType) = CaptionTrackResolver.normalizeSubtitleUrl(subtitle.url, subtitle.format)
+            val trackId = if (subtitle.id.isNotBlank()) subtitle.id else "${subtitle.languageTag}:${if (subtitle.isAutoGenerated) "asr" else "manual"}"
+            val label = CaptionTrackResolver.buildDisplayLabel(subtitle.languageTag, subtitle.isAutoGenerated, subtitle.name)
 
-            MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(subtitle.url))
+            MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(normalizedUrl))
+                .setId(trackId)
                 .setMimeType(mimeType)
                 .setLanguage(subtitle.languageTag)
                 .setLabel(label)
                 .setRoleFlags(C.ROLE_FLAG_CAPTION or C.ROLE_FLAG_SUBTITLE)
-                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT or C.SELECTION_FLAG_AUTOSELECT)
+                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
                 .build()
         }
     }
