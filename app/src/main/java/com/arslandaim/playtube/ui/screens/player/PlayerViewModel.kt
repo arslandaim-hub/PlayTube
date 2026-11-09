@@ -58,6 +58,7 @@ class PlayerViewModel @Inject constructor(
     private val connectivityObserver: ConnectivityObserver,
     private val playbackManager: PlaybackManager,
     private val playbackPrefetcher: com.arslandaim.playtube.data.network.PlaybackPrefetcher,
+    private val poTokenProvider: com.arslandaim.playtube.data.network.PoTokenProvider,
     private val okHttpClient: okhttp3.OkHttpClient,
     @ApplicationScope private val externalScope: CoroutineScope,
     val miniPlayerManager: MiniPlayerManager,
@@ -123,8 +124,22 @@ class PlayerViewModel @Inject constructor(
     val selectedAudioStream: StateFlow<StreamItem?> = _selectedAudioStream.asStateFlow()
 
     val availableAudioStreams: StateFlow<List<StreamItem>> = uiState.map { state ->
-        if (state is PlayerUiState.Success) state.bundle.audioStreams else emptyList()
+        if (state is PlayerUiState.Success) {
+            val streams = state.bundle.audioStreams
+            val distinctByTrack = streams
+                .groupBy { "${it.languageTag ?: "und"}:${it.trackType ?: "ORIGINAL"}" }
+                .values
+                .mapNotNull { group ->
+                    group.maxByOrNull { it.quality.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }
+                }
+            if (distinctByTrack.size > 1) distinctByTrack else emptyList()
+        } else {
+            emptyList()
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val volumeBoostLevel: StateFlow<VolumeBoostLevel> = playbackManager.volumeBoostLevel
+    val isAudioOnlyMode: StateFlow<Boolean> = playbackManager.isAudioOnlyMode
 
     val isIncognitoMode: StateFlow<Boolean> = preferencesManager.isIncognitoMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
@@ -229,10 +244,12 @@ class PlayerViewModel @Inject constructor(
     private var nextRelatedPage: Page? = null
     private var isFetchingNextRelatedPage = false
     private var lastSavedPosition = 0L
+    private var hasUpdatedInterestsForCurrentVideo = false
     private var isStalledDueToNetwork = false
     private var lastFailedPosition = 0L
     private var lastPauseTimestamp = 0L
     private var retryCount = 0
+    private var recoveryAttempts = 0
     private var retryJob: Job? = null
     private var preloadingJob: Job? = null
     private var isPreloaded = false
@@ -287,6 +304,7 @@ class PlayerViewModel @Inject constructor(
                 if (playing) {
                     isStalledDueToNetwork = false
                     _isRecovering.value = false
+                    recoveryAttempts = 0
                 } else {
                     saveWatchProgress()
                 }
@@ -302,7 +320,7 @@ class PlayerViewModel @Inject constructor(
                         preloadNextVideo()
                     }
                 }
-                if (abs(pos - lastSavedPosition) >= 2000) {
+                if (abs(pos - lastSavedPosition) >= 5000) {
                     saveWatchProgress()
                 }
             }
@@ -311,16 +329,18 @@ class PlayerViewModel @Inject constructor(
         // Load preferences
         viewModelScope.launch {
             preferencesManager.isSubtitlesEnabled.collect { enabled ->
-                _isCcEnabled.value = enabled
-                playbackManager.updateCcState(enabled, _selectedSubtitleLanguage.value)
+                if (_isCcEnabled.value != enabled) {
+                    _isCcEnabled.value = enabled
+                    playbackManager.updateCcState(enabled, _selectedSubtitleLanguage.value, _selectedSubtitle.value)
+                }
             }
         }
         viewModelScope.launch {
             preferencesManager.preferredSubtitleLanguage.collect { lang ->
                 val available = (uiState.value as? PlayerUiState.Success)?.bundle?.subtitles ?: emptyList()
-                if (available.isEmpty() || lang == null || available.any { it.languageTag == lang }) {
+                if (available.isEmpty() || lang == null || available.any { it.languageTag.equals(lang, ignoreCase = true) }) {
                     _selectedSubtitleLanguage.value = lang
-                    playbackManager.updateCcState(_isCcEnabled.value, lang)
+                    playbackManager.updateCcState(_isCcEnabled.value, lang, _selectedSubtitle.value)
                 }
             }
         }
@@ -370,10 +390,45 @@ class PlayerViewModel @Inject constructor(
             if (download != null && download.status == DownloadStatus.COMPLETED) {
                 val localFile = File(download.filePath)
                 if (withContext(Dispatchers.IO) { localFile.exists() }) {
-                    val localBundle = StreamBundle(videoStreams = emptyList(), audioStreams = emptyList(), title = download.title, uploaderName = download.uploaderName, uploaderUrl = null, uploaderThumbnailUrl = null, description = "Playing from local storage", viewCount = 0, uploadDate = null, thumbnailUrl = download.thumbnailUrl)
+                    val localSubtitles = if (!download.subtitlePath.isNullOrBlank() && withContext(Dispatchers.IO) { File(download.subtitlePath).exists() }) {
+                        val subFile = File(download.subtitlePath)
+                        val lang = download.subtitleLanguage ?: "en"
+                        val format = if (subFile.name.endsWith(".ttml", ignoreCase = true)) "ttml" else "vtt"
+                        listOf(
+                            SubtitleItem(
+                                id = "$lang:offline",
+                                url = android.net.Uri.fromFile(subFile).toString(),
+                                languageTag = lang,
+                                format = format,
+                                isAutoGenerated = false,
+                                name = "Offline Subtitles"
+                            )
+                        )
+                    } else emptyList()
+
+                    val localBundle = StreamBundle(
+                        videoStreams = emptyList(),
+                        audioStreams = emptyList(),
+                        title = download.title,
+                        uploaderName = download.uploaderName,
+                        uploaderUrl = null,
+                        uploaderThumbnailUrl = null,
+                        description = "Playing from local storage",
+                        viewCount = 0,
+                        uploadDate = null,
+                        thumbnailUrl = download.thumbnailUrl,
+                        subtitles = localSubtitles
+                    )
                     currentBundle = localBundle
                     currentVideoItem = VideoItem(id = videoId, title = download.title, thumbnailUrl = download.thumbnailUrl, uploaderName = download.uploaderName, uploaderUrl = null, uploaderThumbnailUrl = null, viewCount = 0, uploadDate = null, rawUploadDate = null, duration = playbackManager.duration.value / 1000, isShort = false)
                     _uiState.value = PlayerUiState.Success(download.title, download.uploaderName, localBundle)
+                    if (localSubtitles.isNotEmpty()) {
+                        val activeSub = localSubtitles.first()
+                        _selectedSubtitle.value = activeSub
+                        _selectedSubtitleLanguage.value = activeSub.languageTag
+                        _isCcEnabled.value = true
+                        playbackManager.attachLocalSubtitleTrack(activeSub, enableCc = true)
+                    }
                     miniPlayerManager.updateMetadata(currentVideoItem)
                     _currentQuality.value = "Local (${download.quality})"
                     updatePlaylistIndex()
@@ -389,13 +444,13 @@ class PlayerViewModel @Inject constructor(
                         miniPlayerManager.updateMetadata(VideoItem(id = videoId, title = bundle.title, thumbnailUrl = bundle.thumbnailUrl ?: "", uploaderName = bundle.uploaderName, uploaderUrl = bundle.uploaderUrl, uploaderThumbnailUrl = bundle.uploaderThumbnailUrl, viewCount = -1L, uploadDate = bundle.uploadDate, rawUploadDate = null, duration = 0, isShort = false))
                         return@onSuccess
                     }
-                    currentBundle = bundle
-                    currentVideoItem = VideoItem(id = videoId, title = bundle.title, thumbnailUrl = bundle.thumbnailUrl ?: "", uploaderName = bundle.uploaderName, uploaderUrl = bundle.uploaderUrl, uploaderThumbnailUrl = bundle.uploaderThumbnailUrl, viewCount = bundle.viewCount, uploadDate = bundle.uploadDate, rawUploadDate = null, duration = playbackManager.duration.value / 1000, isShort = false)
-                    nextRelatedPage = bundle.nextRelatedVideosPage
-                    _uiState.value = PlayerUiState.Success(bundle.title, bundle.uploaderName, bundle)
+                    val activeBundle = resolveInitialSubtitles(videoId, bundle)
+                    currentBundle = activeBundle
+                    currentVideoItem = VideoItem(id = videoId, title = activeBundle.title, thumbnailUrl = activeBundle.thumbnailUrl ?: "", uploaderName = activeBundle.uploaderName, uploaderUrl = activeBundle.uploaderUrl, uploaderThumbnailUrl = activeBundle.uploaderThumbnailUrl, viewCount = activeBundle.viewCount, uploadDate = activeBundle.uploadDate, rawUploadDate = null, duration = playbackManager.duration.value / 1000, isShort = false)
+                    nextRelatedPage = activeBundle.nextRelatedVideosPage
+                    _uiState.value = PlayerUiState.Success(activeBundle.title, activeBundle.uploaderName, activeBundle)
                     miniPlayerManager.updateMetadata(currentVideoItem)
-                    syncSubtitles(bundle)
-                    syncAudioTrack(bundle)
+                    syncAudioTrack(activeBundle)
                     updatePlaylistIndex()
                     
                     val uploaderId = VideoUtils.extractChannelId(bundle.uploaderUrl) ?: bundle.uploaderUrl
@@ -432,9 +487,6 @@ class PlayerViewModel @Inject constructor(
         if (!isSameVideo) {
             miniPlayerManager.onNewVideoSelected(video)
             playbackManager.stop()
-            val metadata = MediaMetadata.Builder().setTitle(video.title).setArtist(video.uploaderName).setArtworkUri(video.thumbnailUrl.let { android.net.Uri.parse(it) }).build()
-            playbackManager.player.setMediaItem(androidx.media3.common.MediaItem.Builder().setMediaId(videoId).setMediaMetadata(metadata).setUri(android.net.Uri.EMPTY).build())
-            playbackManager.player.playWhenReady = false
         }
         
         updateUiWithPlaceholder(video)
@@ -476,13 +528,33 @@ class PlayerViewModel @Inject constructor(
             // Phase 4: Fast-Path Stream Extraction (/player vs /next decoupling)
             getVideoStreamsUseCase(videoId).onSuccess { bundle ->
                 com.arslandaim.playtube.utils.InstantPlaybackTracker.onStreamResolved(videoId)
+                if (bundle.isUpcoming) {
+                    _uiState.value = PlayerUiState.Upcoming(bundle.title, bundle.uploaderName, bundle.scheduledStartTime, bundle.thumbnailUrl)
+                    miniPlayerManager.updateMetadata(
+                        VideoItem(
+                            id = videoId,
+                            title = bundle.title,
+                            thumbnailUrl = bundle.thumbnailUrl ?: "",
+                            uploaderName = bundle.uploaderName,
+                            uploaderUrl = bundle.uploaderUrl,
+                            uploaderThumbnailUrl = bundle.uploaderThumbnailUrl,
+                            viewCount = -1L,
+                            uploadDate = bundle.uploadDate,
+                            rawUploadDate = null,
+                            duration = 0,
+                            isShort = false
+                        )
+                    )
+                    return@onSuccess
+                }
+
                 currentBundle = bundle
                 nextRelatedPage = bundle.nextRelatedVideosPage
                 _uiState.value = PlayerUiState.Success(bundle.title, bundle.uploaderName, bundle)
-                syncSubtitles(bundle)
                 syncAudioTrack(bundle)
                 
                 val preferred = preferredQuality.value
+                playbackManager.setAutoQualityEnabled(preferred == "Auto")
                 val stream = selectBestMatchingQuality(bundle.videoStreams, preferred)
 
                 val resumePos = if (bundle.isLive) 0L else getResumePosition(videoId)
@@ -491,6 +563,22 @@ class PlayerViewModel @Inject constructor(
                         playbackManager.play(videoId, bundle, it, resumePos)
                     }
                     _currentQuality.value = it.quality
+                }
+
+                // Resolve and attach local sanitized subtitles asynchronously so video playback never waits
+                launch {
+                    val activeBundle = resolveInitialSubtitles(videoId, bundle)
+                    if (currentVideoId == videoId) {
+                        currentBundle = activeBundle
+                        val currentState = _uiState.value
+                        if (currentState is PlayerUiState.Success) {
+                            _uiState.value = currentState.copy(bundle = activeBundle)
+                        }
+                        val sub = _selectedSubtitle.value
+                        if (_isCcEnabled.value && sub != null) {
+                            playbackManager.attachLocalSubtitleTrack(sub, enableCc = true)
+                        }
+                    }
                 }
 
                 // Parallel non-blocking enrichment tasks
@@ -600,6 +688,7 @@ class PlayerViewModel @Inject constructor(
         _isSubscribed.value = false
         _currentQuality.value = null
         _selectedAudioStream.value = null
+        _selectedSubtitle.value = null
         _isCcEnabled.value = false
         _comments.value = emptyList()
         nextCommentsPage = null
@@ -620,11 +709,13 @@ class PlayerViewModel @Inject constructor(
         currentVideoItem = video
         nextRelatedPage = null
         lastSavedPosition = 0L
+        hasUpdatedInterestsForCurrentVideo = false
         isStalledDueToNetwork = false
         _isRecovering.value = false
         isPreloaded = false
         preloadingJob?.cancel()
         retryCount = 0
+        recoveryAttempts = 0
         retryJob?.cancel()
     }
 
@@ -736,6 +827,13 @@ class PlayerViewModel @Inject constructor(
 
     private fun recoverExpiredUrl() {
         val videoId = currentVideoId ?: return
+        if (recoveryAttempts >= 2) {
+            _isRecovering.value = false
+            _uiState.value = PlayerUiState.Error(PlayTubeError.Unknown("Stream playback failed after multiple recovery attempts"))
+            return
+        }
+        recoveryAttempts++
+        val previousQuality = _currentQuality.value
         _isRecovering.value = true
         viewModelScope.launch {
             // Check if it finished downloading while paused
@@ -752,18 +850,36 @@ class PlayerViewModel @Inject constructor(
             getVideoStreamsUseCase(videoId, forceRefresh = true).onSuccess { bundle ->
                 currentBundle = bundle
                 _uiState.value = PlayerUiState.Success(bundle.title, bundle.uploaderName, bundle)
-                syncSubtitles(bundle)
                 syncAudioTrack(bundle)
                 
                 val preferred = preferredQuality.value
-                val stream = selectBestMatchingQuality(bundle.videoStreams, preferred)
+                val primaryStream = selectBestMatchingQuality(bundle.videoStreams, preferred)
+                val stream = if (recoveryAttempts > 1 && previousQuality != null && bundle.videoStreams.size > 1) {
+                    bundle.videoStreams.firstOrNull { it.quality != previousQuality } ?: primaryStream
+                } else {
+                    primaryStream
+                }
 
-                stream?.let {
+                if (stream != null) {
                     // Phase 3: Seamless Hot-Swap Recovery
-                    playbackManager.hotSwapSource(videoId, bundle, it, lastFailedPosition)
-                    _currentQuality.value = it.quality
+                    playbackManager.hotSwapSource(videoId, bundle, stream, lastFailedPosition)
+                    _currentQuality.value = stream.quality
                     isStalledDueToNetwork = false
                     _isRecovering.value = false
+                } else {
+                    _isRecovering.value = false
+                    _uiState.value = PlayerUiState.Error(PlayTubeError.Unknown("No playable streams found"))
+                }
+
+                launch {
+                    val activeBundle = resolveInitialSubtitles(videoId, bundle)
+                    if (currentVideoId == videoId) {
+                        currentBundle = activeBundle
+                        val sub = _selectedSubtitle.value
+                        if (_isCcEnabled.value && sub != null) {
+                            playbackManager.attachLocalSubtitleTrack(sub, enableCc = true)
+                        }
+                    }
                 }
             }.onFailure {
                 _uiState.value = PlayerUiState.Error(PlayTubeError.Unknown("Failed to recover stream"))
@@ -813,16 +929,20 @@ class PlayerViewModel @Inject constructor(
         val bundle = currentBundle
         if (bundle?.isLive == true || dur <= 0 || dur == C.TIME_UNSET) return
         lastSavedPosition = pos
-        val ratio = pos.toFloat() / dur
+        val ratio = (pos.toFloat() / dur).coerceIn(0f, 1f)
+        val shouldRecordInterests = !hasUpdatedInterestsForCurrentVideo && (pos >= 10_000L || ratio >= 0.15f)
+        if (shouldRecordInterests) {
+            hasUpdatedInterestsForCurrentVideo = true
+        }
         externalScope.launch {
             val isLocal = currentQuality.value?.contains("Local") == true
             preferencesManager.setLastPlayedSession(videoId, pos, isLocal)
             
             if (preferencesManager.isHistoryEnabled.first()) {
                 updateWatchProgressUseCase(videoId, pos, dur)
-                bundle?.let {
-                    updateUserInterestsUseCase(it.title, 0.5f, ratio)
-                    updateUserInterestsUseCase(it.uploaderName, 1.0f, ratio)
+                if (shouldRecordInterests && bundle != null) {
+                    updateUserInterestsUseCase(bundle.title, 0.5f, ratio.coerceAtLeast(0.5f))
+                    updateUserInterestsUseCase(bundle.uploaderName, 1.0f, ratio.coerceAtLeast(0.5f))
                 }
             }
         }
@@ -854,6 +974,12 @@ class PlayerViewModel @Inject constructor(
         playbackManager.setPitch(pitch)
         viewModelScope.launch { preferencesManager.setPlaybackPitch(pitch) }
     }
+    fun setVolumeBoostLevel(level: VolumeBoostLevel) {
+        playbackManager.setVolumeBoostLevel(level)
+    }
+    fun setAudioOnlyMode(enabled: Boolean) {
+        playbackManager.setAudioOnlyMode(enabled)
+    }
     fun setQuality(stream: StreamItem?) {
         val videoId = currentVideoId ?: return
         val bundle = currentBundle ?: return
@@ -861,6 +987,7 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             if (stream == null) {
                 // User selected "Auto"
+                playbackManager.setAutoQualityEnabled(true)
                 preferencesManager.setPreferredQuality("Auto")
                 val autoStream = selectAutoQuality(bundle.videoStreams)
                 autoStream?.let { 
@@ -868,6 +995,7 @@ class PlayerViewModel @Inject constructor(
                     _currentQuality.value = it.quality
                 }
             } else {
+                playbackManager.setAutoQualityEnabled(false)
                 preferencesManager.setPreferredQuality(stream.quality)
                 playbackManager.switchQualitySeamlessly(videoId, bundle, stream)
                 _currentQuality.value = stream.quality
@@ -936,74 +1064,152 @@ class PlayerViewModel @Inject constructor(
         return selectAutoQuality(streams)
     }
 
+    private fun updateBundleWithSubtitle(preparedSub: SubtitleItem) {
+        val bundle = currentBundle ?: return
+        val existingSubtitles = bundle.subtitles.toMutableList()
+        val index = if (preparedSub.id.isNotBlank()) {
+            existingSubtitles.indexOfFirst { it.id == preparedSub.id }.takeIf { it != -1 }
+                ?: existingSubtitles.indexOfFirst { it.languageTag.equals(preparedSub.languageTag, ignoreCase = true) }
+        } else {
+            existingSubtitles.indexOfFirst { it.languageTag.equals(preparedSub.languageTag, ignoreCase = true) }
+        }
+        if (index != -1) {
+            existingSubtitles[index] = preparedSub
+        } else {
+            existingSubtitles.add(preparedSub)
+        }
+        val updatedBundle = bundle.copy(subtitles = existingSubtitles)
+        currentBundle = updatedBundle
+        val state = _uiState.value
+        if (state is PlayerUiState.Success) {
+            _uiState.value = state.copy(bundle = updatedBundle)
+        }
+    }
+
     private suspend fun prepareLocalSubtitleTrack(videoId: String, sub: SubtitleItem): SubtitleItem = withContext(Dispatchers.IO) {
         if (sub.url.startsWith("file:") || sub.url.startsWith("content:")) return@withContext sub
 
         val lang = sub.languageTag
-        val cacheFile = File(context.cacheDir, "sub_${videoId}_${lang}.vtt")
+        val safeId = sub.id.ifBlank { lang }.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        val cacheFile = File(context.cacheDir, "sub_v2_${videoId}_${safeId}.vtt")
 
-        if (cacheFile.exists() && cacheFile.length() > 0) {
+        if (cacheFile.exists() && cacheFile.length() > 15) {
             return@withContext sub.copy(url = android.net.Uri.fromFile(cacheFile).toString(), format = "vtt")
         }
 
-        try {
-            val (normalizedUrl, _) = CaptionTrackResolver.normalizeSubtitleUrl(sub.url, sub.format)
-            val request = okhttp3.Request.Builder()
-                .url(normalizedUrl)
-                .header("User-Agent", Constants.DEFAULT_USER_AGENT)
-                .build()
+        val (normalizedUrl, _) = CaptionTrackResolver.normalizeSubtitleUrl(sub.url, sub.format)
+        val candidateUrls = listOf(normalizedUrl, sub.url).filter { it.isNotBlank() }.distinct()
+        val visitorData = poTokenProvider.getVisitorData()
 
-            okHttpClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val rawText = response.body.string()
-                    val cleanWebVtt = if (rawText.isNotBlank()) {
-                        SubtitleSanitizer.sanitizeWebVtt(rawText)
-                    } else "WEBVTT\n\n"
-                    cacheFile.writeText(cleanWebVtt, Charsets.UTF_8)
-                    PTLog.d("PlayerViewModel", "Successfully fetched and sanitized subtitle track for $videoId ($lang)")
-                    return@withContext sub.copy(url = android.net.Uri.fromFile(cacheFile).toString(), format = "vtt")
-                } else {
-                    PTLog.w("PlayerViewModel", "Subtitle HTTP request failed with code ${response.code} for $videoId ($lang)")
+        for (targetUrl in candidateUrls) {
+            try {
+                val requestBuilder = okhttp3.Request.Builder()
+                    .url(targetUrl)
+                    .header("User-Agent", Constants.DEFAULT_USER_AGENT)
+                    .header("Accept-Language", "en-US,en;q=0.9")
+
+                if (targetUrl.contains("youtube.com") || targetUrl.contains("googlevideo.com")) {
+                    requestBuilder.header("Cookie", Constants.YouTube.CONSENT_COOKIE)
+                    if (visitorData.isNotBlank()) {
+                        requestBuilder.header("X-Goog-Visitor-Id", visitorData)
+                    }
                 }
+
+                okHttpClient.newCall(requestBuilder.build()).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val rawText = response.body.string()
+                        val cleanWebVtt = if (rawText.isNotBlank()) {
+                            SubtitleSanitizer.sanitizeWebVtt(rawText)
+                        } else ""
+                        if (cleanWebVtt.length > 15) {
+                            cacheFile.writeText(cleanWebVtt, Charsets.UTF_8)
+                            PTLog.d("PlayerViewModel", "Successfully fetched and sanitized subtitle track for $videoId ($lang)")
+                            return@withContext sub.copy(url = android.net.Uri.fromFile(cacheFile).toString(), format = "vtt")
+                        } else {
+                            PTLog.w("PlayerViewModel", "Subtitle response had no parseable cues from $targetUrl for $videoId ($lang)")
+                        }
+                    } else {
+                        PTLog.w("PlayerViewModel", "Subtitle HTTP request failed with code ${response.code} for $videoId ($lang)")
+                    }
+                }
+            } catch (e: Exception) {
+                PTLog.e("PlayerViewModel", "Error fetching subtitle track from $targetUrl for $videoId ($lang)", e)
             }
-        } catch (e: Exception) {
-            PTLog.e("PlayerViewModel", "Error fetching subtitle track for $videoId ($lang)", e)
         }
 
         sub
     }
 
-    fun setSubtitlesEnabled(enabled: Boolean) { 
+    fun setSubtitlesEnabled(enabled: Boolean) {
         _isCcEnabled.value = enabled
-        playbackManager.updateCcState(enabled, _selectedSubtitleLanguage.value, _selectedSubtitle.value)
-        viewModelScope.launch { preferencesManager.setSubtitlesEnabled(enabled) } 
+        if (!enabled) {
+            playbackManager.updateCcState(false, _selectedSubtitleLanguage.value, _selectedSubtitle.value)
+            viewModelScope.launch { preferencesManager.setSubtitlesEnabled(false) }
+            return
+        }
+
+        viewModelScope.launch {
+            preferencesManager.setSubtitlesEnabled(true)
+            val available = (uiState.value as? PlayerUiState.Success)?.bundle?.subtitles
+                ?: currentBundle?.subtitles
+                ?: emptyList()
+            if (available.isEmpty()) {
+                playbackManager.updateCcState(false, _selectedSubtitleLanguage.value, null)
+                return@launch
+            }
+
+            val preferredLang = _selectedSubtitleLanguage.value ?: preferencesManager.preferredSubtitleLanguage.first()
+            val targetSub = _selectedSubtitle.value?.takeIf { sel ->
+                available.any { it.id == sel.id || it.languageTag.equals(sel.languageTag, ignoreCase = true) }
+            } ?: selectSubtitleTrack(available, preferredLang)
+
+            if (targetSub != null) {
+                _selectedSubtitle.value = targetSub
+                _selectedSubtitleLanguage.value = targetSub.languageTag
+                playbackManager.updateCcState(true, targetSub.languageTag, targetSub)
+
+                val currentVid = currentVideoId ?: "temp"
+                val preparedSub = prepareLocalSubtitleTrack(currentVid, targetSub)
+                if (_isCcEnabled.value && currentVideoId == currentVid) {
+                    _selectedSubtitle.value = preparedSub
+                    updateBundleWithSubtitle(preparedSub)
+                    playbackManager.attachLocalSubtitleTrack(preparedSub, enableCc = true)
+                }
+            } else {
+                playbackManager.updateCcState(true, preferredLang, null)
+            }
+        }
     }
 
     fun setSubtitleLanguage(lang: String?) { 
         viewModelScope.launch { 
             if (lang == null) {
                 _selectedSubtitle.value = null
-                _selectedSubtitleLanguage.value = null
                 setSubtitlesEnabled(false)
             } else { 
-                val available = (uiState.value as? PlayerUiState.Success)?.bundle?.subtitles ?: emptyList()
-                val matching = available.find { it.languageTag.equals(lang, ignoreCase = true) || it.id == lang }
+                val available = (uiState.value as? PlayerUiState.Success)?.bundle?.subtitles
+                    ?: currentBundle?.subtitles
+                    ?: emptyList()
+                val matching = available.find { it.id.equals(lang, ignoreCase = true) }
+                    ?: available.find { it.languageTag.equals(lang, ignoreCase = true) && !it.isAutoGenerated }
+                    ?: available.find { it.languageTag.equals(lang, ignoreCase = true) }
                     ?: available.find { it.languageTag.startsWith(lang, ignoreCase = true) }
 
                 if (matching != null) {
+                    _isCcEnabled.value = true
+                    _selectedSubtitle.value = matching
+                    _selectedSubtitleLanguage.value = matching.languageTag
+                    playbackManager.updateCcState(true, matching.languageTag, matching)
+                    preferencesManager.setSubtitlesEnabled(true)
+                    preferencesManager.setPreferredSubtitleLanguage(matching.languageTag)
+
                     val currentVid = currentVideoId ?: "temp"
                     val preparedSub = prepareLocalSubtitleTrack(currentVid, matching)
-                    _selectedSubtitle.value = preparedSub
-                    _selectedSubtitleLanguage.value = preparedSub.languageTag
-                    if (preparedSub.url.startsWith("file:") || preparedSub.url.startsWith("content:")) {
-                        _isCcEnabled.value = true
-                        playbackManager.attachLocalSubtitleTrack(preparedSub, enableCc = true)
-                    } else {
-                        _isCcEnabled.value = false
-                        playbackManager.updateCcState(false, preparedSub.languageTag, null)
+                    if (currentVideoId == currentVid) {
+                        _selectedSubtitle.value = preparedSub
+                        updateBundleWithSubtitle(preparedSub)
+                        playbackManager.attachLocalSubtitleTrack(preparedSub, enableCc = _isCcEnabled.value)
                     }
-                    preferencesManager.setSubtitlesEnabled(_isCcEnabled.value)
-                    preferencesManager.setPreferredSubtitleLanguage(preparedSub.languageTag)
                 } else {
                     _selectedSubtitleLanguage.value = lang
                     _isCcEnabled.value = false
@@ -1100,44 +1306,58 @@ class PlayerViewModel @Inject constructor(
         _selectedAudioStream.value = defaultAudio
     }
 
-    private fun syncSubtitles(bundle: StreamBundle) {
+    private suspend fun resolveInitialSubtitles(videoId: String, bundle: StreamBundle): StreamBundle {
         val available = bundle.subtitles
         if (available.isEmpty()) {
             _selectedSubtitle.value = null
             _selectedSubtitleLanguage.value = null
+            _isCcEnabled.value = false
             playbackManager.updateCcState(false, null, null)
-            return
+            return bundle
         }
 
-        viewModelScope.launch {
-            val preferredLang = preferencesManager.preferredSubtitleLanguage.first()
-            val isEnabled = preferencesManager.isSubtitlesEnabled.first()
+        val preferredLang = preferencesManager.preferredSubtitleLanguage.first()
+        val isEnabled = preferencesManager.isSubtitlesEnabled.first()
+        val matchedSubtitle = selectSubtitleTrack(available, preferredLang)
 
-            val matchedSubtitle = selectSubtitleTrack(available, preferredLang)
-            if (matchedSubtitle != null && isEnabled) {
-                val currentVid = currentVideoId ?: "temp"
-                val preparedSub = prepareLocalSubtitleTrack(currentVid, matchedSubtitle)
-                _selectedSubtitle.value = preparedSub
-                _selectedSubtitleLanguage.value = preparedSub.languageTag
+        if (matchedSubtitle != null && isEnabled) {
+            _selectedSubtitle.value = matchedSubtitle
+            _selectedSubtitleLanguage.value = matchedSubtitle.languageTag
+            _isCcEnabled.value = true
+            playbackManager.updateCcState(true, matchedSubtitle.languageTag, matchedSubtitle)
 
-                if (preparedSub.url.startsWith("file:") || preparedSub.url.startsWith("content:")) {
-                    _isCcEnabled.value = true
-                    playbackManager.attachLocalSubtitleTrack(preparedSub, enableCc = true)
-                } else {
-                    _isCcEnabled.value = false
-                    playbackManager.updateCcState(false, preparedSub.languageTag, null)
-                }
-            } else {
-                _selectedSubtitle.value = matchedSubtitle
-                _selectedSubtitleLanguage.value = matchedSubtitle?.languageTag ?: preferredLang
-                _isCcEnabled.value = false
-
-                playbackManager.updateCcState(
-                    enabled = false,
-                    preferredLang = _selectedSubtitleLanguage.value,
-                    selectedSubtitle = matchedSubtitle
-                )
+            val preparedSub = withTimeoutOrNull(1200L) {
+                prepareLocalSubtitleTrack(videoId, matchedSubtitle)
             }
+
+            if (preparedSub != null) {
+                _selectedSubtitle.value = preparedSub
+                playbackManager.updateCcState(true, preparedSub.languageTag, preparedSub)
+                val updatedSubs = available.map {
+                    if (it.id == matchedSubtitle.id && it.languageTag == matchedSubtitle.languageTag) preparedSub else it
+                }
+                return bundle.copy(subtitles = updatedSubs)
+            } else {
+                viewModelScope.launch {
+                    val asyncPrepared = prepareLocalSubtitleTrack(videoId, matchedSubtitle)
+                    if (currentVideoId == videoId && _isCcEnabled.value) {
+                        _selectedSubtitle.value = asyncPrepared
+                        updateBundleWithSubtitle(asyncPrepared)
+                        playbackManager.attachLocalSubtitleTrack(asyncPrepared, enableCc = true)
+                    }
+                }
+                return bundle
+            }
+        } else {
+            _selectedSubtitle.value = matchedSubtitle
+            _selectedSubtitleLanguage.value = matchedSubtitle?.languageTag ?: preferredLang
+            _isCcEnabled.value = false
+            playbackManager.updateCcState(
+                enabled = false,
+                preferredLang = _selectedSubtitleLanguage.value,
+                selectedSubtitle = matchedSubtitle
+            )
+            return bundle
         }
     }
 
@@ -1249,10 +1469,17 @@ class PlayerViewModel @Inject constructor(
                 val result = videoRepository.fetchNextRelatedPage(currentId, currentPage)
                 val currentState = _uiState.value
                 if (currentState is PlayerUiState.Success) {
-                    nextRelatedPage = result.nextPage
+                    val combinedRelated = (currentState.bundle.relatedVideos + result.items)
+                        .filter { it.id.isNotBlank() && it.id != currentId }
+                        .distinctBy { it.id }
+                    val existingIds = currentState.bundle.relatedVideos.map { it.id }.toSet()
+                    val nextUnseenSeed = result.items.firstOrNull { it.id !in existingIds }?.id
+                    nextRelatedPage = nextUnseenSeed?.let {
+                        Page(Constants.YouTube.VIDEO_URL_PREFIX + it, it)
+                    } ?: result.nextPage
                     val updatedBundle = currentState.bundle.copy(
-                        relatedVideos = currentState.bundle.relatedVideos + result.items,
-                        nextRelatedVideosPage = result.nextPage
+                        relatedVideos = combinedRelated,
+                        nextRelatedVideosPage = nextRelatedPage
                     )
                     currentBundle = updatedBundle
                     _uiState.value = PlayerUiState.Success(currentState.title, currentState.uploader, updatedBundle)

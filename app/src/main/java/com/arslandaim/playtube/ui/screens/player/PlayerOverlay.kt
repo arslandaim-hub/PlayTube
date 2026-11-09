@@ -284,10 +284,15 @@ fun PlayerOverlay(
                         )
                     }
             ) {
+                val currentPos by viewModel.currentPosition.collectAsStateWithLifecycle()
+                val totalDur by viewModel.duration.collectAsStateWithLifecycle()
                 MiniPlayerUI(
                     player = viewModel.player,
                     isPlaying = isPlaying,
                     isIncognito = isIncognito,
+                    progressProvider = {
+                        if (totalDur > 0) (currentPos.toFloat() / totalDur).coerceIn(0f, 1f) else 0f
+                    },
                     onMaximize = onMaximize,
                     onPlayPause = viewModel::togglePlayPause,
                     onClose = onClose

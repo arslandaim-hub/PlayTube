@@ -56,6 +56,11 @@ class YouTubeHttpDataSource(
         val requestBuilder = Request.Builder()
             .url(targetUrl)
             .header("User-Agent", userAgent)
+            .header("Accept-Language", "en-US,en;q=0.9")
+
+        if (targetUrl.contains("youtube.com") || targetUrl.contains("googlevideo.com")) {
+            requestBuilder.header("Cookie", com.arslandaim.playtube.utils.Constants.YouTube.CONSENT_COOKIE)
+        }
 
         // Attach PoToken and VisitorData
         val visitorData = poTokenProvider.getVisitorData()
@@ -92,8 +97,8 @@ class YouTubeHttpDataSource(
             inputStream = body.byteStream()
             
             val contentLength = body.contentLength()
-            bytesRemaining = if (dataSpec.length != C.LENGTH_UNSET.toLong()) {
-                dataSpec.length
+            bytesRemaining = if (callResponse.code == 206 && dataSpec.length != C.LENGTH_UNSET.toLong()) {
+                if (contentLength != -1L) contentLength.coerceAtMost(dataSpec.length) else dataSpec.length
             } else if (contentLength != -1L) {
                 contentLength
             } else {

@@ -20,7 +20,7 @@ class UpdateUserInterestsUseCase @Inject constructor(
      * Updates user interests based on video metadata.
      * @param text The title or uploader name to extract keywords from.
      * @param baseWeight The initial weight (e.g. 1.0 for title, 2.0 for uploader).
-     * @param watchRatio The fraction of the video watched (0.0 to 1.0). 
+     * @param watchRatio The fraction of the video watched (0.0 to 1.0).
      *                   If null, it's treated as a neutral interaction (1.0).
      */
     suspend operator fun invoke(text: String, baseWeight: Float = 1.0f, watchRatio: Float? = null) {

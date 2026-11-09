@@ -86,7 +86,12 @@ import com.arslandaim.playtube.ui.components.QualitySelectionSheet
 import com.arslandaim.playtube.ui.components.Media3SubtitleOverlay
 import com.arslandaim.playtube.ui.components.SubtitleSelectionSheet
 import com.arslandaim.playtube.ui.components.AudioTrackSelectionSheet
+import com.arslandaim.playtube.ui.components.VolumeBoostSelectionSheet
+import com.arslandaim.playtube.ui.components.ABLoopSelectionSheet
+import com.arslandaim.playtube.ui.components.ChapterSelectionSheet
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.ViewTimeline
 import com.arslandaim.playtube.ui.components.DownloadDialogState
 import com.arslandaim.playtube.domain.model.StreamItem
 import com.arslandaim.playtube.domain.model.VideoItem
@@ -94,7 +99,6 @@ import com.arslandaim.playtube.domain.model.StreamBundle
 import com.arslandaim.playtube.ui.components.VideoItemRow
 import com.arslandaim.playtube.ui.components.ThumbnailImage
 import com.arslandaim.playtube.ui.components.rememberSyncShimmerTransition
-import com.arslandaim.playtube.ui.components.EmptyState
 import com.arslandaim.playtube.ui.components.EmptyState
 import com.arslandaim.playtube.ui.components.player.VideoPlayerView
 import com.arslandaim.playtube.utils.PlayTubeError
@@ -171,6 +175,9 @@ fun PlayerScreen(
     val isPlayerGesturesEnabled by viewModel.isPlayerGesturesEnabled.collectAsStateWithLifecycle()
     val chapters by viewModel.chapters.collectAsStateWithLifecycle()
     val playbackPitch by viewModel.playbackPitch.collectAsStateWithLifecycle()
+    val volumeBoostLevel by viewModel.volumeBoostLevel.collectAsStateWithLifecycle()
+    val isAudioOnlyMode by viewModel.isAudioOnlyMode.collectAsStateWithLifecycle()
+    val abLoopState by viewModel.abLoopState.collectAsStateWithLifecycle()
     val showStatsForNerds by viewModel.showStatsForNerds.collectAsStateWithLifecycle()
     val playbackStats by viewModel.playbackStats.collectAsStateWithLifecycle()
     val comments by viewModel.comments.collectAsStateWithLifecycle()
@@ -262,6 +269,14 @@ fun PlayerScreen(
             onSetShouldCloseApp = viewModel.sleepTimerManager::setShouldCloseApp,
             playbackPitch = playbackPitch,
             onSetPlaybackPitch = viewModel::setPlaybackPitch,
+            volumeBoostLevel = volumeBoostLevel,
+            onSetVolumeBoostLevel = viewModel::setVolumeBoostLevel,
+            isAudioOnlyMode = isAudioOnlyMode,
+            onSetAudioOnlyMode = viewModel::setAudioOnlyMode,
+            abLoopState = abLoopState,
+            onSetABLoopPointA = viewModel::setABLoopPointA,
+            onSetABLoopPointB = viewModel::setABLoopPointB,
+            onClearABLoop = viewModel::clearABLoop,
             showStatsForNerds = showStatsForNerds,
             playbackStats = playbackStats,
             onToggleStats = viewModel::toggleStatsForNerds,
@@ -359,6 +374,14 @@ private fun PlayerContent(
     onSetShouldCloseApp: (Boolean) -> Unit,
     playbackPitch: Float,
     onSetPlaybackPitch: (Float) -> Unit,
+    volumeBoostLevel: com.arslandaim.playtube.utils.VolumeBoostLevel,
+    onSetVolumeBoostLevel: (com.arslandaim.playtube.utils.VolumeBoostLevel) -> Unit,
+    isAudioOnlyMode: Boolean,
+    onSetAudioOnlyMode: (Boolean) -> Unit,
+    abLoopState: ABLoopState,
+    onSetABLoopPointA: () -> Unit,
+    onSetABLoopPointB: () -> Unit,
+    onClearABLoop: () -> Unit,
     showStatsForNerds: Boolean,
     playbackStats: com.arslandaim.playtube.ui.screens.player.PlaybackStats,
     onToggleStats: () -> Unit,
@@ -387,6 +410,9 @@ private fun PlayerContent(
     var showAudioTrackSheet by remember { mutableStateOf(false) }
     var showSpeedSheet by remember { mutableStateOf(false) }
     var showPitchSheet by remember { mutableStateOf(false) }
+    var showVolumeBoostSheet by remember { mutableStateOf(false) }
+    var showABLoopSheet by remember { mutableStateOf(false) }
+    var showChaptersSheet by remember { mutableStateOf(false) }
     var showSettingsSheet by remember { mutableStateOf(false) }
     var showSleepTimerSheet by remember { mutableStateOf(false) }
     var showDescriptionSheet by remember { mutableStateOf(false) }
@@ -548,6 +574,40 @@ private fun PlayerContent(
         )
     }
 
+    if (showVolumeBoostSheet) {
+        VolumeBoostSelectionSheet(
+            currentLevel = volumeBoostLevel,
+            onDismiss = { showVolumeBoostSheet = false },
+            onLevelSelected = { level ->
+                onSetVolumeBoostLevel(level)
+                showVolumeBoostSheet = false
+            }
+        )
+    }
+
+    if (showABLoopSheet) {
+        ABLoopSelectionSheet(
+            pointAMs = abLoopState.pointA,
+            pointBMs = abLoopState.pointB,
+            onSetPointA = onSetABLoopPointA,
+            onSetPointB = onSetABLoopPointB,
+            onClearLoop = onClearABLoop,
+            onDismiss = { showABLoopSheet = false }
+        )
+    }
+
+    if (showChaptersSheet && chapters.isNotEmpty()) {
+        ChapterSelectionSheet(
+            chapters = chapters,
+            currentPositionMs = currentPosition(),
+            onDismiss = { showChaptersSheet = false },
+            onChapterSelected = { chapter ->
+                onSeekTo(chapter.startMs)
+                showChaptersSheet = false
+            }
+        )
+    }
+
     if (showDescriptionSheet) {
         val state = uiState as? PlayerUiState.Success
         state?.let {
@@ -608,10 +668,14 @@ private fun PlayerContent(
         ModalBottomSheet(
             onDismissRequest = { showSettingsSheet = false }
         ) {
-            Column(modifier = Modifier.padding(bottom = 32.dp)) {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = 32.dp)
+            ) {
                 ListItem(
                     headlineContent = { Text(stringResource(R.string.quality)) },
-                    supportingContent = { Text(displayQuality) },
+                    supportingContent = { Text(if (isAudioOnlyMode) "Audio Only" else displayQuality) },
                     leadingContent = { Icon(Icons.Default.Settings, null) },
                     modifier = Modifier.clickable {
                         showSettingsSheet = false
@@ -642,6 +706,21 @@ private fun PlayerContent(
                         }
                     )
                 }
+                if (chapters.isNotEmpty()) {
+                    ListItem(
+                        headlineContent = { Text("Chapters (${chapters.size})") },
+                        supportingContent = {
+                            val pos = currentPosition()
+                            val activeChapter = chapters.lastOrNull { pos >= it.startMs }?.title ?: chapters.first().title
+                            Text(activeChapter, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        },
+                        leadingContent = { Icon(Icons.Default.ViewTimeline, null) },
+                        modifier = Modifier.clickable {
+                            showSettingsSheet = false
+                            showChaptersSheet = true
+                        }
+                    )
+                }
                 ListItem(
                     headlineContent = { Text(stringResource(R.string.playback_speed)) },
                     supportingContent = { Text(if (playbackSpeed == 1f) stringResource(R.string.normal_speed) else "${playbackSpeed}x") },
@@ -649,6 +728,33 @@ private fun PlayerContent(
                     modifier = Modifier.clickable {
                         showSettingsSheet = false
                         showSpeedSheet = true
+                    }
+                )
+                ListItem(
+                    headlineContent = { Text("Volume Boost") },
+                    supportingContent = {
+                        Text(volumeBoostLevel.label)
+                    },
+                    leadingContent = { Icon(Icons.AutoMirrored.Filled.VolumeUp, null) },
+                    modifier = Modifier.clickable {
+                        showSettingsSheet = false
+                        showVolumeBoostSheet = true
+                    }
+                )
+                ListItem(
+                    headlineContent = { Text("A-B Repeat Loop") },
+                    supportingContent = {
+                        val loopText = when {
+                            abLoopState.isActive -> "${VideoUtils.formatDuration((abLoopState.pointA ?: 0L) / 1000)} → ${VideoUtils.formatDuration((abLoopState.pointB ?: 0L) / 1000)}"
+                            abLoopState.pointA != null -> "Start: ${VideoUtils.formatDuration(abLoopState.pointA / 1000)} (Select B)"
+                            else -> "Off"
+                        }
+                        Text(loopText)
+                    },
+                    leadingContent = { Icon(Icons.Default.Repeat, null) },
+                    modifier = Modifier.clickable {
+                        showSettingsSheet = false
+                        showABLoopSheet = true
                     }
                 )
                 ListItem(
@@ -816,11 +922,9 @@ private fun PlayerContent(
                             // Show high-res placeholder during loading, error, or upcoming
                             ThumbnailImage(
                                 videoId = videoId,
-                                thumbnailUrl = when(uiState) {
-                                    is PlayerUiState.Upcoming -> uiState.thumbnailUrl
-                                    is PlayerUiState.Success -> uiState.bundle.thumbnailUrl
-                                    else -> null
-                                } ?: initialThumbnail ?: VideoUtils.getBestThumbnailUrl(videoId),
+                                thumbnailUrl = (uiState as? PlayerUiState.Upcoming)?.thumbnailUrl
+                                    ?: initialThumbnail
+                                    ?: VideoUtils.getBestThumbnailUrl(videoId),
                                 quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.Ultra,
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop,
@@ -960,6 +1064,58 @@ private fun PlayerContent(
                                         modifier = Modifier.fillMaxSize()
                                     )
 
+                                    if (isAudioOnlyMode) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(Color.Black.copy(alpha = 0.85f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            ThumbnailImage(
+                                                videoId = videoId,
+                                                thumbnailUrl = uiState.bundle.thumbnailUrl ?: initialThumbnail ?: VideoUtils.getBestThumbnailUrl(videoId),
+                                                quality = com.arslandaim.playtube.ui.components.ThumbnailQuality.High,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .graphicsLayer { alpha = 0.25f },
+                                                contentScale = ContentScale.Crop
+                                            )
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                modifier = Modifier.padding(16.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Headphones,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(36.dp)
+                                                )
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                Text(
+                                                    text = "Audio-Only Mode",
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                Surface(
+                                                    onClick = { onSetAudioOnlyMode(false) },
+                                                    shape = CircleShape,
+                                                    color = Color.White.copy(alpha = 0.15f),
+                                                    border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.3f))
+                                                ) {
+                                                    Text(
+                                                        text = "Switch to Video",
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        color = Color.White,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
                                     // 2x Speed Boost Pill Overlay
                                     if (isSpeedBoostActive) {
                                         Surface(
@@ -984,17 +1140,19 @@ private fun PlayerContent(
                                     }
 
                                     // Subtitle Overlay
-                                    if (isCcEnabled) {
-                                        val isAutoGen = availableSubtitles.find { it.languageTag == selectedSubtitleLanguage }?.isAutoGenerated == true
-                                        Media3SubtitleOverlay(
-                                            player = player,
-                                            enabled = isCcEnabled,
-                                            isAutoGenerated = isAutoGen,
-                                            fontSizeSp = subtitleFontSize,
-                                            backgroundOpacity = subtitleBackgroundOpacity,
-                                            bottomPaddingDp = if (controlsVisible) 84f else 24f
-                                        )
+                                    val activeSub = availableSubtitles.find {
+                                        it.languageTag.equals(selectedSubtitleLanguage, ignoreCase = true) ||
+                                        it.id == selectedSubtitleLanguage
                                     }
+                                    Media3SubtitleOverlay(
+                                        player = player,
+                                        enabled = isCcEnabled,
+                                        externalCues = activeCues,
+                                        isAutoGenerated = activeSub?.isAutoGenerated == true,
+                                        fontSizeSp = subtitleFontSize,
+                                        backgroundOpacity = subtitleBackgroundOpacity,
+                                        bottomPaddingDp = if (controlsVisible) 84f else 24f
+                                    )
                                 }
                             }
 
@@ -1065,6 +1223,9 @@ private fun PlayerContent(
                                 chapters = chapters,
                                 sponsorSegments = sponsorSegments,
                                 durationMs = duration(),
+                                abLoopStartMs = abLoopState.pointA,
+                                abLoopEndMs = abLoopState.pointB,
+                                onChapterClick = if (chapters.isNotEmpty()) { { showChaptersSheet = true } } else null,
                                 onSeek = { percentage: Float ->
                                     val totalDuration = duration()
                                     if (totalDuration > 0) {
@@ -1099,7 +1260,7 @@ private fun PlayerContent(
                             }
 
                             // Consolidated Player Loading UI
-                            val showLoader = (uiState is PlayerUiState.Loading) || isBuffering || isRecovering
+                            val showLoader = isBuffering || isRecovering
                             if (showLoader) {
                                 Box(
                                     modifier = Modifier
@@ -1180,6 +1341,7 @@ private fun PlayerContent(
                                         isSaved = isSaved,
                                         isDownloaded = downloadedIds.contains(videoId),
                                         repeatMode = repeatMode,
+                                        isAudioOnlyMode = isAudioOnlyMode,
                                         comments = comments,
                                         commentCount = null, // Extractor doesn't always provide count easily
                                         onToggleSubscription = onToggleSubscription,
@@ -1204,6 +1366,7 @@ private fun PlayerContent(
                                         onDownloadClick = { if (!downloadedIds.contains(videoId)) onDownloadClick(null) },
                                         onShareClick = onShareVideo,
                                         onRepeatClick = onRepeatClick,
+                                        onToggleAudioOnly = { onSetAudioOnlyMode(!isAudioOnlyMode) },
                                         onChannelClick = onChannelClick,
                                         onCommentsClick = { showCommentsSheet = true }
                                     )
@@ -1289,6 +1452,7 @@ private fun PlayerContent(
                 is DownloadDialogState.ShowDialog -> {
                 DownloadSelectionSheet(
                     videoStreams = currentDownloadState.bundle.videoStreams,
+                    audioStreams = currentDownloadState.bundle.audioStreams,
                     subtitles = currentDownloadState.bundle.subtitles,
                     preferredLanguage = selectedSubtitleLanguage,
                     onDismiss = { onDismissDownload() },

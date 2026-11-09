@@ -33,15 +33,29 @@ class ParallelDownloader(
     ): Long = withContext(Dispatchers.IO) {
         val totalSize = getFileSize(url)
         if (totalSize == -403L) throw Exception("403")
-        if (totalSize <= 0) throw Exception("Failed to get file size")
-        
+        if (totalSize <= 0) throw java.io.IOException("Failed to get file size")
+
+        outputFile.parentFile?.let { parent ->
+            if (!parent.exists()) parent.mkdirs()
+            val usableSpace = parent.usableSpace
+            if (usableSpace in 1 until totalSize) {
+                throw java.io.IOException("Insufficient storage space (${usableSpace / (1024 * 1024)} MB available, ${totalSize / (1024 * 1024)} MB required)")
+            }
+        }
+
         // Pre-allocate file
         RandomAccessFile(outputFile, "rw").use { raf ->
-            raf.setLength(totalSize)
+            if (raf.length() != totalSize) {
+                raf.setLength(totalSize)
+            }
         }
 
         val existingChunks = missionDao.getChunksForMission(missionId).filter { it.type == type }
-        val chunks = if (existingChunks.isEmpty()) {
+        val expectedEndByte = totalSize - 1
+        val chunks = if (existingChunks.isEmpty() || existingChunks.maxOf { it.endByte } != expectedEndByte) {
+            if (existingChunks.isNotEmpty()) {
+                missionDao.deleteChunksForMissionAndType(missionId, type)
+            }
             createChunks(missionId, totalSize, type)
         } else {
             existingChunks
@@ -94,7 +108,8 @@ class ParallelDownloader(
         val maxRetries = 5
         while (attempt < maxRetries) {
             try {
-                downloadChunk(url, outputFile, chunk, downloadedBytes, onProgress)
+                val freshChunk = missionDao.getChunkById(chunk.id) ?: chunk
+                downloadChunk(url, outputFile, freshChunk, downloadedBytes, onProgress)
                 return
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
@@ -117,10 +132,13 @@ class ParallelDownloader(
         onProgress: (Long) -> Unit
     ) {
         semaphore.acquire()
+        var currentChunkProgress = chunk.bytesDownloaded
+        var completed = false
         try {
-            val start = chunk.startByte + chunk.bytesDownloaded
+            val start = chunk.startByte + currentChunkProgress
             if (start > chunk.endByte) {
-                missionDao.updateChunkProgress(chunk.id, chunk.bytesDownloaded, true)
+                completed = true
+                missionDao.updateChunkProgress(chunk.id, currentChunkProgress, true)
                 return
             }
 
@@ -132,33 +150,42 @@ class ParallelDownloader(
                 .build()
 
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) throw Exception("Chunk download failed: ${response.code}")
-                val body = response.body ?: throw Exception("Empty body")
+                if (response.code == 403) throw java.io.IOException("403 Forbidden")
+                if (!response.isSuccessful) throw java.io.IOException("Chunk download failed: ${response.code}")
+                val body = response.body ?: throw java.io.IOException("Empty body")
                 
                 RandomAccessFile(outputFile, "rw").use { raf ->
                     raf.seek(start)
                     val buffer = ByteArray(64 * 1024)
                     var read: Int
-                    var currentChunkProgress = chunk.bytesDownloaded
+                    var bytesSinceLastDbSync = 0L
                     
                     body.byteStream().use { input ->
                         while (input.read(buffer).also { read = it } != -1) {
                             currentCoroutineContext().ensureActive()
                             raf.write(buffer, 0, read)
                             currentChunkProgress += read
+                            bytesSinceLastDbSync += read
                             downloadedBytes.addAndGet(read.toLong())
                             onProgress(downloadedBytes.get())
                             
                             // Periodically update DB to avoid excessive writes
-                            if (currentChunkProgress % (512 * 1024) == 0L) {
+                            if (bytesSinceLastDbSync >= 512 * 1024) {
+                                bytesSinceLastDbSync = 0L
                                 missionDao.updateChunkProgress(chunk.id, currentChunkProgress, false)
                             }
                         }
                     }
+                    completed = true
                     missionDao.updateChunkProgress(chunk.id, currentChunkProgress, true)
                 }
             }
         } finally {
+            if (!completed && currentChunkProgress > chunk.bytesDownloaded) {
+                withContext(NonCancellable) {
+                    missionDao.updateChunkProgress(chunk.id, currentChunkProgress, false)
+                }
+            }
             semaphore.release()
         }
     }

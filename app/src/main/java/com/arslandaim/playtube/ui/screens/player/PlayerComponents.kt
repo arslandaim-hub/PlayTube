@@ -23,10 +23,10 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.BrightnessLow
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -80,6 +80,7 @@ fun UnifiedMetadataHub(
     isSaved: Boolean,
     isDownloaded: Boolean,
     repeatMode: RepeatMode,
+    isAudioOnlyMode: Boolean = false,
     comments: List<CommentItem>,
     commentCount: Int?,
     onToggleSubscription: () -> Unit,
@@ -88,6 +89,7 @@ fun UnifiedMetadataHub(
     onDownloadClick: () -> Unit,
     onShareClick: () -> Unit,
     onRepeatClick: () -> Unit,
+    onToggleAudioOnly: () -> Unit = {},
     onChannelClick: (String) -> Unit,
     onCommentsClick: () -> Unit
 ) {
@@ -126,11 +128,13 @@ fun UnifiedMetadataHub(
             isSaved = isSaved,
             isDownloaded = isDownloaded,
             repeatMode = repeatMode,
+            isAudioOnlyMode = isAudioOnlyMode,
             onToggleFavorite = onToggleFavorite,
             onSaveClick = onSaveClick,
             onDownloadClick = onDownloadClick,
             onShareClick = onShareClick,
-            onRepeatClick = onRepeatClick
+            onRepeatClick = onRepeatClick,
+            onToggleAudioOnly = onToggleAudioOnly
         )
         
         Spacer(modifier = Modifier.height(10.dp))
@@ -388,11 +392,13 @@ fun PlayerActionRow(
     isSaved: Boolean,
     isDownloaded: Boolean,
     repeatMode: RepeatMode,
+    isAudioOnlyMode: Boolean = false,
     onToggleFavorite: () -> Unit,
     onSaveClick: () -> Unit,
     onDownloadClick: () -> Unit,
     onShareClick: () -> Unit,
-    onRepeatClick: () -> Unit
+    onRepeatClick: () -> Unit,
+    onToggleAudioOnly: () -> Unit = {}
 ) {
     val defaultLikeText = if (isFavorite) stringResource(R.string.liked) else stringResource(R.string.like)
     val likeLabel = if (likeCount > 0) VideoUtils.formatNumber(likeCount) else defaultLikeText
@@ -409,6 +415,13 @@ fun PlayerActionRow(
             label = likeLabel,
             active = isFavorite,
             onClick = onToggleFavorite
+        )
+
+        PlayerActionPill(
+            icon = Icons.Default.Headphones,
+            label = "Audio Only",
+            active = isAudioOnlyMode,
+            onClick = onToggleAudioOnly
         )
         
         PlayerActionPill(
@@ -656,14 +669,25 @@ fun PlaylistStack(
                             thickness = 0.5.dp,
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
                         )
-                        
-                        Column(
+                        val playlistListState = androidx.compose.foundation.lazy.rememberLazyListState()
+                        LaunchedEffect(currentIndex) {
+                            if (currentIndex in playlist.videos.indices) {
+                                playlistListState.animateScrollToItem(currentIndex)
+                            }
+                        }
+
+                        androidx.compose.foundation.lazy.LazyColumn(
+                            state = playlistListState,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(max = 320.dp)
-                                .verticalScroll(rememberScrollState())
+                                .heightIn(max = 320.dp),
+                            contentPadding = PaddingValues(bottom = 8.dp)
                         ) {
-                            playlist.videos.forEachIndexed { index, video ->
+                            items(
+                                count = playlist.videos.size,
+                                key = { index -> "${playlist.videos[index].id}_$index" }
+                            ) { index ->
+                                val video = playlist.videos[index]
                                 PlaylistVideoRow(
                                     video = video,
                                     isPlaying = index == currentIndex,
@@ -671,7 +695,6 @@ fun PlaylistStack(
                                     onClick = { onVideoClick(video) }
                                 )
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
                 }

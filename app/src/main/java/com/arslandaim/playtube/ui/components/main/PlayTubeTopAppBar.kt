@@ -119,7 +119,11 @@ fun PlayTubeTopAppBar(
         },
         actions = {
             if (currentRoute?.contains("Search") == false) {
-                IconButton(onClick = { navController.navigate(Destination.Search()) }) {
+                IconButton(onClick = {
+                    navController.navigate(Destination.Search()) {
+                        launchSingleTop = true
+                    }
+                }) {
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = stringResource(R.string.search),
@@ -141,7 +145,11 @@ fun PlayTubeTopAppBar(
                 )
             }
 
-            IconButton(onClick = { navController.navigate(Destination.Settings) }) {
+            IconButton(onClick = {
+                navController.navigate(Destination.Settings) {
+                    launchSingleTop = true
+                }
+            }) {
                 BadgedBox(
                     badge = {
                         if (isAutoUpdateEnabled && updateInfo.hasUpdate) {

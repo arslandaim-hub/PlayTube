@@ -181,7 +181,17 @@ class DataManagerRepositoryImpl @Inject constructor(
                 isSearchGridView = preferencesManager.isSearchGridView.first(),
                 isAutoUpdateEnabled = preferencesManager.isAutoUpdateEnabled.first(),
                 isRecommendationsPaused = preferencesManager.isRecommendationsPaused.first(),
-                isPlayerGesturesEnabled = preferencesManager.isPlayerGesturesEnabled.first()
+                isPlayerGesturesEnabled = preferencesManager.isPlayerGesturesEnabled.first(),
+                isDynamicColorEnabled = preferencesManager.isDynamicColorEnabled.first(),
+                isBlockAiContentEnabled = preferencesManager.isBlockAiContentEnabled.first(),
+                appThemeColor = preferencesManager.appThemeColor.first(),
+                appThemeMode = preferencesManager.appThemeMode.first(),
+                isAutoplayEnabled = preferencesManager.isAutoplayEnabled.first(),
+                preferredSubtitleLanguage = preferencesManager.preferredSubtitleLanguage.first(),
+                preferredQuality = preferencesManager.preferredQuality.first(),
+                subtitleFontSize = preferencesManager.subtitleFontSize.first(),
+                subtitleBackgroundOpacity = preferencesManager.subtitleBackgroundOpacity.first(),
+                repeatMode = preferencesManager.repeatMode.first()
             )
 
             val backup = PlayTubeBackup(
@@ -306,6 +316,36 @@ class DataManagerRepositoryImpl @Inject constructor(
                     prefs.isPlayerGesturesEnabled?.let { gestures ->
                         launch { preferencesManager.setPlayerGesturesEnabled(gestures) }
                     }
+                    prefs.isDynamicColorEnabled?.let { dynamicColor ->
+                        launch { preferencesManager.setDynamicColorEnabled(dynamicColor) }
+                    }
+                    prefs.isBlockAiContentEnabled?.let { blockAi ->
+                        launch { preferencesManager.setBlockAiContentEnabled(blockAi) }
+                    }
+                    prefs.appThemeColor?.let { themeColor ->
+                        launch { preferencesManager.setAppThemeColor(themeColor) }
+                    }
+                    prefs.appThemeMode?.let { themeMode ->
+                        launch { preferencesManager.setAppThemeMode(themeMode) }
+                    }
+                    prefs.isAutoplayEnabled?.let { autoplay ->
+                        launch { preferencesManager.setAutoplayEnabled(autoplay) }
+                    }
+                    if (prefs.preferredSubtitleLanguage != null) {
+                        launch { preferencesManager.setPreferredSubtitleLanguage(prefs.preferredSubtitleLanguage) }
+                    }
+                    prefs.preferredQuality?.let { quality ->
+                        launch { preferencesManager.setPreferredQuality(quality) }
+                    }
+                    prefs.subtitleFontSize?.let { fontSize ->
+                        launch { preferencesManager.setSubtitleFontSize(fontSize) }
+                    }
+                    prefs.subtitleBackgroundOpacity?.let { opacity ->
+                        launch { preferencesManager.setSubtitleBackgroundOpacity(opacity) }
+                    }
+                    prefs.repeatMode?.let { mode ->
+                        launch { preferencesManager.setRepeatMode(mode) }
+                    }
                 }
             }
 
@@ -365,5 +405,15 @@ data class PlayTubePreferences(
     @SerializedName("isSearchGridView") val isSearchGridView: Boolean = false,
     @SerializedName("isAutoUpdateEnabled") val isAutoUpdateEnabled: Boolean = false,
     @SerializedName("isRecommendationsPaused") val isRecommendationsPaused: Boolean = false,
-    @SerializedName("isPlayerGesturesEnabled") val isPlayerGesturesEnabled: Boolean? = true
+    @SerializedName("isPlayerGesturesEnabled") val isPlayerGesturesEnabled: Boolean? = true,
+    @SerializedName("isDynamicColorEnabled") val isDynamicColorEnabled: Boolean? = null,
+    @SerializedName("isBlockAiContentEnabled") val isBlockAiContentEnabled: Boolean? = null,
+    @SerializedName("appThemeColor") val appThemeColor: String? = null,
+    @SerializedName("appThemeMode") val appThemeMode: String? = null,
+    @SerializedName("isAutoplayEnabled") val isAutoplayEnabled: Boolean? = null,
+    @SerializedName("preferredSubtitleLanguage") val preferredSubtitleLanguage: String? = null,
+    @SerializedName("preferredQuality") val preferredQuality: String? = null,
+    @SerializedName("subtitleFontSize") val subtitleFontSize: Float? = null,
+    @SerializedName("subtitleBackgroundOpacity") val subtitleBackgroundOpacity: Float? = null,
+    @SerializedName("repeatMode") val repeatMode: String? = null
 )

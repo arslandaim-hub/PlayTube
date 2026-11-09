@@ -194,7 +194,7 @@ fun DownloadsScreen(
                         
                         Box(modifier = Modifier.weight(1f)) {
                             LinearProgressIndicator(
-                                progress = { 0.4f }, 
+                                progress = { storageUsage.progressFraction }, 
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(4.dp)

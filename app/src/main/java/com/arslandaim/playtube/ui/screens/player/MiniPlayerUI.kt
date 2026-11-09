@@ -30,8 +30,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -48,6 +46,10 @@ fun MiniPlayerUI(
     player: Player,
     isPlaying: Boolean,
     isIncognito: Boolean = false,
+    progressProvider: () -> Float = {
+        val dur = player.duration
+        if (dur > 0) (player.currentPosition.toFloat() / dur).coerceIn(0f, 1f) else 0f
+    },
     onMaximize: () -> Unit,
     onPlayPause: () -> Unit,
     onClose: () -> Unit,
@@ -166,7 +168,7 @@ fun MiniPlayerUI(
 
             // Progress Bar at the bottom
             MiniPlayerProgress(
-                player = player,
+                progressProvider = progressProvider,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
@@ -177,23 +179,9 @@ fun MiniPlayerUI(
 
 @Composable
 private fun MiniPlayerProgress(
-    player: Player,
+    progressProvider: () -> Float,
     modifier: Modifier = Modifier
 ) {
-    var progress by remember { mutableFloatStateOf(0f) }
-    
-    LaunchedEffect(player.isPlaying) {
-        if (player.isPlaying) {
-            while (isActive) {
-                val duration = player.duration
-                if (duration > 0) {
-                    progress = player.currentPosition.toFloat() / duration
-                }
-                delay(500)
-            }
-        }
-    }
-    
     Box(
         modifier = modifier
             .height(2.dp)
@@ -204,7 +192,7 @@ private fun MiniPlayerProgress(
                 .fillMaxWidth()
                 .fillMaxHeight()
                 .graphicsLayer {
-                    scaleX = progress
+                    scaleX = progressProvider().coerceIn(0f, 1f)
                     transformOrigin = TransformOrigin(0f, 0.5f)
                 }
                 .background(MaterialTheme.colorScheme.primary)

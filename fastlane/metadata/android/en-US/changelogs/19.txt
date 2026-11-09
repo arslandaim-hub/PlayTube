@@ -1,0 +1,4 @@
+Fixed audio track selection and playback switching bugs.
+Added offline subtitle downloads, WebVTT sanitization, and custom subtitle styling (font size & background opacity).
+Added Audio-Only playback mode, Volume Boost, Audio Pitch controls, A-B Repeat loop, and Video Chapters sheet.
+Improved download resilience with parallel chunked downloading and automatic recovery on expired stream URLs.

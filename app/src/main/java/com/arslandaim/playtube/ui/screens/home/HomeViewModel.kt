@@ -93,20 +93,19 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun getCategoryCacheKey(category: String): String {
-        return if (category.equals("All", ignoreCase = true) || category.equals("Trending", ignoreCase = true)) {
-            "home_trending"
-        } else {
-            "home_category_${category.lowercase()}"
+        return when {
+            category.equals("All", ignoreCase = true) -> "home_all"
+            category.equals("Trending", ignoreCase = true) -> "home_trending_only"
+            else -> "home_category_${category.lowercase()}"
         }
     }
 
     init {
-        // Phase 1: Load cached trending immediately if "All"/"Trending" is selected
+        // Phase 1: Load cached feed immediately if "All" is selected
         viewModelScope.launch {
-            libraryRepository.getCachedFeed("home_trending").collect { cache ->
+            libraryRepository.getCachedFeed("home_all").collect { cache ->
                 val currentCategory = _internalState.value.selectedCategory
-                val isAllOrTrending = currentCategory.equals("All", ignoreCase = true) || currentCategory.equals("Trending", ignoreCase = true)
-                if (cache != null && _internalState.value.trendingVideos.isEmpty() && isAllOrTrending) {
+                if (cache != null && _internalState.value.trendingVideos.isEmpty() && currentCategory.equals("All", ignoreCase = true)) {
                     val cleanCached = cache.videos.filter { !VideoUtils.isShort(it) }
                     _internalState.update { it.copy(trendingVideos = cleanCached, isTrendingLoading = false) }
                     playbackPrefetcher.prefetchViewport(cleanCached.map { it.id })
@@ -120,10 +119,10 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _isRefreshing.value = true
             val category = _internalState.value.selectedCategory
-            if (category.equals("All", ignoreCase = true) || category.equals("Trending", ignoreCase = true)) {
-                fetchTrending(isRefresh = true)
-            } else {
-                fetchCategoryVideos(category)
+            when {
+                category.equals("All", ignoreCase = true) -> fetchTrending(isRefresh = true)
+                category.equals("Trending", ignoreCase = true) -> fetchPureTrending()
+                else -> fetchCategoryVideos(category)
             }
             _isRefreshing.value = false
         }
@@ -152,10 +151,10 @@ class HomeViewModel @Inject constructor(
             }
 
             try {
-                if (category.equals("All", ignoreCase = true) || category.equals("Trending", ignoreCase = true)) {
-                    fetchTrending(isRefresh = false)
-                } else {
-                    fetchCategoryVideos(category)
+                when {
+                    category.equals("All", ignoreCase = true) -> fetchTrending(isRefresh = false)
+                    category.equals("Trending", ignoreCase = true) -> fetchPureTrending()
+                    else -> fetchCategoryVideos(category)
                 }
                 if (coroutineContext.isActive) {
                     _internalState.update { it.copy(isTrendingLoading = false) }
@@ -167,6 +166,39 @@ class HomeViewModel @Inject constructor(
                     _internalState.update { it.copy(error = PlayTubeError.fromThrowable(e), isTrendingLoading = false) }
                 }
             }
+        }
+    }
+
+    private suspend fun fetchPureTrending() {
+        try {
+            val trendingResult = getTrendingVideosUseCase().getOrNull()
+            val trendingVideos = trendingResult?.items ?: emptyList()
+
+            val blacklistedIds = libraryRepository.getBlacklistStatic().map { it.id }.toSet()
+            val isBlockAiEnabled = preferencesManager.isBlockAiContentEnabled.first()
+
+            val cleanVideos = trendingVideos.filter { video ->
+                val isBlacklisted = video.id in blacklistedIds || 
+                                    video.uploaderName in blacklistedIds || 
+                                    (video.uploaderUrl != null && video.uploaderUrl in blacklistedIds)
+                val isAi = isBlockAiEnabled && AiContentDetector.isAiContent(video)
+                val isShort = VideoUtils.isShort(video)
+                !isBlacklisted && !isAi && !isShort
+            }
+
+            _internalState.update { 
+                it.copy(
+                    trendingVideos = cleanVideos,
+                    nextTrendingPage = trendingResult?.nextPage,
+                    isPersonalized = false
+                )
+            }
+
+            playbackPrefetcher.prefetchViewport(cleanVideos.map { it.id })
+            libraryRepository.updateCachedFeed(getCategoryCacheKey("Trending"), cleanVideos)
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            _internalState.update { it.copy(error = PlayTubeError.fromThrowable(e)) }
         }
     }
 
@@ -270,7 +302,7 @@ class HomeViewModel @Inject constructor(
             playbackPrefetcher.prefetchViewport(cleanVideos.map { it.id })
 
             // Phase 1: Silent Cache Update
-            libraryRepository.updateCachedFeed("home_trending", cleanVideos)
+            libraryRepository.updateCachedFeed(getCategoryCacheKey("All"), cleanVideos)
             
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
@@ -280,7 +312,9 @@ class HomeViewModel @Inject constructor(
 
     fun loadNextTrendingPage() {
         val category = _internalState.value.selectedCategory
-        val isAllOrTrending = category.equals("All", ignoreCase = true) || category.equals("Trending", ignoreCase = true)
+        val isAll = category.equals("All", ignoreCase = true)
+        val isTrending = category.equals("Trending", ignoreCase = true)
+        val isAllOrTrending = isAll || isTrending
         val page = _internalState.value.nextTrendingPage
         if (_internalState.value.isLoadingMore) return
 
@@ -310,13 +344,13 @@ class HomeViewModel @Inject constructor(
                                 }
                                 playbackPrefetcher.prefetchViewport(cleanItems.map { it.id })
                                 // Phase 1: Silent Cache Update
-                                libraryRepository.updateCachedFeed("home_trending", _internalState.value.trendingVideos)
+                                libraryRepository.updateCachedFeed(getCategoryCacheKey(category), _internalState.value.trendingVideos)
                             }
                             .onFailure {
                                 _internalState.update { it.copy(isLoadingMore = false) }
                             }
-                    } else {
-                        // Fallback to recommendations if no trending page is available
+                    } else if (isAll) {
+                        // Fallback to recommendations only on "All" tab if no trending page is available
                         val result = getRecommendationsUseCase()
                         val newVideos = result.getOrDefault(emptyList())
                         
@@ -327,6 +361,8 @@ class HomeViewModel @Inject constructor(
                             )
                         }
                         playbackPrefetcher.prefetchViewport(newVideos.map { it.id })
+                    } else {
+                        _internalState.update { it.copy(isLoadingMore = false) }
                     }
                 } else {
                     // Category pagination

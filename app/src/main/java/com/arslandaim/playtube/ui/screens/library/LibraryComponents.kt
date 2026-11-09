@@ -1375,9 +1375,11 @@ fun DownloadItemRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
-                    color = if (download.status == com.arslandaim.playtube.data.local.DownloadStatus.COMPLETED) 
-                        MaterialTheme.colorScheme.primary 
-                    else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = when (download.status) {
+                        com.arslandaim.playtube.data.local.DownloadStatus.COMPLETED -> MaterialTheme.colorScheme.primary
+                        com.arslandaim.playtube.data.local.DownloadStatus.FAILED -> MaterialTheme.colorScheme.error
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
                 )
                 
                 // Metrics: Always visible

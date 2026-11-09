@@ -102,9 +102,18 @@ class LibraryViewModel @Inject constructor(
     val storageUsage: StateFlow<StorageInfo> = downloads
         .map { list ->
             val totalBytes = list.sumOf { it.downloadedSize }
+            val totalSpace = runCatching {
+                android.os.Environment.getDataDirectory().totalSpace
+            }.getOrDefault(0L)
+            val progressFraction = if (totalSpace > 0L) {
+                (totalBytes.toFloat() / totalSpace.toFloat()).coerceIn(0f, 1f)
+            } else {
+                0f
+            }
             StorageInfo(
                 usedBytes = totalBytes,
-                usedText = VideoUtils.formatSize(totalBytes)
+                usedText = VideoUtils.formatSize(totalBytes),
+                progressFraction = progressFraction
             )
         }.flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), StorageInfo())
@@ -124,7 +133,12 @@ class LibraryViewModel @Inject constructor(
 
     private fun syncSubscriptions() {
         viewModelScope.launch {
-            syncSubscriptionMetadataUseCase()
+            runCatching {
+                syncSubscriptionMetadataUseCase()
+            }.onFailure { e ->
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                com.arslandaim.playtube.utils.PTLog.w("LibraryViewModel", "Subscription metadata sync failed: ${e.message}")
+            }
         }
     }
 
@@ -138,40 +152,72 @@ class LibraryViewModel @Inject constructor(
 
     fun clearWatchedDownloads() {
         viewModelScope.launch {
-            val watchedIds = history.value
-                .filter { it.durationMs > 0 && it.progressMs.toFloat() / it.durationMs > 0.9f }
-                .map { it.videoId }
-                .toSet()
-            
-            downloads.value.forEach { download ->
-                if (watchedIds.contains(download.videoId) && download.status == DownloadStatus.COMPLETED) {
-                    deleteDownload(download.videoId)
+            runCatching {
+                val watchedIds = history.value
+                    .filter { it.durationMs > 0 && it.progressMs.toFloat() / it.durationMs > 0.9f }
+                    .map { it.videoId }
+                    .toSet()
+
+                var count = 0
+                downloads.value.forEach { download ->
+                    if (watchedIds.contains(download.videoId) && download.status == DownloadStatus.COMPLETED) {
+                        deleteDownloadUseCase(download.videoId)
+                        count++
+                    }
                 }
+                if (count > 0) {
+                    _snackbarMessage.emit("Cleaned up $count watched download(s)")
+                } else {
+                    _snackbarMessage.emit("No watched downloads to clean up")
+                }
+            }.onFailure { e ->
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _snackbarMessage.emit("Failed to clean up downloads: ${e.message ?: "Unknown error"}")
             }
         }
     }
 
     fun deleteDownload(videoId: String) {
         viewModelScope.launch {
-            deleteDownloadUseCase(videoId)
+            runCatching {
+                deleteDownloadUseCase(videoId)
+            }.onFailure { e ->
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _snackbarMessage.emit("Failed to delete download: ${e.message ?: "Unknown error"}")
+            }
         }
     }
 
     fun cancelDownload(videoId: String) {
         viewModelScope.launch {
-            cancelDownloadUseCase(videoId)
+            runCatching {
+                cancelDownloadUseCase(videoId)
+            }.onFailure { e ->
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _snackbarMessage.emit("Failed to cancel download: ${e.message ?: "Unknown error"}")
+            }
         }
     }
 
     fun pauseDownload(videoId: String) {
         viewModelScope.launch {
-            pauseDownloadUseCase(videoId)
+            runCatching {
+                pauseDownloadUseCase(videoId)
+            }.onFailure { e ->
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _snackbarMessage.emit("Failed to pause download: ${e.message ?: "Unknown error"}")
+            }
         }
     }
 
     fun resumeDownload(videoId: String) {
         viewModelScope.launch {
-            resumeDownloadUseCase(videoId)
+            runCatching {
+                resumeDownloadUseCase(videoId)
+            }.onFailure { e ->
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _snackbarMessage.emit("Failed to resume download: ${e.message ?: "Unknown error"}")
+            }
         }
     }
 
@@ -185,36 +231,37 @@ class LibraryViewModel @Inject constructor(
 
     fun removeFavorite(favorite: FavoriteEntity) {
         viewModelScope.launch {
-            toggleFavoriteUseCase(favorite)
+            runCatching { toggleFavoriteUseCase(favorite) }
         }
     }
 
     fun removeFromHistory(videoId: String) {
         viewModelScope.launch {
-            libraryRepository.removeFromHistory(videoId)
+            runCatching { libraryRepository.removeFromHistory(videoId) }
         }
     }
 
     fun toggleSubscription(subscription: SubscriptionEntity) {
         viewModelScope.launch {
-            toggleSubscriptionUseCase(subscription)
+            runCatching { toggleSubscriptionUseCase(subscription) }
         }
     }
 
     fun createLocalPlaylist(name: String) {
         viewModelScope.launch {
-            libraryRepository.createLocalPlaylist(name)
+            runCatching { libraryRepository.createLocalPlaylist(name) }
         }
     }
 
     fun deleteLocalPlaylist(playlist: com.arslandaim.playtube.data.local.LocalPlaylistEntity) {
         viewModelScope.launch {
-            libraryRepository.deleteLocalPlaylist(playlist)
+            runCatching { libraryRepository.deleteLocalPlaylist(playlist) }
         }
     }
 }
 
 data class StorageInfo(
     val usedBytes: Long = 0,
-    val usedText: String = "0 B"
+    val usedText: String = "0 B",
+    val progressFraction: Float = 0f
 )

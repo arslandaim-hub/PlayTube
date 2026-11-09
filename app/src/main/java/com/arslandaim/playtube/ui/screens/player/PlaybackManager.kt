@@ -16,12 +16,10 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.common.text.Cue
 import androidx.media3.common.text.CueGroup
 import androidx.media3.exoplayer.source.MergingMediaSource
-import androidx.media3.exoplayer.source.SingleSampleMediaSource
 import androidx.media3.exoplayer.upstream.BandwidthMeter
 import com.arslandaim.playtube.domain.model.StreamBundle
 import com.arslandaim.playtube.domain.model.StreamItem
 import com.arslandaim.playtube.domain.model.SubtitleItem
-import com.arslandaim.playtube.utils.CaptionTrackResolver
 import com.arslandaim.playtube.utils.PTLog
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
@@ -85,6 +83,13 @@ class PlaybackManager @Inject constructor(
     private val _abLoopState = MutableStateFlow(ABLoopState())
     val abLoopState: StateFlow<ABLoopState> = _abLoopState.asStateFlow()
 
+    private val audioEnhancerManager = com.arslandaim.playtube.utils.AudioEnhancerManager()
+    private val _volumeBoostLevel = MutableStateFlow(com.arslandaim.playtube.utils.VolumeBoostLevel.OFF)
+    val volumeBoostLevel: StateFlow<com.arslandaim.playtube.utils.VolumeBoostLevel> = _volumeBoostLevel.asStateFlow()
+
+    private val _isAudioOnlyMode = MutableStateFlow(false)
+    val isAudioOnlyMode: StateFlow<Boolean> = _isAudioOnlyMode.asStateFlow()
+
     private var _lastPauseTimestamp = 0L
     val lastPauseTimestamp: Long get() = _lastPauseTimestamp
 
@@ -92,6 +97,7 @@ class PlaybackManager @Inject constructor(
     private var currentBundle: StreamBundle? = null
     private var currentStream: StreamItem? = null
     private var isAutoQualityEnabled = true
+    private var lastQualitySwitchTime = 0L
     private var currentCcEnabled = false
     private var currentPreferredLang: String? = null
     private var currentSelectedSubtitle: SubtitleItem? = null
@@ -149,18 +155,8 @@ class PlaybackManager @Inject constructor(
                                           causeMsg.contains("Subtitle", ignoreCase = true) ||
                                           causeMsg.contains("WEBVTT", ignoreCase = true)
 
-            val isPotentiallySubtitleRendererCrash = currentCcEnabled && (
-                    error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
-                    error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
-                    error.errorCode == PlaybackException.ERROR_CODE_UNSPECIFIED ||
-                    error.message?.contains("Unexpected runtime error", ignoreCase = true) == true ||
-                    causeClass.contains("ParserException") ||
-                    causeClass.contains("IllegalArgumentException") ||
-                    causeClass.contains("IllegalStateException") ||
-                    causeClass.contains("IndexOutOfBoundsException")
-            )
-
-            val isSubtitleError = isSubtitleUri || isExplicitSubtitleError || isPotentiallySubtitleRendererCrash
+            val isSubtitleError = isSubtitleUri || isExplicitSubtitleError ||
+                    (currentCcEnabled && (causeMsg.contains("application/x-media3-cues") || causeClass.contains("Subtitle")))
 
             if (isSubtitleError) {
                 PTLog.w("PlaybackManager", "Subtitle load/decode failed ($failedUri, cause: $causeMsg). Disabling text track gracefully and recovering video playback.")
@@ -176,8 +172,13 @@ class PlaybackManager @Inject constructor(
                     currentBundle = cleanBundle
                     
                     val isManifest = stream.format == "m3u8" || stream.format == "mpd"
-                    val effectiveDataSourceFactory = if (isManifest) httpDataSourceFactory else dataSourceFactory
+                    val effectiveDataSourceFactory = if (isManifest) {
+                        androidx.media3.datasource.DefaultDataSource.Factory(context, httpDataSourceFactory)
+                    } else {
+                        dataSourceFactory
+                    }
                     val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(effectiveDataSourceFactory)
+                        .setLoadOnlySelectedTracks(true)
                     val compositeSource = buildCompositeMediaSource(videoId, cleanBundle, stream, mediaSourceFactory)
                     
                     player.setMediaSource(compositeSource, false)
@@ -254,6 +255,10 @@ class PlaybackManager @Inject constructor(
             PTLog.d("PlaybackManager", "onTracksChanged: updated CC state (enabled=$currentCcEnabled, lang=$currentPreferredLang)")
         }
 
+        override fun onAudioSessionIdChanged(audioSessionId: Int) {
+            audioEnhancerManager.attachToAudioSession(audioSessionId)
+        }
+
         override fun onMetadata(metadata: Metadata) {
             // Handle metadata if needed
         }
@@ -262,6 +267,9 @@ class PlaybackManager @Inject constructor(
     init {
         ensureListenerRegistered()
         player.repeatMode = Player.REPEAT_MODE_OFF
+        if (player.audioSessionId > 0) {
+            audioEnhancerManager.attachToAudioSession(player.audioSessionId)
+        }
         
         // Emit current media item if already exists (e.g. Service restoration)
         player.currentMediaItem?.mediaId?.let { id ->
@@ -276,6 +284,32 @@ class PlaybackManager @Inject constructor(
     }
 
 
+    private fun createMediaSourceFactory(isManifest: Boolean): androidx.media3.exoplayer.source.DefaultMediaSourceFactory {
+        val effectiveDataSourceFactory = if (isManifest) {
+            androidx.media3.datasource.DefaultDataSource.Factory(context, httpDataSourceFactory)
+        } else {
+            dataSourceFactory
+        }
+        return androidx.media3.exoplayer.source.DefaultMediaSourceFactory(effectiveDataSourceFactory)
+            .setLoadOnlySelectedTracks(true)
+    }
+
+    private fun mergeCachedSubtitles(incomingBundle: StreamBundle): StreamBundle {
+        val existingSubs = currentBundle?.subtitles ?: return incomingBundle
+        val localSubsById = existingSubs.filter {
+            it.url.startsWith("file:") || it.url.startsWith("content:")
+        }
+        if (localSubsById.isEmpty()) return incomingBundle
+
+        val merged = incomingBundle.subtitles.map { sub ->
+            localSubsById.find {
+                (it.id.isNotBlank() && it.id == sub.id) ||
+                (it.languageTag.equals(sub.languageTag, ignoreCase = true) && it.isAutoGenerated == sub.isAutoGenerated)
+            } ?: sub
+        }
+        return incomingBundle.copy(subtitles = merged)
+    }
+
     private fun buildCompositeMediaSource(
         videoId: String,
         bundle: StreamBundle,
@@ -289,11 +323,27 @@ class PlaybackManager @Inject constructor(
             .build()
 
         val isManifest = stream.format == "m3u8" || stream.format == "mpd"
+        val subtitleConfigs = trackManager.createSubtitleConfigs(
+            bundle = bundle,
+            selectedSubtitle = currentSelectedSubtitle,
+            preferredLang = currentPreferredLang
+        )
+
+        if (_isAudioOnlyMode.value && !bundle.isLive && !bundle.bestAudioStreamUrl.isNullOrBlank()) {
+            val audioOnlyItem = MediaItem.Builder()
+                .setUri(bundle.bestAudioStreamUrl)
+                .setMediaId(videoId)
+                .setMediaMetadata(metadata)
+                .setSubtitleConfigurations(subtitleConfigs)
+                .build()
+            return mediaSourceFactory.createMediaSource(audioOnlyItem)
+        }
 
         val videoMediaItemBuilder = MediaItem.Builder()
             .setUri(stream.url)
             .setMediaId(videoId)
             .setMediaMetadata(metadata)
+            .setSubtitleConfigurations(subtitleConfigs)
 
         if (bundle.isLive || isManifest) {
             val mimeType = if (stream.format == "mpd") MimeTypes.APPLICATION_MPD else MimeTypes.APPLICATION_M3U8
@@ -318,32 +368,9 @@ class PlaybackManager @Inject constructor(
             }
         } else null
 
-        val subtitleSources = bundle.subtitles
-            .filter { it.url.isNotBlank() && (it.url.startsWith("file:") || it.url.startsWith("content:")) }
-            .map { sub ->
-                val (normalizedUrl, mimeType) = CaptionTrackResolver.normalizeSubtitleUrl(sub.url, sub.format)
-                val subtitleUri = Uri.parse(normalizedUrl)
-                val trackId = if (sub.id.isNotBlank()) sub.id else "${sub.languageTag}:${if (sub.isAutoGenerated) "asr" else "manual"}"
-                val label = CaptionTrackResolver.buildDisplayLabel(sub.languageTag, sub.isAutoGenerated, sub.name)
-
-                val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(subtitleUri)
-                    .setId(trackId)
-                    .setMimeType(mimeType)
-                    .setLanguage(sub.languageTag)
-                    .setLabel(label)
-                    .setRoleFlags(C.ROLE_FLAG_CAPTION or C.ROLE_FLAG_SUBTITLE)
-                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                    .build()
-
-                SingleSampleMediaSource.Factory(dataSourceFactory)
-                    .setTreatLoadErrorsAsEndOfStream(true)
-                    .createMediaSource(subtitleConfig, C.TIME_UNSET)
-            }
-
         val allSources = buildList {
             add(videoSource)
             if (audioSource != null) add(audioSource)
-            addAll(subtitleSources)
         }
 
         return if (allSources.size == 1) {
@@ -357,10 +384,10 @@ class PlaybackManager @Inject constructor(
         currentExtractedAt = bundle.extractedAt
         currentBundle = bundle
         currentStream = stream
+        lastQualitySwitchTime = System.currentTimeMillis()
         
         val isManifest = stream.format == "m3u8" || stream.format == "mpd"
-        val effectiveDataSourceFactory = if (isManifest) httpDataSourceFactory else dataSourceFactory
-        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(effectiveDataSourceFactory)
+        val mediaSourceFactory = createMediaSourceFactory(isManifest)
         
         stopHeartbeat()
         player.stop()
@@ -374,80 +401,50 @@ class PlaybackManager @Inject constructor(
             player.seekTo(startPosition)
         }
         player.playWhenReady = true
+        trackManager.updateCcState(player, currentCcEnabled, currentSelectedSubtitle, currentPreferredLang)
     }
 
     /**
      * Switches the video quality without stopping the player or resetting position.
      */
     fun switchQualitySeamlessly(videoId: String, bundle: StreamBundle, stream: StreamItem) {
+        val mergedBundle = mergeCachedSubtitles(bundle)
+        currentBundle = mergedBundle
         currentStream = stream
+        lastQualitySwitchTime = System.currentTimeMillis()
         val currentPosition = player.currentPosition
         val isManifest = stream.format == "m3u8" || stream.format == "mpd"
-        val effectiveDataSourceFactory = if (isManifest) httpDataSourceFactory else dataSourceFactory
-        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(effectiveDataSourceFactory)
+        val mediaSourceFactory = createMediaSourceFactory(isManifest)
 
-        val compositeSource = buildCompositeMediaSource(videoId, bundle, stream, mediaSourceFactory)
+        val compositeSource = buildCompositeMediaSource(videoId, mergedBundle, stream, mediaSourceFactory)
 
         player.setMediaSource(compositeSource, false) // false = don't reset position
         player.prepare()
         if (currentPosition > 0) {
             player.seekTo(currentPosition)
         }
-        // No need to call play() if it was already playing
+        trackManager.updateCcState(player, currentCcEnabled, currentSelectedSubtitle, currentPreferredLang)
     }
 
     fun playLocal(videoId: String, file: java.io.File, title: String, uploader: String, thumbnail: String?, bundle: StreamBundle? = null) {
+        currentBundle = bundle
         val metadata = MediaMetadata.Builder()
             .setTitle(title)
             .setArtist(uploader)
             .setArtworkUri(thumbnail?.let { Uri.parse(it) })
             .build()
 
+        val subtitleConfigs = if (bundle != null) trackManager.createSubtitleConfigs(bundle) else emptyList()
+
         val videoMediaItem = MediaItem.Builder()
             .setUri(Uri.fromFile(file))
             .setMediaId(videoId)
             .setMediaMetadata(metadata)
+            .setSubtitleConfigurations(subtitleConfigs)
             .build()
 
-        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
-        val videoSource = mediaSourceFactory.createMediaSource(videoMediaItem)
-
-        val subtitleSources = bundle?.subtitles?.filter { it.url.isNotBlank() }?.map { sub ->
-            val (normalizedUrl, mimeType) = CaptionTrackResolver.normalizeSubtitleUrl(sub.url, sub.format)
-            val subtitleUri = Uri.parse(normalizedUrl)
-            val trackId = if (sub.id.isNotBlank()) sub.id else "${sub.languageTag}:${if (sub.isAutoGenerated) "asr" else "manual"}"
-            val label = CaptionTrackResolver.buildDisplayLabel(sub.languageTag, sub.isAutoGenerated, sub.name)
-
-            val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(subtitleUri)
-                .setId(trackId)
-                .setMimeType(mimeType)
-                .setLanguage(sub.languageTag)
-                .setLabel(label)
-                .setRoleFlags(C.ROLE_FLAG_CAPTION or C.ROLE_FLAG_SUBTITLE)
-                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                .build()
-
-            val subDataSourceFactory = if (normalizedUrl.startsWith("file:") || normalizedUrl.startsWith("content:")) {
-                dataSourceFactory
-            } else {
-                httpDataSourceFactory
-            }
-
-            SingleSampleMediaSource.Factory(subDataSourceFactory)
-                .setTreatLoadErrorsAsEndOfStream(true)
-                .createMediaSource(subtitleConfig, C.TIME_UNSET)
-        } ?: emptyList()
-
-        val allSources = buildList {
-            add(videoSource)
-            addAll(subtitleSources)
-        }
-
-        val finalMediaSource = if (allSources.size == 1) {
-            allSources.first()
-        } else {
-            MergingMediaSource(/* adjustPeriodTimeOffsets= */ true, /* clipDurations= */ true, *allSources.toTypedArray())
-        }
+        val mediaSourceFactory = createMediaSourceFactory(isManifest = false)
+        val finalMediaSource = mediaSourceFactory.createMediaSource(videoMediaItem)
 
         player.stop()
         player.clearMediaItems()
@@ -501,15 +498,16 @@ class PlaybackManager @Inject constructor(
      * Retains the current position and state.
      */
     fun hotSwapSource(videoId: String, bundle: StreamBundle, stream: StreamItem, position: Long) {
-        currentExtractedAt = bundle.extractedAt
-        currentBundle = bundle
+        val mergedBundle = mergeCachedSubtitles(bundle)
+        currentExtractedAt = mergedBundle.extractedAt
+        currentBundle = mergedBundle
         currentStream = stream
+        lastQualitySwitchTime = System.currentTimeMillis()
 
         val isManifest = stream.format == "m3u8" || stream.format == "mpd"
-        val effectiveDataSourceFactory = if (isManifest) httpDataSourceFactory else dataSourceFactory
-        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(effectiveDataSourceFactory)
+        val mediaSourceFactory = createMediaSourceFactory(isManifest)
 
-        val compositeSource = buildCompositeMediaSource(videoId, bundle, stream, mediaSourceFactory)
+        val compositeSource = buildCompositeMediaSource(videoId, mergedBundle, stream, mediaSourceFactory)
 
         PTLog.d("PlaybackManager", "Performing hot-swap for $videoId at position $position")
         player.setMediaSource(compositeSource, false) // false = don't reset position
@@ -518,6 +516,7 @@ class PlaybackManager @Inject constructor(
             player.seekTo(position)
         }
         player.play()
+        trackManager.updateCcState(player, currentCcEnabled, currentSelectedSubtitle, currentPreferredLang)
     }
 
     fun seekTo(position: Long) {
@@ -539,8 +538,10 @@ class PlaybackManager @Inject constructor(
         val videoStream = currentStream ?: bundle.videoStreams.firstOrNull() ?: return
         currentStream = videoStream
 
-        val customBundle = bundle.copy(bestAudioStreamUrl = audioStream.url)
-        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
+        val customBundle = mergeCachedSubtitles(bundle).copy(bestAudioStreamUrl = audioStream.url)
+        currentBundle = customBundle
+        val isManifest = videoStream.format == "m3u8" || videoStream.format == "mpd"
+        val mediaSourceFactory = createMediaSourceFactory(isManifest)
         val compositeSource = buildCompositeMediaSource(videoId, customBundle, videoStream, mediaSourceFactory)
 
         PTLog.d("PlaybackManager", "Switching audio track for $videoId to ${audioStream.quality}")
@@ -552,16 +553,31 @@ class PlaybackManager @Inject constructor(
         if (isPlaying) {
             player.play()
         }
+        trackManager.updateCcState(player, currentCcEnabled, currentSelectedSubtitle, currentPreferredLang)
     }
 
     fun attachLocalSubtitleTrack(subtitleItem: SubtitleItem, enableCc: Boolean = true) {
         val bundle = currentBundle ?: return
         val stream = currentStream ?: return
         val videoId = player.currentMediaItem?.mediaId ?: return
-        if (!subtitleItem.url.startsWith("file:") && !subtitleItem.url.startsWith("content:")) return
 
         val existingSubtitles = bundle.subtitles.toMutableList()
-        val index = existingSubtitles.indexOfFirst { it.languageTag.equals(subtitleItem.languageTag, ignoreCase = true) || it.id == subtitleItem.id }
+        val index = if (subtitleItem.id.isNotBlank()) {
+            existingSubtitles.indexOfFirst { it.id == subtitleItem.id }.takeIf { it != -1 }
+                ?: existingSubtitles.indexOfFirst { it.languageTag.equals(subtitleItem.languageTag, ignoreCase = true) }
+        } else {
+            existingSubtitles.indexOfFirst { it.languageTag.equals(subtitleItem.languageTag, ignoreCase = true) }
+        }
+
+        val hasMatchingPlayerTrack = player.currentTracks.groups.any { group ->
+            group.type == C.TRACK_TYPE_TEXT && group.isSupported && (0 until group.length).any { i ->
+                val format = group.getTrackFormat(i)
+                val formatId = format.id ?: ""
+                (subtitleItem.id.isNotBlank() && (formatId.equals(subtitleItem.id, ignoreCase = true) || formatId.endsWith(":${subtitleItem.id}", ignoreCase = true))) ||
+                    format.language.equals(subtitleItem.languageTag, ignoreCase = true)
+            }
+        }
+        val alreadyAttached = index != -1 && existingSubtitles[index].url == subtitleItem.url && hasMatchingPlayerTrack
         if (index != -1) {
             existingSubtitles[index] = subtitleItem
         } else {
@@ -574,22 +590,23 @@ class PlaybackManager @Inject constructor(
         currentPreferredLang = subtitleItem.languageTag
         currentCcEnabled = enableCc
 
-        val currentPosition = player.currentPosition
-        val isPlaying = player.isPlaying
-        val isManifest = stream.format == "m3u8" || stream.format == "mpd"
-        val effectiveDataSourceFactory = if (isManifest) httpDataSourceFactory else dataSourceFactory
-        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(effectiveDataSourceFactory)
+        if (!alreadyAttached) {
+            val currentPosition = player.currentPosition
+            val isPlaying = player.isPlaying
+            val isManifest = stream.format == "m3u8" || stream.format == "mpd"
+            val mediaSourceFactory = createMediaSourceFactory(isManifest)
 
-        val compositeSource = buildCompositeMediaSource(videoId, updatedBundle, stream, mediaSourceFactory)
+            val compositeSource = buildCompositeMediaSource(videoId, updatedBundle, stream, mediaSourceFactory)
 
-        PTLog.d("PlaybackManager", "Seamlessly attaching local subtitle track (${subtitleItem.languageTag}) for $videoId")
-        player.setMediaSource(compositeSource, false)
-        player.prepare()
-        if (currentPosition > 0) {
-            player.seekTo(currentPosition)
-        }
-        if (isPlaying) {
-            player.play()
+            PTLog.d("PlaybackManager", "Seamlessly attaching subtitle track (${subtitleItem.languageTag}) for $videoId")
+            player.setMediaSource(compositeSource, false)
+            player.prepare()
+            if (currentPosition > 0) {
+                player.seekTo(currentPosition)
+            }
+            if (isPlaying) {
+                player.play()
+            }
         }
         trackManager.updateCcState(player, enableCc, subtitleItem, subtitleItem.languageTag)
     }
@@ -683,6 +700,39 @@ class PlaybackManager @Inject constructor(
         player.addMediaItem(1, mediaItem)
     }
 
+    fun setAutoQualityEnabled(enabled: Boolean) {
+        isAutoQualityEnabled = enabled
+    }
+
+    fun setVolumeBoostLevel(level: com.arslandaim.playtube.utils.VolumeBoostLevel) {
+        _volumeBoostLevel.value = level
+        if (player.audioSessionId > 0) {
+            audioEnhancerManager.attachToAudioSession(player.audioSessionId)
+        }
+        audioEnhancerManager.setBoostLevel(level)
+    }
+
+    fun setAudioOnlyMode(enabled: Boolean) {
+        if (_isAudioOnlyMode.value == enabled) return
+        _isAudioOnlyMode.value = enabled
+        val bundle = currentBundle ?: return
+        val stream = currentStream ?: return
+        val videoId = player.currentMediaItem?.mediaId ?: return
+        if (bundle.isLive || bundle.videoStreams.isEmpty()) return
+
+        val pos = player.currentPosition
+        val wasPlaying = player.isPlaying
+        val isManifest = stream.format == "m3u8" || stream.format == "mpd"
+        val mediaSourceFactory = createMediaSourceFactory(isManifest)
+        val compositeSource = buildCompositeMediaSource(videoId, bundle, stream, mediaSourceFactory)
+
+        player.setMediaSource(compositeSource, false)
+        player.prepare()
+        if (pos > 0) player.seekTo(pos)
+        if (wasPlaying) player.play()
+        trackManager.updateCcState(player, currentCcEnabled, currentSelectedSubtitle, currentPreferredLang)
+    }
+
     private fun dropQuality() {
         val bundle = currentBundle ?: return
         val currentVideoId = player.currentMediaItem?.mediaId ?: return
@@ -696,7 +746,26 @@ class PlaybackManager @Inject constructor(
             val nextQual = qualities[currentIndex + 1]
             val nextStream = bundle.videoStreams.find { it.quality.contains(nextQual) }
             if (nextStream != null) {
+                lastQualitySwitchTime = System.currentTimeMillis()
                 switchQualitySeamlessly(currentVideoId, bundle, nextStream)
+            }
+        }
+    }
+
+    private fun upgradeQuality() {
+        val bundle = currentBundle ?: return
+        val currentVideoId = player.currentMediaItem?.mediaId ?: return
+
+        val qualities = listOf("1080", "720", "480", "360")
+        val currentQual = currentStream?.quality ?: ""
+        val currentIndex = qualities.indexOfFirst { currentQual.contains(it) }
+
+        if (currentIndex > 0) {
+            val higherQual = qualities[currentIndex - 1]
+            val higherStream = bundle.videoStreams.find { it.quality.contains(higherQual) }
+            if (higherStream != null) {
+                lastQualitySwitchTime = System.currentTimeMillis()
+                switchQualitySeamlessly(currentVideoId, bundle, higherStream)
             }
         }
     }
@@ -704,37 +773,32 @@ class PlaybackManager @Inject constructor(
     private fun startProgressUpdate() {
         progressJob?.cancel()
         progressJob = managerScope.launch {
-            var lastSaveTime = 0L
             while (true) {
                 val currentPos = player.currentPosition
                 val dur = if (player.duration == C.TIME_UNSET) 0L else player.duration
+                val bufPos = player.bufferedPosition
                 
                 _currentPosition.value = currentPos
                 _duration.value = dur
-                _bufferedPosition.value = player.bufferedPosition
+                _bufferedPosition.value = bufPos
 
-                // Phase 3: Decoupled High-Frequency Progress Tracking (Every 5 seconds)
+                // Dynamic Bitrate Downgrade on severe buffer depletion (after initial startup window)
                 val now = System.currentTimeMillis()
-                if (now - lastSaveTime >= 5000L && dur > 0 && !player.isCurrentMediaItemLive) {
-                    player.currentMediaItem?.mediaId?.let { videoId ->
-                        withContext(Dispatchers.IO) {
-                            libraryRepository.updateWatchProgress(videoId, currentPos, dur)
-                        }
-                    }
-                    lastSaveTime = now
-                }
-
-                // Phase 2: Dynamic Bitrate Dropping (SABR Strategy)
-                if (isAutoQualityEnabled && !player.isCurrentMediaItemLive) {
+                if (isAutoQualityEnabled && !_isAudioOnlyMode.value && !player.isCurrentMediaItemLive &&
+                    currentPos > 8_000L && now - lastQualitySwitchTime >= 10_000L
+                ) {
                     val estimate = bandwidthMeter.bitrateEstimate
+                    val bufferedAheadMs = (bufPos - currentPos).coerceAtLeast(0L)
                     val currentQual = currentStream?.quality ?: ""
 
-                    if (currentQual.contains("1080") && estimate < BITRATE_1080P_THRESHOLD) {
-                        PTLog.w("PlaybackManager", "Bandwidth $estimate dropped below 1080p threshold. Downgrading.")
-                        dropQuality()
-                    } else if (currentQual.contains("720") && estimate < BITRATE_720P_THRESHOLD) {
-                        PTLog.w("PlaybackManager", "Bandwidth $estimate dropped below 720p threshold. Downgrading.")
-                        dropQuality()
+                    if (bufferedAheadMs < 2_000L) {
+                        if (currentQual.contains("1080") && estimate in 1 until BITRATE_1080P_THRESHOLD) {
+                            PTLog.w("PlaybackManager", "Low buffer (${bufferedAheadMs}ms) & bandwidth $estimate < 1080p threshold. Downgrading.")
+                            dropQuality()
+                        } else if (currentQual.contains("720") && estimate in 1 until BITRATE_720P_THRESHOLD) {
+                            PTLog.w("PlaybackManager", "Low buffer (${bufferedAheadMs}ms) & bandwidth $estimate < 720p threshold. Downgrading.")
+                            dropQuality()
+                        }
                     }
                 }
 

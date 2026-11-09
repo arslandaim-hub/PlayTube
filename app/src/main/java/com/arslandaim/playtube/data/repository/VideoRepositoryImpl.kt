@@ -82,6 +82,14 @@ class VideoRepositoryImpl @Inject constructor(
                         streamInfo.uploadDate?.offsetDateTime()?.toString() ?: streamInfo.textualUploadDate
                     } else null
 
+                    val relatedVideos = streamInfo.relatedItems
+                        ?.filterIsInstance<StreamInfoItem>()
+                        ?.map { mapToVideoItem(it) } ?: emptyList()
+                    val firstRelatedId = relatedVideos.firstOrNull { it.id.isNotBlank() && it.id != videoId }?.id
+                    val nextRelatedPage = firstRelatedId?.let {
+                        Page(Constants.YouTube.VIDEO_URL_PREFIX + it, it)
+                    }
+
                     val bundle = StreamBundle(
                         videoStreams = videoStreams,
                         audioStreams = audioStreamsDeferred.await(),
@@ -98,10 +106,8 @@ class VideoRepositoryImpl @Inject constructor(
                         isLive = isLive,
                         isUpcoming = isUpcoming,
                         scheduledStartTime = scheduledStartTime,
-                        relatedVideos = streamInfo.relatedItems
-                            ?.filterIsInstance<StreamInfoItem>()
-                            ?.map { mapToVideoItem(it) } ?: emptyList(),
-                        nextRelatedVideosPage = null,
+                        relatedVideos = relatedVideos,
+                        nextRelatedVideosPage = nextRelatedPage,
                         bestAudioStreamUrl = bestAudioStream?.url,
                         subtitles = subtitlesDeferred.await()
                     )
@@ -119,18 +125,65 @@ class VideoRepositoryImpl @Inject constructor(
     private fun extractVideoStreams(streamInfo: StreamInfo, isLive: Boolean): List<StreamItem> {
         val streamsMap = mutableMapOf<String, StreamItem>()
         if (isLive) {
-            streamInfo.hlsUrl?.let { url ->
-                val item = StreamItem(url = url, quality = "Auto (Live)", format = "m3u8", isAdaptive = false)
+            val liveUrl = streamInfo.hlsUrl?.takeIf { it.isNotBlank() }
+                ?: streamInfo.dashMpdUrl?.takeIf { it.isNotBlank() }
+            liveUrl?.let { url ->
+                val format = if (url == streamInfo.dashMpdUrl) "mpd" else "m3u8"
+                val item = StreamItem(url = url, quality = "Auto (Live)", format = format, isAdaptive = false)
                 streamsMap[item.quality] = item
             }
         } else {
-            streamInfo.videoStreams?.forEach {
-                val res = it.getResolution() ?: "Unknown"
-                streamsMap[res] = StreamItem(url = it.url ?: "", quality = res, format = it.format?.suffix ?: "mp4", isAdaptive = false)
-            }
-            streamInfo.videoOnlyStreams?.forEach {
-                val res = it.getResolution() ?: "Unknown"
-                streamsMap[res] = StreamItem(url = it.url ?: "", quality = res, format = it.format?.suffix ?: "webm", isAdaptive = true)
+            // 1. Progressive (muxed) streams as initial fallback
+            streamInfo.videoStreams
+                ?.filter { !it.url.isNullOrBlank() }
+                ?.forEach {
+                    val res = it.getResolution() ?: "Unknown"
+                    streamsMap[res] = StreamItem(
+                        url = it.url ?: "",
+                        quality = res,
+                        format = it.format?.suffix ?: "mp4",
+                        isAdaptive = false
+                    )
+                }
+
+            // 2. Adaptive video-only streams override progressive streams across all resolutions.
+            // Prefer WebM (VP9) first because MatroskaExtractor starts immediately on chunked SABR byte-range streams
+            // with C.LENGTH_UNSET without requiring end-of-file moov atom seeks, then MP4 (AVC1), and avoid yt_otf streams.
+            streamInfo.videoOnlyStreams
+                ?.filter { !it.url.isNullOrBlank() }
+                ?.groupBy { it.getResolution() ?: "Unknown" }
+                ?.forEach { (res, group) ->
+                    val nonOtfGroup = group.filter { it.url?.contains("source=yt_otf") != true }
+                    val candidates = nonOtfGroup.ifEmpty { group }
+                    val bestAdaptive = candidates.maxWithOrNull(
+                        compareBy<VideoStream> { stream ->
+                            val codec = stream.codec?.lowercase() ?: ""
+                            val suffix = stream.format?.suffix?.lowercase() ?: ""
+                            when {
+                                codec.startsWith("vp9") || codec.startsWith("vp09") || suffix == "webm" -> 3
+                                codec.startsWith("avc1") || (suffix == "mp4" && !codec.startsWith("av01")) -> 2
+                                else -> 1
+                            }
+                        }.thenBy { it.bitrate }
+                    )
+                    if (bestAdaptive != null) {
+                        streamsMap[res] = StreamItem(
+                            url = bestAdaptive.url ?: "",
+                            quality = res,
+                            format = bestAdaptive.format?.suffix ?: "webm",
+                            isAdaptive = true
+                        )
+                    }
+                }
+
+            // 3. Fallback to HLS/DASH manifest if no direct streams were extracted
+            if (streamsMap.isEmpty()) {
+                val fallbackUrl = streamInfo.hlsUrl?.takeIf { it.isNotBlank() }
+                    ?: streamInfo.dashMpdUrl?.takeIf { it.isNotBlank() }
+                fallbackUrl?.let { url ->
+                    val format = if (url == streamInfo.dashMpdUrl) "mpd" else "m3u8"
+                    streamsMap["Auto"] = StreamItem(url = url, quality = "Auto", format = format, isAdaptive = false)
+                }
             }
         }
         val streams = streamsMap.values.toMutableList()
@@ -139,7 +192,7 @@ class VideoRepositoryImpl @Inject constructor(
     }
 
     private fun extractAudioStreams(streamInfo: StreamInfo): List<StreamItem> {
-        val streams = streamInfo.audioStreams ?: return emptyList()
+        val streams = streamInfo.audioStreams?.filter { !it.url.isNullOrBlank() } ?: return emptyList()
 
         val distinctLocales = streams.mapNotNull { it.audioLocale?.language }.filter { it.isNotBlank() }.distinct()
         val hasDubbedOrDescriptive = streams.any {
@@ -147,32 +200,30 @@ class VideoRepositoryImpl @Inject constructor(
             it.audioTrackType == AudioTrackType.DESCRIPTIVE ||
             (it.audioTrackName?.contains("dubbed", ignoreCase = true) == true || it.audioTrackName?.contains("descriptive", ignoreCase = true) == true)
         }
-        val hasMultipleLanguages = distinctLocales.size > 1
+        val hasMultipleTracks = distinctLocales.size > 1 || hasDubbedOrDescriptive
 
-        if (!hasDubbedOrDescriptive && !hasMultipleLanguages) {
-            // Video has no alternative language tracks or dubs.
-            // Return empty list so technical bitrate variations (48kbps, 128kbps, etc.) are not listed in the Audio Track UI.
-            return emptyList()
-        }
-
-        // Group streams by distinct track identity (locale + trackType/trackName) and select the highest bitrate stream for each track
+        // Group streams by (locale, trackType, format) and pick the highest bitrate stream for each format
+        // Keeping both m4a and webm per track ensures adaptive MP4 and WebM downloads always have a compatible audio stream to mux
         val distinctTracks = streams.groupBy {
             val lang = it.audioLocale?.toLanguageTag() ?: it.audioLocale?.language ?: "default"
             val type = it.audioTrackType?.name ?: it.audioTrackName ?: "default"
-            "$lang:$type"
+            val format = it.format?.suffix?.lowercase() ?: "m4a"
+            "$lang:$type:$format"
         }.values.mapNotNull { trackGroup ->
             trackGroup.maxByOrNull { it.averageBitrate }
         }
 
-        // Sort distinct tracks: ORIGINAL first, non-dubbed second, English/system locale third, others
+        // Sort distinct tracks: ORIGINAL first, non-dubbed second, English/system locale third, highest bitrate fourth
         val sortedTracks = distinctTracks.sortedWith(
             compareByDescending<AudioStream> { it.audioTrackType == AudioTrackType.ORIGINAL }
                 .thenByDescending { it.audioTrackType != AudioTrackType.DUBBED }
                 .thenByDescending { it.audioLocale?.language == "en" }
+                .thenByDescending { it.averageBitrate }
                 .thenBy { it.audioLocale?.displayName ?: it.audioTrackName ?: "" }
         )
 
         return sortedTracks.map {
+            val bitrateKbps = it.averageBitrate.takeIf { b -> b > 0 } ?: 128
             val langName = it.audioLocale?.displayName?.replaceFirstChar { c -> c.uppercase() }
                 ?: it.audioLocale?.displayLanguage?.replaceFirstChar { c -> c.uppercase() }
             val trackType = when (it.audioTrackType?.name) {
@@ -182,17 +233,20 @@ class VideoRepositoryImpl @Inject constructor(
                 else -> it.audioTrackName
             }
             val labelParts = mutableListOf<String>()
-            if (!langName.isNullOrBlank()) labelParts.add(langName)
-            if (!trackType.isNullOrBlank() && !labelParts.contains(trackType)) labelParts.add("($trackType)")
+            if (hasMultipleTracks) {
+                if (!langName.isNullOrBlank()) labelParts.add(langName)
+                if (!trackType.isNullOrBlank() && !labelParts.contains(trackType)) labelParts.add("($trackType)")
+            }
+            labelParts.add("${bitrateKbps}kbps")
 
-            val displayQuality = if (labelParts.isNotEmpty()) labelParts.joinToString(" ") else "Default"
+            val displayQuality = labelParts.joinToString(" ")
 
             StreamItem(
                 url = it.url ?: "",
                 quality = displayQuality,
                 format = it.format?.suffix ?: "m4a",
                 languageTag = it.audioLocale?.toLanguageTag() ?: it.audioLocale?.language,
-                trackType = it.audioTrackType?.name ?: it.audioTrackName
+                trackType = it.audioTrackType?.name ?: it.audioTrackName ?: "ORIGINAL"
             )
         }
     }
@@ -247,7 +301,23 @@ class VideoRepositoryImpl @Inject constructor(
     }
 
     override suspend fun fetchNextRelatedPage(videoId: String, page: Page): PaginatedList<VideoItem> {
-        return PaginatedList(emptyList(), null)
+        ensureInit()
+        return withContext(Dispatchers.IO) {
+            try {
+                val seedVideoId = page.id?.takeIf { it.isNotBlank() }
+                    ?: VideoUtils.extractVideoId(page.url)
+                if (seedVideoId.isBlank()) return@withContext PaginatedList(emptyList(), null)
+
+                val bundle = getStreamBundle(seedVideoId, forceRefresh = false)
+                val items = bundle.relatedVideos.filter { it.id.isNotBlank() && it.id != videoId && it.id != seedVideoId }
+                val nextSeedId = items.firstOrNull()?.id
+                val nextPage = nextSeedId?.let { Page(Constants.YouTube.VIDEO_URL_PREFIX + it, it) }
+                PaginatedList(items, nextPage)
+            } catch (e: Exception) {
+                PTLog.w("VideoRepository", "Failed to fetch next related videos page for $videoId: ${e.message}")
+                PaginatedList(emptyList(), null)
+            }
+        }
     }
 
     override suspend fun getChannelInfo(channelUrl: String): ChannelInfoBasic {
@@ -317,12 +387,64 @@ class VideoRepositoryImpl @Inject constructor(
         ensureInit()
         return withContext(Dispatchers.IO) {
             try {
-                // Use the Trending kiosk specifically for the YouTube service
-                val kiosk = KioskInfo.getInfo(ServiceList.YouTube, Constants.YouTube.TRENDING_URL)
-                PaginatedList(
-                    items = kiosk.relatedItems.filterIsInstance<StreamInfoItem>().map { mapToVideoItem(it) },
-                    nextPage = kiosk.nextPage
-                )
+                // 1. Try primary YouTube Trending kiosk
+                val primaryItems: List<VideoItem> = try {
+                    val kiosk = KioskInfo.getInfo(ServiceList.YouTube, Constants.YouTube.TRENDING_URL)
+                    val mapped = kiosk.relatedItems.filterIsInstance<StreamInfoItem>().map { mapToVideoItem(it) }
+                    if (mapped.isNotEmpty()) {
+                        return@withContext PaginatedList(items = mapped, nextPage = kiosk.nextPage)
+                    }
+                    emptyList()
+                } catch (e: Exception) {
+                    PTLog.w("VideoRepository", "Primary trending kiosk unavailable (${e.message}), falling back to active YouTube kiosks")
+                    emptyList()
+                }
+
+                // 2. Fallback: aggregate active YouTube Trending kiosks (music, gaming, podcasts) + trending search
+                val kioskIds = listOf("trending_music", "trending_gaming", "trending_podcasts_episodes")
+                val kioskDeferreds = kioskIds.map { kioskId ->
+                    async {
+                        try {
+                            val extractor = ServiceList.YouTube.kioskList.getExtractorById(kioskId, null)
+                            extractor.fetchPage()
+                            extractor.initialPage.items.filterIsInstance<StreamInfoItem>().map { mapToVideoItem(it) }
+                        } catch (e: Exception) {
+                            emptyList()
+                        }
+                    }
+                }
+
+                val searchDeferred = async {
+                    try {
+                        val searchExtractor = ServiceList.YouTube.getSearchExtractor("Trending videos", listOf("videos"), null)
+                        searchExtractor.fetchPage()
+                        val page = searchExtractor.initialPage
+                        Pair(
+                            page.items.filterIsInstance<StreamInfoItem>().map { mapToVideoItem(it) },
+                            if (page.hasNextPage()) page.nextPage else null
+                        )
+                    } catch (e: Exception) {
+                        Pair(emptyList(), null)
+                    }
+                }
+
+                val kioskLists = kioskDeferreds.map { it.await() }
+                val (searchItems, searchNextPage) = searchDeferred.await()
+
+                // Interleave results across kiosks and search so the Trending feed is diverse
+                val interleaved = mutableListOf<VideoItem>()
+                val allSources = kioskLists.filter { it.isNotEmpty() } + listOfNotNull(searchItems.takeIf { it.isNotEmpty() })
+                val maxLen = allSources.maxOfOrNull { it.size } ?: 0
+                for (i in 0 until maxLen) {
+                    for (source in allSources) {
+                        if (i < source.size) {
+                            interleaved.add(source[i])
+                        }
+                    }
+                }
+
+                val combined = (primaryItems + interleaved).distinctBy { it.id }
+                PaginatedList(items = combined, nextPage = searchNextPage)
             } catch (e: Exception) { 
                 PTLog.e("VideoRepository", "Error fetching trending videos", e)
                 PaginatedList(emptyList(), null) 
@@ -335,9 +457,22 @@ class VideoRepositoryImpl @Inject constructor(
         return withContext(Dispatchers.IO) {
             try {
                 val nextKiosk = KioskInfo.getMoreItems(ServiceList.YouTube, Constants.YouTube.TRENDING_URL, page)
+                val items = nextKiosk.items.filterIsInstance<StreamInfoItem>().map { mapToVideoItem(it) }
+                if (items.isNotEmpty()) {
+                    return@withContext PaginatedList(
+                        items = items,
+                        nextPage = if (nextKiosk.hasNextPage()) nextKiosk.nextPage else null
+                    )
+                }
+            } catch (e: Exception) {
+                PTLog.w("VideoRepository", "Primary next trending page failed, falling back to search pagination: ${e.message}")
+            }
+            try {
+                val searchExtractor = ServiceList.YouTube.getSearchExtractor("Trending videos", listOf("videos"), null)
+                val nextPage = searchExtractor.getPage(page)
                 PaginatedList(
-                    items = nextKiosk.items.filterIsInstance<StreamInfoItem>().map { mapToVideoItem(it) },
-                    nextPage = if (nextKiosk.hasNextPage()) nextKiosk.nextPage else null
+                    items = nextPage.items.filterIsInstance<StreamInfoItem>().map { mapToVideoItem(it) },
+                    nextPage = if (nextPage.hasNextPage()) nextPage.nextPage else null
                 )
             } catch (e: Exception) {
                 PTLog.e("VideoRepository", "Error fetching next trending page", e)

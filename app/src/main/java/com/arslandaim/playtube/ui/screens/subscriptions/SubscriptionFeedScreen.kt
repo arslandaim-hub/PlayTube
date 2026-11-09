@@ -285,6 +285,7 @@ private fun SubscriptionFeedContent(
             is DownloadDialogState.ShowDialog -> {
                 DownloadSelectionSheet(
                     videoStreams = downloadDialogState.bundle.videoStreams,
+                    audioStreams = downloadDialogState.bundle.audioStreams,
                     subtitles = downloadDialogState.bundle.subtitles,
                     onDismiss = { onDismissDownload() },
                     onDownload = { stream, downloadSubtitles ->

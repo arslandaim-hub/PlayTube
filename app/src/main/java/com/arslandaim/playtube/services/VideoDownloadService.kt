@@ -46,7 +46,7 @@ class VideoDownloadService : Service() {
     private lateinit var downloader: ParallelDownloader
     private val muxer = NativeMediaMuxer()
     
-    private val activeMissions = mutableMapOf<Long, Job>()
+    private val activeMissions = java.util.concurrent.ConcurrentHashMap<Long, Job>()
     private var foregroundMissionId: Long = -1L
 
     private val notificationManager by lazy {
@@ -63,7 +63,9 @@ class VideoDownloadService : Service() {
         serviceScope.launch {
             try {
                 missionDao.getAllMissions().first().forEach { mission ->
-                    if (mission.status == MissionStatus.DOWNLOADING || mission.status == MissionStatus.MUXING) {
+                    if (!activeMissions.containsKey(mission.id) &&
+                        (mission.status == MissionStatus.DOWNLOADING || mission.status == MissionStatus.MUXING)
+                    ) {
                         PTLog.d("VideoDownloadService", "Recovering stale mission ${mission.videoId}")
                         missionDao.updateStatus(mission.id, MissionStatus.PAUSED)
                         downloadDao.setDownloadStatus(mission.videoId, DownloadStatus.PAUSED)
@@ -96,20 +98,29 @@ class VideoDownloadService : Service() {
                 
                 updateNotification(missionId, "Preparing...", 0)
                 
-                // Resolve Metadata if URLs are missing (common for playlist downloads)
-                if (mission.videoUrl.isNullOrBlank()) {
+                // Resolve Metadata if URLs are missing (common for playlist downloads or retries)
+                if (mission.videoUrl.isNullOrBlank() || (!mission.subtitleLanguage.isNullOrBlank() && mission.subtitleUrl.isNullOrBlank())) {
                     PTLog.d("VideoDownloadService", "Mission ${mission.videoId} missing URLs, resolving...")
-                    val metadata = fetchStreamMetadata(mission.videoId, mission.quality)
+                    val metadata = fetchStreamMetadata(mission.videoId, mission.quality, mission.subtitleLanguage, forceRefresh = false)
+                        ?: fetchStreamMetadata(mission.videoId, mission.quality, mission.subtitleLanguage, forceRefresh = true)
                     if (metadata != null) {
                         val resolvedExtension = if (metadata.format.contains("webm", ignoreCase = true)) "webm" else "mp4"
                         val newFilePath = File(getExternalFilesDir(null), "${mission.videoId}.$resolvedExtension").absolutePath
+                        val resolvedSubtitleUrl = metadata.subtitleUrl ?: mission.subtitleUrl
+                        val resolvedSubtitleLang = metadata.subtitleLanguage ?: mission.subtitleLanguage
+                        val resolvedSubtitlePath = if (!resolvedSubtitleUrl.isNullOrBlank()) {
+                            mission.subtitlePath ?: File(getExternalFilesDir(null), "${mission.videoId}_${resolvedSubtitleLang ?: "en"}.vtt").absolutePath
+                        } else mission.subtitlePath
 
                         mission = mission.copy(
                             videoUrl = metadata.videoUrl,
                             audioUrl = metadata.audioUrl,
                             format = metadata.format,
                             quality = metadata.quality,
-                            outputFilePath = newFilePath
+                            outputFilePath = newFilePath,
+                            subtitleUrl = resolvedSubtitleUrl,
+                            subtitlePath = resolvedSubtitlePath,
+                            subtitleLanguage = resolvedSubtitleLang
                         )
                         missionDao.updateMission(mission)
                         
@@ -120,11 +131,13 @@ class VideoDownloadService : Service() {
                                 audioUrl = metadata.audioUrl,
                                 format = metadata.format,
                                 quality = metadata.quality,
-                                filePath = newFilePath
+                                filePath = newFilePath,
+                                subtitlePath = resolvedSubtitlePath,
+                                subtitleLanguage = resolvedSubtitleLang
                             ))
                         }
-                    } else {
-                        throw Exception("Failed to resolve stream metadata")
+                    } else if (mission.videoUrl.isNullOrBlank()) {
+                        throw java.io.IOException("Failed to resolve stream metadata")
                     }
                 }
 
@@ -139,24 +152,37 @@ class VideoDownloadService : Service() {
                     return@launch
                 }
 
-                PTLog.e("VideoDownloadService", "Mission $missionId failed", e)
-                
+                PTLog.e("VideoDownloadService", "Mission $missionId encountered error", e)
+                var finalException: Exception = e
+
                 if (e is ExpiredUrlException) {
-                    // Try to re-resolve and retry once
+                    // Try to re-resolve with forced cache refresh and retry once
                     try {
-                        PTLog.w("VideoDownloadService", "URL expired for mission $missionId, retrying...")
+                        PTLog.w("VideoDownloadService", "URL expired for mission $missionId, forcing refresh and retrying...")
                         val mission = missionDao.getMissionById(missionId) ?: throw e
-                        val metadata = fetchStreamMetadata(mission.videoId, mission.quality) ?: throw e
+                        val metadata = fetchStreamMetadata(mission.videoId, mission.quality, mission.subtitleLanguage, forceRefresh = true) ?: throw e
                         
                         val resolvedExtension = if (metadata.format.contains("webm", ignoreCase = true)) "webm" else "mp4"
                         val newFilePath = File(getExternalFilesDir(null), "${mission.videoId}.$resolvedExtension").absolutePath
+                        val resolvedSubtitleUrl = metadata.subtitleUrl ?: mission.subtitleUrl
+                        val resolvedSubtitleLang = metadata.subtitleLanguage ?: mission.subtitleLanguage
+                        val resolvedSubtitlePath = if (!resolvedSubtitleUrl.isNullOrBlank()) {
+                            mission.subtitlePath ?: File(getExternalFilesDir(null), "${mission.videoId}_${resolvedSubtitleLang ?: "en"}.vtt").absolutePath
+                        } else mission.subtitlePath
+
+                        if (mission.format != metadata.format) {
+                            missionDao.deleteChunksForMission(missionId)
+                        }
 
                         val updatedMission = mission.copy(
                             videoUrl = metadata.videoUrl,
                             audioUrl = metadata.audioUrl,
                             format = metadata.format,
                             quality = metadata.quality,
-                            outputFilePath = newFilePath
+                            outputFilePath = newFilePath,
+                            subtitleUrl = resolvedSubtitleUrl,
+                            subtitlePath = resolvedSubtitlePath,
+                            subtitleLanguage = resolvedSubtitleLang
                         )
                         missionDao.updateMission(updatedMission)
 
@@ -166,34 +192,62 @@ class VideoDownloadService : Service() {
                                 audioUrl = metadata.audioUrl,
                                 format = metadata.format,
                                 quality = metadata.quality,
-                                filePath = newFilePath
+                                filePath = newFilePath,
+                                subtitlePath = resolvedSubtitlePath,
+                                subtitleLanguage = resolvedSubtitleLang
                             ))
                         }
 
                         executeDownload(missionId, updatedMission)
                         return@launch
                     } catch (retryEx: Exception) {
+                        if (retryEx is CancellationException) throw retryEx
                         PTLog.e("VideoDownloadService", "Retry failed for $missionId", retryEx)
+                        finalException = retryEx
                     }
                 }
 
-                missionDao.updateStatus(missionId, MissionStatus.FAILED)
-                missionDao.getMissionById(missionId)?.let {
-                    downloadDao.setDownloadStatus(it.videoId, DownloadStatus.FAILED)
+                if (isTransientNetworkError(finalException)) {
+                    PTLog.w("VideoDownloadService", "Transient network issue for mission $missionId; queuing for auto-resume on reconnect")
+                    missionDao.updateStatus(missionId, MissionStatus.QUEUED)
+                    missionDao.getMissionById(missionId)?.let {
+                        downloadDao.setDownloadStatus(it.videoId, DownloadStatus.WAITING)
+                    }
+                    updateNotification(missionId, "Waiting for network...", 0, false)
+                } else {
+                    missionDao.updateStatus(missionId, MissionStatus.FAILED)
+                    missionDao.getMissionById(missionId)?.let {
+                        downloadDao.setDownloadStatus(it.videoId, DownloadStatus.FAILED)
+                    }
+                    val failureMsg = if (finalException.message?.contains("Insufficient storage", ignoreCase = true) == true) {
+                        "Download failed: Insufficient storage"
+                    } else {
+                        "Download failed"
+                    }
+                    updateNotification(missionId, failureMsg, 0, true)
                 }
-                updateNotification(missionId, "Download failed", 0, true)
             } finally {
                 activeMissions.remove(missionId)
+                val finalStatus = runCatching { missionDao.getMissionById(missionId)?.status }.getOrNull()
+                val keepTerminalNotification = finalStatus == MissionStatus.COMPLETED || finalStatus == MissionStatus.FAILED
+                val hasQueuedForNetwork = runCatching {
+                    missionDao.getAllMissions().first().any { it.status == MissionStatus.QUEUED }
+                }.getOrDefault(false)
+
                 if (foregroundMissionId == missionId) {
-                    foregroundMissionId = -1L
                     val nextMissionId = activeMissions.keys.firstOrNull()
                     if (nextMissionId != null) {
                         promoteToForeground(nextMissionId)
-                    } else {
-                        stopForeground(STOP_FOREGROUND_REMOVE)
+                    } else if (!hasQueuedForNetwork) {
+                        foregroundMissionId = -1L
+                        if (keepTerminalNotification) {
+                            stopForeground(STOP_FOREGROUND_DETACH)
+                        } else {
+                            stopForeground(STOP_FOREGROUND_REMOVE)
+                        }
                         stopSelf()
                     }
-                } else {
+                } else if (!hasQueuedForNetwork && !keepTerminalNotification) {
                     notificationManager.cancel(NOTIFICATION_ID_BASE + missionId.toInt())
                 }
             }
@@ -339,11 +393,32 @@ class VideoDownloadService : Service() {
         }
     }
 
-    private data class StreamMetadata(val videoUrl: String, val audioUrl: String?, val format: String, val quality: String)
+    private data class StreamMetadata(
+        val videoUrl: String,
+        val audioUrl: String?,
+        val format: String,
+        val quality: String,
+        val subtitleUrl: String? = null,
+        val subtitleLanguage: String? = null
+    )
 
-    private suspend fun fetchStreamMetadata(videoId: String, preferredQuality: String?): StreamMetadata? {
+    private suspend fun fetchStreamMetadata(
+        videoId: String,
+        preferredQuality: String?,
+        preferredSubtitleLang: String? = null,
+        forceRefresh: Boolean = false
+    ): StreamMetadata? {
         return try {
-            val bundle = videoRepository.getStreamBundle(videoId)
+            val bundle = videoRepository.getStreamBundle(videoId, forceRefresh = forceRefresh)
+            val matchedSubtitle = if (!preferredSubtitleLang.isNullOrBlank() && bundle.subtitles.isNotEmpty()) {
+                bundle.subtitles.find { it.id.equals(preferredSubtitleLang, ignoreCase = true) }
+                    ?: bundle.subtitles.find { it.languageTag.equals(preferredSubtitleLang, ignoreCase = true) && !it.isAutoGenerated }
+                    ?: bundle.subtitles.find { it.languageTag.equals(preferredSubtitleLang, ignoreCase = true) }
+                    ?: bundle.subtitles.find { it.languageTag.startsWith(preferredSubtitleLang, ignoreCase = true) && !it.isAutoGenerated }
+                    ?: bundle.subtitles.find { it.languageTag.startsWith(preferredSubtitleLang, ignoreCase = true) }
+                    ?: bundle.subtitles.firstOrNull { !it.isAutoGenerated }
+                    ?: bundle.subtitles.firstOrNull()
+            } else null
             
             val videoStream = if (!preferredQuality.isNullOrBlank()) {
                 bundle.videoStreams.find { it.quality.contains(preferredQuality, ignoreCase = true) }
@@ -384,16 +459,61 @@ class VideoDownloadService : Service() {
             if (videoStream.isAdaptive && audioUrl == null) {
                 val progressiveStream = bundle.videoStreams.find { !it.isAdaptive }
                 if (progressiveStream != null) {
-                    return StreamMetadata(progressiveStream.url, null, progressiveStream.format, progressiveStream.quality)
+                    return StreamMetadata(
+                        progressiveStream.url,
+                        null,
+                        progressiveStream.format,
+                        progressiveStream.quality,
+                        matchedSubtitle?.url,
+                        matchedSubtitle?.languageTag ?: preferredSubtitleLang
+                    )
                 }
                 return null
             }
 
-            StreamMetadata(videoUrl, audioUrl, format, videoStream.quality)
+            StreamMetadata(
+                videoUrl,
+                audioUrl,
+                format,
+                videoStream.quality,
+                matchedSubtitle?.url,
+                matchedSubtitle?.languageTag ?: preferredSubtitleLang
+            )
         } catch (e: Exception) {
             PTLog.e("VideoDownloadService", "Failed to fetch metadata for $videoId", e)
             null
         }
+    }
+
+    private fun isNetworkAvailable(): Boolean {
+        val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return true
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
+    private fun isTransientNetworkError(e: Throwable): Boolean {
+        if (!isNetworkAvailable()) return true
+        var current: Throwable? = e
+        while (current != null) {
+            if (current is java.net.UnknownHostException ||
+                current is java.net.SocketTimeoutException ||
+                current is java.net.ConnectException ||
+                current is java.net.NoRouteToHostException ||
+                current is java.net.SocketException ||
+                current is javax.net.ssl.SSLException ||
+                current is java.io.EOFException
+            ) {
+                return true
+            }
+            if (current is java.io.IOException &&
+                current.message?.contains("Insufficient storage", ignoreCase = true) != true
+            ) {
+                return true
+            }
+            current = current.cause
+        }
+        return false
     }
 
     private class ExpiredUrlException : Exception("URL expired")
@@ -430,9 +550,10 @@ class VideoDownloadService : Service() {
         val builder = NotificationCompat.Builder(this, Constants.DOWNLOAD_CHANNEL_ID)
             .setContentTitle("PlayTube Downloader")
             .setContentText(content)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setProgress(100, progress, false)
+            .setSmallIcon(if (finished) android.R.drawable.stat_sys_download_done else android.R.drawable.stat_sys_download)
+            .setProgress(if (finished) 0 else 100, if (finished) 0 else progress, false)
             .setOngoing(!finished)
+            .setAutoCancel(finished)
             
         notificationManager.notify(NOTIFICATION_ID_BASE + missionId.toInt(), builder.build())
     }

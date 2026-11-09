@@ -9,10 +9,10 @@ import java.util.regex.Pattern
 
 object SubtitleSanitizer {
 
-    private val INLINE_TIMESTAMP_REGEX = Pattern.compile("<\\d{2}:\\d{2}:\\d{2}\\.\\d{3}>")
+    private val INLINE_TIMESTAMP_REGEX = Pattern.compile("<\\d{1,2}:\\d{2}:\\d{2}[.,]\\d{3}>|<\\d{1,2}:\\d{2}[.,]\\d{3}>")
     private val HTML_TAG_REGEX = Pattern.compile("<[^>]+>")
-    private val WEBVTT_HEADER_REGEX = Pattern.compile("^WEBVTT.*$", Pattern.MULTILINE or Pattern.CASE_INSENSITIVE)
-    private val CUE_TIMING_REGEX = Pattern.compile("^(\\d{2}:\\d{2}:\\d{2}\\.\\d{3}|\\d{2}:\\d{2}\\.\\d{3})\\s*-->\\s*(\\d{2}:\\d{2}:\\d{2}\\.\\d{3}|\\d{2}:\\d{2}\\.\\d{3})(.*)$")
+    private val WEBVTT_HEADER_REGEX = Pattern.compile("^\\uFEFF?WEBVTT.*$", Pattern.MULTILINE or Pattern.CASE_INSENSITIVE)
+    private val CUE_TIMING_REGEX = Pattern.compile("^(\\d{1,2}:\\d{2}:\\d{2}[.,]\\d{3}|\\d{1,2}:\\d{2}[.,]\\d{3})\\s*-->\\s*(\\d{1,2}:\\d{2}:\\d{2}[.,]\\d{3}|\\d{1,2}:\\d{2}[.,]\\d{3})(.*)$")
 
     /**
      * Cleans an individual cue text string by removing inline voice, class, timestamp, and XML/HTML markup tags.
@@ -41,14 +41,18 @@ object SubtitleSanitizer {
         return lines.joinToString(" ").trim()
     }
 
+    private const val MAX_SINGLE_LINE_CHARS = 42
+
     /**
      * Sanitizes full WebVTT string content (e.g. from YouTube auto-generated captions).
-     * Consolidates rapid word-by-word ASR fragments into clean, single-line/2-line sentence blocks.
+     * Consolidates rapid word-by-word ASR fragments and splits long cues into sequential
+     * single-line cues so subtitles always render on one line.
      */
     fun sanitizeWebVtt(vttContent: String): String {
-        if (vttContent.isBlank()) return "WEBVTT\n\n"
+        val normalizedContent = vttContent.removePrefix("\uFEFF")
+        if (normalizedContent.isBlank()) return "WEBVTT\n\n"
 
-        val lines = vttContent.lines()
+        val lines = normalizedContent.lines()
         val rawCues = mutableListOf<RawCue>()
 
         var currentTiming: String? = null
@@ -56,18 +60,36 @@ object SubtitleSanitizer {
         var currentEndMs = 0L
         var currentTextLines = mutableListOf<String>()
 
+        fun flushCueBlock() {
+            if (currentTiming == null || currentTextLines.isEmpty()) return
+            val cleanedLines = currentTextLines
+                .map { cleanCueText(it) }
+                .filter { it.isNotBlank() }
+            if (cleanedLines.isEmpty()) return
+
+            // Remove YouTube ASR rollup duplicate lines that repeat the previous cue
+            val lastCueText = rawCues.lastOrNull()?.text
+            val deduplicatedLines = if (lastCueText != null && cleanedLines.size > 1) {
+                cleanedLines.dropWhile { line ->
+                    line.equals(lastCueText, ignoreCase = true) ||
+                        lastCueText.endsWith(line, ignoreCase = true)
+                }
+            } else {
+                cleanedLines
+            }
+
+            val finalText = deduplicatedLines.joinToString(" ").replace(Regex("\\s+"), " ").trim()
+            if (finalText.isNotBlank() && currentEndMs > currentStartMs) {
+                rawCues.add(RawCue(currentStartMs, currentEndMs, finalText))
+            }
+        }
+
         for (line in lines) {
             val trimmed = line.trim()
             val matcher = CUE_TIMING_REGEX.matcher(trimmed)
 
             if (matcher.matches()) {
-                // Save previous cue block if present
-                if (currentTiming != null && currentTextLines.isNotEmpty()) {
-                    val cleanText = cleanCueText(currentTextLines.joinToString(" "))
-                    if (cleanText.isNotBlank()) {
-                        rawCues.add(RawCue(currentStartMs, currentEndMs, cleanText))
-                    }
-                }
+                flushCueBlock()
 
                 val startStr = matcher.group(1) ?: "00:00.000"
                 val endStr = matcher.group(2) ?: "00:00.000"
@@ -80,17 +102,16 @@ object SubtitleSanitizer {
             }
         }
 
-        // Add last block
-        if (currentTiming != null && currentTextLines.isNotEmpty()) {
-            val cleanText = cleanCueText(currentTextLines.joinToString(" "))
-            if (cleanText.isNotBlank()) {
-                rawCues.add(RawCue(currentStartMs, currentEndMs, cleanText))
-            }
+        // Flush last block
+        flushCueBlock()
+
+        if (rawCues.isEmpty()) {
+            rawCues.addAll(extractXmlOrTtmlCues(normalizedContent))
         }
 
         if (rawCues.isEmpty()) return "WEBVTT\n\n"
 
-        // Consolidate rapid word/chunk ASR fragment cues into stable single-line/2-line sentence blocks
+        // Consolidate rapid word/chunk ASR fragment cues into stable single-line sentence blocks
         val consolidated = mutableListOf<RawCue>()
 
         for (cue in rawCues) {
@@ -103,50 +124,61 @@ object SubtitleSanitizer {
                 val isExactDuplicate = last.text.equals(cue.text, ignoreCase = true)
                 val isPrefix = cue.text.startsWith(last.text, ignoreCase = true)
                 val isSuffix = last.text.endsWith(cue.text, ignoreCase = true)
-                val isOverlappingOrClose = cue.startMs <= last.endMs + 1200L
+                val isOverlappingOrClose = cue.startMs <= last.endMs + 800L
 
                 if (isExactDuplicate || isPrefix) {
                     // Cumulative prefix update (YouTube progressive building cue)
-                    val newEnd = maxOf(last.endMs, cue.endMs, last.startMs + 2000L)
+                    val newEnd = maxOf(last.endMs, cue.endMs)
                     consolidated[lastIndex] = RawCue(last.startMs, newEnd, cue.text)
                 } else if (isSuffix) {
                     // Sub-fragment duplicate
-                    val newEnd = maxOf(last.endMs, cue.endMs, last.startMs + 2000L)
+                    val newEnd = maxOf(last.endMs, cue.endMs)
                     consolidated[lastIndex] = RawCue(last.startMs, newEnd, last.text)
                 } else if (isOverlappingOrClose && !hasSentenceEnding(last.text)) {
-                    // Combine into continuous horizontal line if length permits
+                    // Combine into continuous single horizontal line only if it fits on one line
                     val combinedText = "${last.text} ${cue.text}".replace(Regex("\\s+"), " ").trim()
 
-                    if (combinedText.length <= 80) {
-                        val newEnd = maxOf(last.endMs, cue.endMs, last.startMs + 2000L)
+                    if (combinedText.length <= MAX_SINGLE_LINE_CHARS) {
+                        val newEnd = maxOf(last.endMs, cue.endMs)
                         consolidated[lastIndex] = RawCue(last.startMs, newEnd, combinedText)
                     } else {
-                        // Sentence line limit reached, cap previous cue duration and start new cue block
-                        val adjustedPrevEnd = maxOf(last.endMs, last.startMs + 2000L).coerceAtMost(cue.startMs)
+                        val adjustedPrevEnd = last.endMs.coerceAtMost(cue.startMs).coerceAtLeast(last.startMs + 200L)
                         consolidated[lastIndex] = RawCue(last.startMs, adjustedPrevEnd, last.text)
                         consolidated.add(cue)
                     }
                 } else {
-                    // Natural sentence boundary or time gap > 1.2s
-                    val adjustedPrevEnd = maxOf(last.endMs, last.startMs + 2000L).coerceAtMost(cue.startMs)
+                    val adjustedPrevEnd = last.endMs.coerceAtMost(cue.startMs).coerceAtLeast(last.startMs + 200L)
                     consolidated[lastIndex] = RawCue(last.startMs, adjustedPrevEnd, last.text)
                     consolidated.add(cue)
                 }
             }
         }
 
-        // Format consolidated cues into clean 1-line or 2-line WebVTT entries
-        val sb = StringBuilder("WEBVTT\n\n")
+        // Split any long cues into sequential single-line cues and clamp overlapping timestamps
+        val singleLineCues = mutableListOf<RawCue>()
         for ((index, cue) in consolidated.withIndex()) {
-            val startTs = formatMsToTimestamp(cue.startMs)
-            val minDisplayDuration = if (cue.text.length > 40) 3000L else 2000L
-            val endTs = formatMsToTimestamp(maxOf(cue.endMs, cue.startMs + minDisplayDuration))
+            val nextStartMs = consolidated.getOrNull(index + 1)?.startMs
+            val minEndMs = cue.startMs + 1500L
+            val desiredEndMs = maxOf(cue.endMs, minEndMs)
+            val clampedEndMs = if (nextStartMs != null && nextStartMs > cue.startMs + 200L) {
+                desiredEndMs.coerceAtMost(nextStartMs)
+            } else {
+                desiredEndMs
+            }
 
-            val formattedText = formatLineBreaksIfNeeded(cue.text)
+            singleLineCues.addAll(splitIntoSingleLineCues(cue.startMs, clampedEndMs, cue.text))
+        }
+
+        // Format into strictly single-line WebVTT entries
+        val sb = StringBuilder("WEBVTT\n\n")
+        for ((index, cue) in singleLineCues.withIndex()) {
+            val startTs = formatMsToTimestamp(cue.startMs)
+            val endTs = formatMsToTimestamp(maxOf(cue.endMs, cue.startMs + 200L))
+            val singleLineText = cue.text.replace("\n", " ").replace(Regex("\\s+"), " ").trim()
 
             sb.append(index + 1).append("\n")
             sb.append(startTs).append(" --> ").append(endTs).append("\n")
-            sb.append(formattedText).append("\n\n")
+            sb.append(singleLineText).append("\n\n")
         }
 
         return sb.toString()
@@ -158,35 +190,56 @@ object SubtitleSanitizer {
     }
 
     /**
-     * Formats long cue text into at most 2 balanced horizontal lines.
-     * Prevents single-word line breaks.
+     * Splits a cue exceeding [MAX_SINGLE_LINE_CHARS] into sequential single-line chunks
+     * with proportionally distributed timestamps so every chunk fits on one line.
      */
-    private fun formatLineBreaksIfNeeded(text: String): String {
+    private fun splitIntoSingleLineCues(startMs: Long, endMs: Long, text: String): List<RawCue> {
         val clean = text.replace("\n", " ").replace(Regex("\\s+"), " ").trim()
-        if (clean.length <= 42) return clean
+        if (clean.isEmpty()) return emptyList()
+        if (clean.length <= MAX_SINGLE_LINE_CHARS) {
+            return listOf(RawCue(startMs, endMs, clean))
+        }
 
         val words = clean.split(" ")
-        if (words.size <= 3) return clean
+        val chunks = mutableListOf<String>()
+        var currentChunk = StringBuilder()
 
-        val targetLen = clean.length / 2
-        var currentLen = 0
-        var splitIndex = -1
-
-        for (i in words.indices) {
-            currentLen += words[i].length + 1
-            if (currentLen >= targetLen) {
-                splitIndex = i
-                break
+        for (word in words) {
+            if (currentChunk.isEmpty()) {
+                currentChunk.append(word)
+            } else if (currentChunk.length + 1 + word.length <= MAX_SINGLE_LINE_CHARS) {
+                currentChunk.append(" ").append(word)
+            } else {
+                chunks.add(currentChunk.toString())
+                currentChunk = StringBuilder(word)
             }
         }
-
-        if (splitIndex in 1 until words.size - 1) {
-            val line1 = words.subList(0, splitIndex + 1).joinToString(" ")
-            val line2 = words.subList(splitIndex + 1, words.size).joinToString(" ")
-            return "$line1\n$line2"
+        if (currentChunk.isNotEmpty()) {
+            chunks.add(currentChunk.toString())
         }
 
-        return clean
+        if (chunks.size <= 1) {
+            return listOf(RawCue(startMs, endMs, clean))
+        }
+
+        val totalDuration = (endMs - startMs).coerceAtLeast(chunks.size * 400L)
+        val totalChars = chunks.sumOf { it.length }.coerceAtLeast(1)
+        val result = mutableListOf<RawCue>()
+        var cursorMs = startMs
+
+        for ((i, chunk) in chunks.withIndex()) {
+            val chunkEndMs = if (i == chunks.lastIndex) {
+                maxOf(endMs, cursorMs + 300L)
+            } else {
+                val proportionalDuration = (totalDuration * chunk.length) / totalChars
+                (cursorMs + proportionalDuration.coerceAtLeast(300L)).coerceAtMost(endMs - (chunks.size - 1 - i) * 200L)
+            }
+            val safeEndMs = maxOf(chunkEndMs, cursorMs + 200L)
+            result.add(RawCue(cursorMs, safeEndMs, chunk))
+            cursorMs = safeEndMs
+        }
+
+        return result
     }
 
     private data class RawCue(
@@ -195,19 +248,99 @@ object SubtitleSanitizer {
         val text: String
     )
 
+    private val XML_TEXT_TAG_REGEX = Pattern.compile(
+        "<text[^>]*\\bstart=[\"']([0-9.]+)[\"'][^>]*?(?:\\bdur=[\"']([0-9.]+)[\"'])?[^>]*>(.*?)</text>",
+        Pattern.DOTALL or Pattern.CASE_INSENSITIVE
+    )
+    private val XML_P_MS_TAG_REGEX = Pattern.compile(
+        "<p[^>]*\\bt=[\"'](\\d+)[\"'][^>]*?(?:\\bd=[\"'](\\d+)[\"'])?[^>]*>(.*?)</p>",
+        Pattern.DOTALL or Pattern.CASE_INSENSITIVE
+    )
+    private val TTML_P_TAG_REGEX = Pattern.compile(
+        "<p[^>]*\\bbegin=[\"']([^\"']+)[\"'][^>]*?(?:\\b(end|dur)=[\"']([^\"']+)[\"'])?[^>]*>(.*?)</p>",
+        Pattern.DOTALL or Pattern.CASE_INSENSITIVE
+    )
+
+    private fun extractXmlOrTtmlCues(content: String): List<RawCue> {
+        val cues = mutableListOf<RawCue>()
+
+        // 1. TimedText <text start="1.23" dur="4.56">...</text>
+        val textMatcher = XML_TEXT_TAG_REGEX.matcher(content)
+        while (textMatcher.find()) {
+            val startSec = textMatcher.group(1)?.toDoubleOrNull() ?: continue
+            val durSec = textMatcher.group(2)?.toDoubleOrNull() ?: 2.5
+            val rawBody = textMatcher.group(3) ?: ""
+            val clean = cleanCueText(rawBody)
+            if (clean.isNotBlank()) {
+                val startMs = (startSec * 1000).toLong()
+                val endMs = startMs + (durSec * 1000).toLong().coerceAtLeast(300L)
+                cues.add(RawCue(startMs, endMs, clean))
+            }
+        }
+        if (cues.isNotEmpty()) return cues
+
+        // 2. TimedText srv3 <p t="1230" d="4560">...</p>
+        val pMsMatcher = XML_P_MS_TAG_REGEX.matcher(content)
+        while (pMsMatcher.find()) {
+            val startMs = pMsMatcher.group(1)?.toLongOrNull() ?: continue
+            val durMs = pMsMatcher.group(2)?.toLongOrNull() ?: 2500L
+            val rawBody = pMsMatcher.group(3) ?: ""
+            val clean = cleanCueText(rawBody)
+            if (clean.isNotBlank()) {
+                cues.add(RawCue(startMs, startMs + durMs.coerceAtLeast(300L), clean))
+            }
+        }
+        if (cues.isNotEmpty()) return cues
+
+        // 3. TTML <p begin="00:00:01.230" end="00:00:05.790">...</p>
+        val ttmlMatcher = TTML_P_TAG_REGEX.matcher(content)
+        while (ttmlMatcher.find()) {
+            val beginStr = ttmlMatcher.group(1) ?: continue
+            val attrType = ttmlMatcher.group(2)?.lowercase()
+            val endOrDurStr = ttmlMatcher.group(3)
+            val rawBody = ttmlMatcher.group(4) ?: ""
+            val clean = cleanCueText(rawBody)
+            if (clean.isNotBlank()) {
+                val startMs = parseFlexibleTimeToMs(beginStr)
+                val endMs = when {
+                    endOrDurStr == null -> startMs + 2500L
+                    attrType == "dur" -> startMs + parseFlexibleTimeToMs(endOrDurStr).coerceAtLeast(300L)
+                    else -> parseFlexibleTimeToMs(endOrDurStr).coerceAtLeast(startMs + 300L)
+                }
+                cues.add(RawCue(startMs, endMs, clean))
+            }
+        }
+
+        return cues
+    }
+
+    private fun parseFlexibleTimeToMs(value: String): Long {
+        val trimmed = value.trim()
+        if (trimmed.endsWith("ms", ignoreCase = true)) {
+            return trimmed.dropLast(2).toDoubleOrNull()?.toLong() ?: 0L
+        }
+        if (trimmed.endsWith("s", ignoreCase = true)) {
+            return ((trimmed.dropLast(1).toDoubleOrNull() ?: 0.0) * 1000).toLong()
+        }
+        if (trimmed.contains(":")) {
+            return parseTimestampToMs(trimmed)
+        }
+        return ((trimmed.toDoubleOrNull() ?: 0.0) * 1000).toLong()
+    }
+
     private fun parseTimestampToMs(ts: String): Long {
         return try {
             val parts = ts.trim().split(":")
             if (parts.size == 3) {
                 val hours = parts[0].toLong()
                 val minutes = parts[1].toLong()
-                val secMs = parts[2].split(".")
+                val secMs = parts[2].split(".", ",")
                 val seconds = secMs[0].toLong()
                 val ms = secMs.getOrNull(1)?.padEnd(3, '0')?.take(3)?.toLong() ?: 0L
                 (hours * 3600 + minutes * 60 + seconds) * 1000 + ms
             } else if (parts.size == 2) {
                 val minutes = parts[0].toLong()
-                val secMs = parts[1].split(".")
+                val secMs = parts[1].split(".", ",")
                 val seconds = secMs[0].toLong()
                 val ms = secMs.getOrNull(1)?.padEnd(3, '0')?.take(3)?.toLong() ?: 0L
                 (minutes * 60 + seconds) * 1000 + ms

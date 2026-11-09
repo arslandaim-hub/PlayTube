@@ -125,25 +125,32 @@ class DownloadRepositoryImpl @Inject constructor(
     }
 
     private fun startDownloadService(missionId: Long) {
-        val intent = Intent(context, VideoDownloadService::class.java).apply {
-            action = VideoDownloadService.ACTION_START
-            putExtra("missionId", missionId)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent)
-        } else {
-            context.startService(intent)
+        try {
+            val intent = Intent(context, VideoDownloadService::class.java).apply {
+                action = VideoDownloadService.ACTION_START
+                putExtra("missionId", missionId)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        } catch (e: Exception) {
+            PTLog.e("DownloadRepository", "Failed to start foreground download service for mission $missionId", e)
+            throw e
         }
     }
 
     override suspend fun cancelDownload(videoId: String) {
         val mission = missionDao.getMissionByVideoId(videoId)
         mission?.let {
-            val intent = Intent(context, VideoDownloadService::class.java).apply {
-                action = VideoDownloadService.ACTION_STOP
-                putExtra("missionId", it.id)
+            runCatching {
+                val intent = Intent(context, VideoDownloadService::class.java).apply {
+                    action = VideoDownloadService.ACTION_STOP
+                    putExtra("missionId", it.id)
+                }
+                context.startService(intent)
             }
-            context.startService(intent)
             missionDao.deleteMission(it)
         }
         
@@ -166,11 +173,14 @@ class DownloadRepositoryImpl @Inject constructor(
     override suspend fun pauseDownload(videoId: String) {
         val mission = missionDao.getMissionByVideoId(videoId)
         mission?.let {
-            val intent = Intent(context, VideoDownloadService::class.java).apply {
-                action = VideoDownloadService.ACTION_STOP
-                putExtra("missionId", it.id)
+            runCatching {
+                val intent = Intent(context, VideoDownloadService::class.java).apply {
+                    action = VideoDownloadService.ACTION_STOP
+                    putExtra("missionId", it.id)
+                }
+                context.startService(intent)
             }
-            context.startService(intent)
+            missionDao.updateStatus(it.id, MissionStatus.PAUSED)
         }
         
         workManager.cancelUniqueWork(videoId)
@@ -181,20 +191,54 @@ class DownloadRepositoryImpl @Inject constructor(
     }
 
     override suspend fun resumeDownload(videoId: String) {
+        val entity = downloadDao.getDownloadById(videoId)
         val mission = missionDao.getMissionByVideoId(videoId)
-        mission?.let {
-            startDownloadService(it.id)
+
+        if (mission != null) {
+            val wasFailed = mission.status == MissionStatus.FAILED || entity?.status == DownloadStatus.FAILED
+            val updatedMission = if (wasFailed) {
+                missionDao.deleteChunksForMission(mission.id)
+                mission.copy(
+                    status = MissionStatus.QUEUED,
+                    videoUrl = null,
+                    audioUrl = null,
+                    subtitleUrl = null,
+                    downloadedBytes = 0L
+                )
+            } else {
+                mission.copy(status = MissionStatus.QUEUED)
+            }
+            missionDao.updateMission(updatedMission)
+
+            entity?.let {
+                downloadDao.updateDownload(
+                    it.copy(
+                        status = DownloadStatus.WAITING,
+                        videoUrl = if (wasFailed) null else it.videoUrl,
+                        audioUrl = if (wasFailed) null else it.audioUrl,
+                        downloadedSize = if (wasFailed) 0L else it.downloadedSize
+                    )
+                )
+            }
+
+            startDownloadService(mission.id)
             return
         }
         
-        val entity = downloadDao.getDownloadById(videoId)
         entity?.let {
-            if (it.status == DownloadStatus.PAUSED || it.status == DownloadStatus.FAILED) {
-                downloadDao.updateDownload(it.copy(status = DownloadStatus.WAITING))
-                
-                // Clear videoUrl on resume of failed downloads so fresh URLs are fetched
-                val freshVideoUrl = if (it.status == DownloadStatus.FAILED) null else it.videoUrl
-                val freshAudioUrl = if (it.status == DownloadStatus.FAILED) null else it.audioUrl
+            if (it.status == DownloadStatus.PAUSED || it.status == DownloadStatus.FAILED || it.status == DownloadStatus.WAITING) {
+                val wasFailed = it.status == DownloadStatus.FAILED
+                val freshVideoUrl = if (wasFailed) null else it.videoUrl
+                val freshAudioUrl = if (wasFailed) null else it.audioUrl
+
+                downloadDao.updateDownload(
+                    it.copy(
+                        status = DownloadStatus.WAITING,
+                        videoUrl = freshVideoUrl,
+                        audioUrl = freshAudioUrl,
+                        downloadedSize = if (wasFailed) 0L else it.downloadedSize
+                    )
+                )
 
                 val newMission = DownloadMissionEntity(
                     videoId = it.videoId,
@@ -203,7 +247,9 @@ class DownloadRepositoryImpl @Inject constructor(
                     videoUrl = freshVideoUrl,
                     audioUrl = freshAudioUrl,
                     format = it.format,
-                    outputFilePath = it.filePath
+                    outputFilePath = it.filePath,
+                    subtitlePath = it.subtitlePath,
+                    subtitleLanguage = it.subtitleLanguage
                 )
                 val missionId = missionDao.insertMission(newMission)
                 startDownloadService(missionId)

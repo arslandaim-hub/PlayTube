@@ -591,6 +591,7 @@ private fun SearchContent(
                 is DownloadDialogState.ShowDialog -> {
                 DownloadSelectionSheet(
                     videoStreams = currentDownloadState.bundle.videoStreams,
+                    audioStreams = currentDownloadState.bundle.audioStreams,
                     subtitles = currentDownloadState.bundle.subtitles,
                     onDismiss = { onDismissDownload() },
                     onDownload = { stream, downloadSubtitles ->

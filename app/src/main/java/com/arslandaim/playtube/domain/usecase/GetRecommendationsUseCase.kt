@@ -46,12 +46,12 @@ class GetRecommendationsUseCase @Inject constructor(
             
             val seedKeywords = mutableListOf<String>()
             val relatedVideoSeeds = mutableListOf<String>() // Video IDs to fetch related from
-            
+
             // Interest-based seeds (Keywords)
             if (topInterests.isNotEmpty()) {
-                seedKeywords.addAll(topInterests.take(5).map { it.keyword }) 
+                seedKeywords.addAll(topInterests.take(5).map { it.keyword })
             }
-            
+
             // Recent-based seeds (Related Videos)
             if (watchHistory.isNotEmpty()) {
                 relatedVideoSeeds.addAll(watchHistory.take(3).map { it.videoId })
@@ -93,7 +93,7 @@ class GetRecommendationsUseCase @Inject constructor(
             }
 
             // Source B: Related Videos (Deep/Specific)
-            val highPrioritySeeds = watchHistory.take(3).map { it.videoId } 
+            val highPrioritySeeds = watchHistory.take(3).map { it.videoId }
             highPrioritySeeds.forEach { videoId ->
                 val deferred = async {
                     try {

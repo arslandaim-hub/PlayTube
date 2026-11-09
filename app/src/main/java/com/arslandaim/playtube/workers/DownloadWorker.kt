@@ -113,9 +113,9 @@ class DownloadWorker @AssistedInject constructor(
         return@withContext try {
             doDownload(videoId, currentVideoUrl, currentAudioUrl, title, currentFormat, subtitleUrl, subtitleLang)
         } catch (e: ExpiredUrlException) {
-            PTLog.w("DownloadWorker", "URL expired for $videoId, re-fetching metadata...")
+            PTLog.w("DownloadWorker", "URL expired for $videoId, re-fetching metadata with forceRefresh...")
             val retryData = downloadMutex.withLock {
-                val metadata = fetchStreamMetadata(videoId, preferredQuality) ?: return@withLock null
+                val metadata = fetchStreamMetadata(videoId, preferredQuality, forceRefresh = true) ?: return@withLock null
                 currentVideoUrl = metadata.videoUrl
                 currentAudioUrl = metadata.audioUrl
                 val retryFormat = metadata.format
@@ -132,7 +132,10 @@ class DownloadWorker @AssistedInject constructor(
                     ))
                 }
                 Triple(currentVideoUrl, currentAudioUrl, retryFormat)
-            } ?: return@withContext Result.failure()
+            } ?: run {
+                downloadDao.setDownloadStatus(videoId, DownloadStatus.WAITING)
+                return@withContext Result.retry()
+            }
 
             try {
                 doDownload(videoId, retryData.first, retryData.second, title, retryData.third, subtitleUrl, subtitleLang)
@@ -150,15 +153,23 @@ class DownloadWorker @AssistedInject constructor(
                 downloadDao.updateProgress(videoId, DownloadStatus.FAILED, 0, 0)
                 Result.failure()
             }
+        } catch (e: IOException) {
+            PTLog.w("DownloadWorker", "Transient network error for $videoId, scheduling WorkManager retry...", e)
+            downloadDao.setDownloadStatus(videoId, DownloadStatus.WAITING)
+            Result.retry()
         }
     }
 
     private data class StreamMetadata(val videoUrl: String, val audioUrl: String?, val format: String, val quality: String)
 
-    private suspend fun fetchStreamMetadata(videoId: String, preferredQuality: String?): StreamMetadata? {
+    private suspend fun fetchStreamMetadata(
+        videoId: String,
+        preferredQuality: String?,
+        forceRefresh: Boolean = false
+    ): StreamMetadata? {
         return try {
-            PTLog.d("DownloadWorker", "Fetching metadata for $videoId (Preferred: $preferredQuality)")
-            val bundle = videoRepository.getStreamBundle(videoId)
+            PTLog.d("DownloadWorker", "Fetching metadata for $videoId (Preferred: $preferredQuality, forceRefresh: $forceRefresh)")
+            val bundle = videoRepository.getStreamBundle(videoId, forceRefresh = forceRefresh)
             
             val videoStream = if (!preferredQuality.isNullOrBlank()) {
                 bundle.videoStreams.find { it.quality.contains(preferredQuality, ignoreCase = true) }

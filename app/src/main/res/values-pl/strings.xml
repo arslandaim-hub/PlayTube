@@ -19,6 +19,7 @@
     <string name="personalized_desc">Wzorowane na historii Twojego wyszukiwania</string>
     <string name="no_subscriptions_videos">Nie ma filmów z Twoich subskrybcji na razie.</string>
     <string name="no_videos_found">Nie znaleziono żadnych filmów.</string>
+    <string name="continue_playing">Kontynuuj odtwarzanie</string>
 
     <!-- Player -->
     <string name="quality">Jakość</string>
@@ -120,6 +121,7 @@
     <string name="download_quality">Pobierz jakość</string>
     <string name="playlist_download_quality">Jakość playlisty pobierania</string>
     <string name="auto_generated">Automatycznie wygenerowane</string>
+    <string name="app_language">Język aplikacji</string>
     <string name="language_auto_generated">%1$s (%2$s)</string>
 
     <!-- Sleep Timer -->

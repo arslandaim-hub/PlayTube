@@ -314,12 +314,7 @@ private fun HomeContent(
         }
     }
 
-    // Header Scroll State
-    val density = LocalDensity.current
-    var headerHeightPx by remember { mutableFloatStateOf(0f) }
-    var headerOffsetPx by remember { mutableFloatStateOf(0f) }
-
-    val connection = remember(headerHeightPx) {
+    val connection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 val delta = available.y
@@ -327,23 +322,6 @@ private fun HomeContent(
                 // Bottom Bar Hiding Logic (Binary Toggle for global Bars)
                 if (delta < -15f) onBarsVisibilityChange(false)
                 if (delta > 15f) onBarsVisibilityChange(true)
-
-                // Scrolling Down: Collapse Header
-                if (delta < 0 && headerOffsetPx > -headerHeightPx) {
-                    val newOffset = (headerOffsetPx + delta).coerceIn(-headerHeightPx, 0f)
-                    val consumed = newOffset - headerOffsetPx
-                    headerOffsetPx = newOffset
-                    return Offset(0f, consumed)
-                }
-                
-                // Scrolling Up: Expand Header
-                // Check if we are at the top of the list or scrolling up significantly
-                if (delta > 0 && headerOffsetPx < 0f) {
-                    val newOffset = (headerOffsetPx + delta).coerceIn(-headerHeightPx, 0f)
-                    val consumed = newOffset - headerOffsetPx
-                    headerOffsetPx = newOffset
-                    return Offset(0f, consumed)
-                }
 
                 return Offset.Zero
             }
@@ -448,7 +426,7 @@ private fun HomeContent(
                                 )
                             },
                             contentPadding = PaddingValues(
-                                top = with(density) { headerHeightPx.toDp() },
+                                top = 0.dp,
                                 bottom = 100.dp
                             )
                         )
@@ -456,18 +434,6 @@ private fun HomeContent(
                 }
             }
         }
-
-        // Header placeholder (could be used for categories if added later)
-        Spacer(
-            modifier = Modifier
-                .fillMaxWidth()
-                .onGloballyPositioned { layoutCoordinates ->
-                    val newHeight = layoutCoordinates.size.height.toFloat()
-                    if (headerHeightPx != newHeight) {
-                        headerHeightPx = newHeight
-                    }
-                }
-        )
 
         // Quick Action Dialogs
         when (val downloadDialogState = downloadState) {
@@ -487,6 +453,7 @@ private fun HomeContent(
             is DownloadDialogState.ShowDialog -> {
                 DownloadSelectionSheet(
                     videoStreams = downloadDialogState.bundle.videoStreams,
+                    audioStreams = downloadDialogState.bundle.audioStreams,
                     subtitles = downloadDialogState.bundle.subtitles,
                     onDismiss = { onDismissDownload() },
                     onDownload = { stream, downloadSubtitles ->

@@ -459,6 +459,7 @@ private fun PlaylistContent(
             is com.arslandaim.playtube.ui.components.DownloadDialogState.ShowDialog -> {
                 DownloadSelectionSheet(
                     videoStreams = downloadState.bundle.videoStreams,
+                    audioStreams = downloadState.bundle.audioStreams,
                     subtitles = downloadState.bundle.subtitles,
                     onDismiss = { onDismissDownload() },
                     onDownload = { stream, downloadSubtitles ->

@@ -7,6 +7,7 @@ package com.arslandaim.playtube.ui.components.player
 
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -28,10 +29,23 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.arslandaim.playtube.domain.model.SponsorSegment
 import com.arslandaim.playtube.utils.VideoChapter
+import java.util.Locale
+
+private fun formatScrubTime(ms: Long): String {
+    val totalSeconds = (ms / 1000).coerceAtLeast(0L)
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) {
+        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.US, "%02d:%02d", minutes, seconds)
+    }
+}
 
 /**
  * Interactive progress bar that sits at the bottom of the player with horizontal margins,
- * rounded ends, start/end timestamps, and bottom elevation.
+ * rounded ends, start/end timestamps, chapter markers, A-B loop markers, and scrub preview.
  */
 @Composable
 fun PersistentProgressBar(
@@ -43,12 +57,22 @@ fun PersistentProgressBar(
     chapters: List<VideoChapter> = emptyList(),
     sponsorSegments: List<SponsorSegment> = emptyList(),
     durationMs: Long = 0L,
+    abLoopStartMs: Long? = null,
+    abLoopEndMs: Long? = null,
+    onChapterClick: (() -> Unit)? = null,
     activeColor: Color = Color.Red,
     bufferedColor: Color = Color.White.copy(alpha = 0.3f),
     backgroundColor: Color = Color.White.copy(alpha = 0.15f)
 ) {
+    var scrubFraction by remember { mutableStateOf<Float?>(null) }
+    val isScrubbing = scrubFraction != null
+
     val animatedHeight by animateDpAsState(
-        targetValue = if (isInteractive) 6.dp else 2.dp,
+        targetValue = when {
+            isScrubbing -> 8.dp
+            isInteractive -> 6.dp
+            else -> 2.dp
+        },
         label = "ProgressBarHeight"
     )
 
@@ -77,10 +101,24 @@ fun PersistentProgressBar(
         }
     }
 
-    val currentChapterTitle = remember(progress(), chapters, durationMs) {
-        if (!hasChapters) null else {
-            val currentMs = (progress() * durationMs).toLong()
-            chapters.findLast { currentMs >= it.startMs }?.title
+    val currentChapterTitle by remember(chapters, durationMs) {
+        derivedStateOf {
+            if (!hasChapters) null else {
+                val effectiveFrac = scrubFraction ?: progress()
+                val currentMs = (effectiveFrac * durationMs).toLong()
+                chapters.findLast { currentMs >= it.startMs }?.title
+            }
+        }
+    }
+
+    val scrubPreviewLabel by remember(durationMs, chapters) {
+        derivedStateOf {
+            val frac = scrubFraction ?: return@derivedStateOf null
+            if (durationMs <= 0L) return@derivedStateOf null
+            val targetMs = (frac * durationMs).toLong()
+            val timeStr = formatScrubTime(targetMs)
+            val chap = if (hasChapters) chapters.findLast { targetMs >= it.startMs }?.title else null
+            if (!chap.isNullOrBlank()) "$timeStr • $chap" else timeStr
         }
     }
 
@@ -90,15 +128,22 @@ fun PersistentProgressBar(
             .padding(horizontal = 20.dp)
             .padding(bottom = 16.dp)
     ) {
-        if (isInteractive && !currentChapterTitle.isNullOrBlank()) {
+        val badgeText = scrubPreviewLabel ?: if (isInteractive && !currentChapterTitle.isNullOrBlank()) "• $currentChapterTitle" else null
+        if (!badgeText.isNullOrBlank()) {
             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Surface(
-                    color = Color.Black.copy(alpha = 0.75f),
+                    color = Color.Black.copy(alpha = 0.8f),
                     shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    modifier = Modifier
+                        .padding(bottom = 8.dp)
+                        .then(
+                            if (onChapterClick != null && hasChapters && !isScrubbing) {
+                                Modifier.clickable { onChapterClick() }
+                            } else Modifier
+                        )
                 ) {
                     Text(
-                        text = "• $currentChapterTitle",
+                        text = badgeText,
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
@@ -124,19 +169,35 @@ fun PersistentProgressBar(
                                 }
                             }
                             .pointerInput(hasChapters, durationMs) {
-                                detectDragGestures { change, _ ->
-                                    change.consume()
-                                    val frac = (change.position.x / size.width).coerceIn(0f, 1f)
-                                    if (hasChapters && durationMs > 0) {
-                                        val currentMs = (frac * durationMs).toLong()
-                                        val currentIdx = chapters.indexOfLast { currentMs >= it.startMs }
-                                        if (currentIdx != -1 && currentIdx != lastChapterIndex) {
-                                            lastChapterIndex = currentIdx
-                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                detectDragGestures(
+                                    onDragStart = { offset ->
+                                        val frac = (offset.x / size.width).coerceIn(0f, 1f)
+                                        scrubFraction = frac
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    },
+                                    onDragEnd = {
+                                        scrubFraction?.let { finalFrac ->
+                                            onSeek(finalFrac)
+                                        }
+                                        scrubFraction = null
+                                    },
+                                    onDragCancel = {
+                                        scrubFraction = null
+                                    },
+                                    onDrag = { change, _ ->
+                                        change.consume()
+                                        val frac = (change.position.x / size.width).coerceIn(0f, 1f)
+                                        scrubFraction = frac
+                                        if (hasChapters && durationMs > 0) {
+                                            val currentMs = (frac * durationMs).toLong()
+                                            val currentIdx = chapters.indexOfLast { currentMs >= it.startMs }
+                                            if (currentIdx != -1 && currentIdx != lastChapterIndex) {
+                                                lastChapterIndex = currentIdx
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            }
                                         }
                                     }
-                                    onSeek(frac)
-                                }
+                                )
                             }
                     } else Modifier
                 ),
@@ -152,7 +213,7 @@ fun PersistentProgressBar(
                 val centerY = size.height / 2
                 val strokeWidth = animatedHeight.toPx()
                 val gapPx = if (hasChapters) 3.dp.toPx() else 0f
-                val currentProgFrac = progress().coerceIn(0f, 1f)
+                val currentProgFrac = (scrubFraction ?: progress()).coerceIn(0f, 1f)
                 val currentBufFrac = bufferedProgress().coerceIn(0f, 1f)
 
                 for ((index, seg) in segments.withIndex()) {
@@ -227,6 +288,43 @@ fun PersistentProgressBar(
                             )
                         }
                     }
+
+                    // A-B Loop Markers
+                    val pointA = abLoopStartMs
+                    val pointB = abLoopEndMs
+                    if (pointA != null) {
+                        val aPx = (pointA.toFloat() / durationMs).coerceIn(0f, 1f) * width
+                        if (pointB != null && pointB > pointA) {
+                            val bPx = (pointB.toFloat() / durationMs).coerceIn(0f, 1f) * width
+                            drawLine(
+                                color = Color(0xFF00E5FF).copy(alpha = 0.85f),
+                                start = Offset(aPx, centerY),
+                                end = Offset(bPx, centerY),
+                                strokeWidth = strokeWidth * 1.25f,
+                                cap = StrokeCap.Round
+                            )
+                            drawCircle(
+                                color = Color(0xFF00E5FF),
+                                radius = strokeWidth * 1.1f,
+                                center = Offset(bPx, centerY)
+                            )
+                        }
+                        drawCircle(
+                            color = Color(0xFF00E5FF),
+                            radius = strokeWidth * 1.1f,
+                            center = Offset(aPx, centerY)
+                        )
+                    }
+                }
+
+                // Scrub thumb handle when interactive or scrubbing
+                if (isInteractive || isScrubbing) {
+                    val thumbX = (currentProgFrac * width).coerceIn(0f, width)
+                    drawCircle(
+                        color = activeColor,
+                        radius = if (isScrubbing) strokeWidth * 1.35f else strokeWidth * 1.05f,
+                        center = Offset(thumbX, centerY)
+                    )
                 }
             }
         }

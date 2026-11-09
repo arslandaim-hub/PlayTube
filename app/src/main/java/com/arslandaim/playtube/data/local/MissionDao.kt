@@ -47,8 +47,17 @@ interface MissionDao {
     @Query("SELECT * FROM download_chunks WHERE missionId = :missionId")
     suspend fun getChunksForMission(missionId: Long): List<DownloadChunkEntity>
 
+    @Query("SELECT * FROM download_chunks WHERE id = :chunkId")
+    suspend fun getChunkById(chunkId: Long): DownloadChunkEntity?
+
     @Query("UPDATE download_chunks SET bytesDownloaded = :bytes, isCompleted = :completed WHERE id = :chunkId")
     suspend fun updateChunkProgress(chunkId: Long, bytes: Long, completed: Boolean)
+
+    @Query("DELETE FROM download_chunks WHERE missionId = :missionId")
+    suspend fun deleteChunksForMission(missionId: Long)
+
+    @Query("DELETE FROM download_chunks WHERE missionId = :missionId AND type = :type")
+    suspend fun deleteChunksForMissionAndType(missionId: Long, type: ChunkType)
 }
 
 data class MissionWithChunks(

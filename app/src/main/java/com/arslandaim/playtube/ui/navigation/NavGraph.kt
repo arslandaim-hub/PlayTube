@@ -65,11 +65,16 @@ fun NavGraph(
         stiffness = Spring.StiffnessMediumLow
     )
 
+    androidx.compose.runtime.LaunchedEffect(navController) {
+        navController.currentBackStackEntryFlow.collect {
+            onBarsVisibilityChange(true)
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = startDestination,
         enterTransition = {
-            onBarsVisibilityChange(true)
             val initial = initialState.destination.route?.toDestination()
             val target = targetState.destination.route?.toDestination()
             val isBottomTab = initial?.isTopLevel == true && target?.isTopLevel == true
@@ -98,7 +103,6 @@ fun NavGraph(
             }
         },
         popEnterTransition = {
-            onBarsVisibilityChange(true)
             slideIntoContainer(
                 towards = AnimatedContentTransitionScope.SlideDirection.End,
                 animationSpec = slideSpring

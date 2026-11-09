@@ -64,14 +64,12 @@ class YouTubeDownloader(private val client: OkHttpClient) : Downloader() {
             try {
                 val okHttpResponse = client.newCall(okHttpRequestBuilder.build()).execute()
                 
-                // If it's a 403 or 429, it might be an IP block or temporary throttle.
-                if (okHttpResponse.code == 403 || okHttpResponse.code == 429) {
+                // If it's a 403 or 429, retry with short backoff; on final attempt return response so NewPipe can handle fallback
+                if ((okHttpResponse.code == 403 || okHttpResponse.code == 429) && attempt < maxRetries) {
                     okHttpResponse.close()
                     attempt++
-                    if (attempt <= maxRetries) {
-                        Thread.sleep(1000L * attempt) // Linear backoff
-                        continue
-                    }
+                    Thread.sleep(250L * attempt)
+                    continue
                 }
                 
                 lastResponse = okHttpResponse
@@ -80,7 +78,7 @@ class YouTubeDownloader(private val client: OkHttpClient) : Downloader() {
                 lastException = e
                 attempt++
                 if (attempt <= maxRetries) {
-                    Thread.sleep(500L * attempt)
+                    Thread.sleep(250L * attempt)
                 }
             }
         }

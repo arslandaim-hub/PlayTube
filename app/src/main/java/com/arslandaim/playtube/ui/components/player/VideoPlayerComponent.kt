@@ -44,6 +44,8 @@ fun VideoPlayerView(
                 this.keepScreenOn = true
                 this.resizeMode = resizeMode
                 useController = false
+                setKeepContentOnPlayerReset(true)
+                setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
                 setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                 subtitleView?.visibility = android.view.View.GONE
                 playerView = this

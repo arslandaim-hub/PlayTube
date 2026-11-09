@@ -37,6 +37,7 @@ class SABRDataSource(
     private var totalLength = C.LENGTH_UNSET.toLong()
     private var bytesRemainingInOriginal = C.LENGTH_UNSET.toLong()
     private var currentChunkRemaining = 0L
+    private var reachedEof = false
     private var opened = false
 
     override fun addTransferListener(transferListener: TransferListener) {
@@ -48,11 +49,13 @@ class SABRDataSource(
         currentPosition = dataSpec.position
         totalLength = dataSpec.length
         bytesRemainingInOriginal = dataSpec.length
+        reachedEof = false
 
         val scheme = dataSpec.uri.scheme
-        val isNetworkStream = scheme == "http" || scheme == "https"
+        val host = dataSpec.uri.host ?: ""
+        val isNetworkStream = (scheme == "http" || scheme == "https") && host.contains("googlevideo.com")
 
-        // Enable chunking for network streams when requested length is open-ended or larger than CHUNK_SIZE
+        // Enable chunking for googlevideo network streams when requested length is open-ended or larger than CHUNK_SIZE
         isChunked = isNetworkStream && (dataSpec.length == C.LENGTH_UNSET.toLong() || dataSpec.length > CHUNK_SIZE)
 
         opened = true
@@ -92,9 +95,19 @@ class SABRDataSource(
             try {
                 val chunkBytes = upstream.open(chunkSpec)
                 currentChunkRemaining = if (chunkBytes != C.LENGTH_UNSET.toLong()) chunkBytes else requestLength
-                PTLog.d("SABRDataSource", "Opened chunk at pos=$currentPosition, chunkSize=$currentChunkRemaining")
+                if (chunkBytes != C.LENGTH_UNSET.toLong() && chunkBytes < requestLength) {
+                    reachedEof = true
+                }
+                PTLog.d("SABRDataSource", "Opened chunk at pos=$currentPosition, chunkSize=$currentChunkRemaining, eof=$reachedEof")
                 return
             } catch (e: Exception) {
+                val invalidResp = (e as? androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)
+                    ?: (e.cause as? androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)
+                if (invalidResp?.responseCode == 416) {
+                    reachedEof = true
+                    currentChunkRemaining = 0L
+                    return
+                }
                 lastException = e
                 attempts++
                 if (attempts <= MAX_RETRIES) {
@@ -114,7 +127,7 @@ class SABRDataSource(
             return upstream.read(buffer, offset, length)
         }
 
-        if (bytesRemainingInOriginal == 0L) {
+        if (bytesRemainingInOriginal == 0L || (reachedEof && currentChunkRemaining == 0L)) {
             return C.RESULT_END_OF_INPUT
         }
 
@@ -127,6 +140,9 @@ class SABRDataSource(
         var bytesRead = upstream.read(buffer, offset, readLength)
 
         if (bytesRead == C.RESULT_END_OF_INPUT || bytesRead == 0) {
+            if (reachedEof) {
+                return C.RESULT_END_OF_INPUT
+            }
             // End of current chunk - attempt to open next chunk if more bytes are expected
             if (bytesRemainingInOriginal == C.LENGTH_UNSET.toLong() || bytesRemainingInOriginal > 0) {
                 try {
@@ -135,6 +151,9 @@ class SABRDataSource(
 
                 try {
                     openNextChunkWithRetry()
+                    if (reachedEof && currentChunkRemaining == 0L) {
+                        return C.RESULT_END_OF_INPUT
+                    }
                     bytesRead = upstream.read(buffer, offset, length)
                 } catch (e: Exception) {
                     PTLog.e("SABRDataSource", "Failed to fetch subsequent chunk at pos=$currentPosition", e)

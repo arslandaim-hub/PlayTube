@@ -72,7 +72,6 @@ dependencies {
 
     // Hilt
     implementation(libs.hilt.android)
-    debugImplementation(libs.leakcanary)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
     implementation(libs.hilt.work)
